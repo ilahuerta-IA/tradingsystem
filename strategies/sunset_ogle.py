@@ -61,11 +61,10 @@ class SunsetOgleStrategy(bt.Strategy):
         window_periods=2,
         price_offset_mult=0.01,
         
-        # Time filter
-        time_start_hour=5,
-        time_start_minute=0,
-        time_end_hour=18,
-        time_end_minute=0,
+        # Time filter - List of allowed hours (UTC)
+        # Original range 5:00-18:00 means trading until 17:59
+        use_time_filter=True,
+        allowed_hours=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
         
         # Risk management
         risk_percent=0.003,
@@ -213,11 +212,16 @@ class SunsetOgleStrategy(bt.Strategy):
             return float('nan')
     
     def _in_time_range(self, dt):
-        """Check if current time is within trading hours."""
-        current = dt.hour * 60 + dt.minute
-        start = self.p.time_start_hour * 60 + self.p.time_start_minute
-        end = self.p.time_end_hour * 60 + self.p.time_end_minute
-        return start <= current <= end
+        """Check if current hour is in the allowed hours list.
+        
+        Using a list instead of a range allows for:
+        - Excluding specific toxic hours (e.g., news releases)
+        - Non-contiguous trading windows
+        - Easier optimization in future calibrations
+        """
+        if not self.p.use_time_filter:
+            return True
+        return dt.hour in self.p.allowed_hours
     
     def _reset_state(self):
         """Reset entry state machine to SCANNING."""

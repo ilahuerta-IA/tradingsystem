@@ -48,11 +48,10 @@ STRATEGIES_CONFIG = {
             'window_periods': 2,
             'price_offset_mult': 0.01,
             
-            # Time filter (5:00-18:00 UTC)
-            'time_start_hour': 5,
-            'time_start_minute': 0,
-            'time_end_hour': 18,
-            'time_end_minute': 0,
+            # Time filter - List of allowed hours (UTC)
+            # Original range 5:00-18:00 means trading until 17:59
+            'use_time_filter': True,
+            'allowed_hours': [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
             
             # Risk management
             'risk_percent': 0.003,
