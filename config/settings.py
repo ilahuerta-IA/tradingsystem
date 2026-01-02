@@ -11,7 +11,7 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURJPY',
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2024, 7, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
         'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
