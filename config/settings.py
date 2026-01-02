@@ -11,12 +11,12 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURJPY',
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -31,7 +31,7 @@ STRATEGIES_CONFIG = {
             
             # ATR settings
             'atr_length': 10,
-            'atr_min': 0.030,
+            'atr_min': 0.040,
             'atr_max': 0.090,
             
             # Angle settings
@@ -51,7 +51,7 @@ STRATEGIES_CONFIG = {
             # Time filter - List of allowed hours (UTC)
             # Original range 5:00-18:00 means trading until 17:59
             'use_time_filter': True,
-            'allowed_hours': [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+            'allowed_hours': [5, 6, 7, 8, 9, 12, 13, 15, 16, 17],
             
             # SL pips filter - Filters trades by stop loss size in pips
             # Useful for avoiding trades with too tight or too wide stops
