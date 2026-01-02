@@ -25,6 +25,14 @@ from pathlib import Path
 
 import backtrader as bt
 
+from lib.filters import (
+    check_time_filter,
+    check_atr_filter,
+    check_angle_filter,
+    check_sl_pips_filter,
+    check_ema_price_filter,
+)
+
 
 class SunsetOgleStrategy(bt.Strategy):
     """
@@ -218,16 +226,8 @@ class SunsetOgleStrategy(bt.Strategy):
             return float('nan')
     
     def _in_time_range(self, dt):
-        """Check if current hour is in the allowed hours list.
-        
-        Using a list instead of a range allows for:
-        - Excluding specific toxic hours (e.g., news releases)
-        - Non-contiguous trading windows
-        - Easier optimization in future calibrations
-        """
-        if not self.p.use_time_filter:
-            return True
-        return dt.hour in self.p.allowed_hours
+        """Check if current hour is in the allowed hours list."""
+        return check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter)
     
     def _reset_state(self):
         """Reset entry state machine to SCANNING."""
@@ -253,18 +253,18 @@ class SunsetOgleStrategy(bt.Strategy):
         if not cross_any:
             return False
         
-        # Price filter: close > EMA(70)
-        if self.data.close[0] <= self.ema_filter[0]:
+        # Price filter: close > EMA(70) - using shared filter
+        if not check_ema_price_filter(self.data.close[0], self.ema_filter[0], "LONG"):
             return False
         
-        # Angle filter: 45-95 degrees
+        # Angle filter: 45-95 degrees - using shared filter
         angle = self._angle()
-        if not (self.p.angle_min <= angle <= self.p.angle_max):
+        if not check_angle_filter(angle, self.p.angle_min, self.p.angle_max):
             return False
         
-        # ATR filter: 0.030-0.090
+        # ATR filter: 0.030-0.090 - using shared filter
         atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
-        if atr < self.p.atr_min or atr > self.p.atr_max:
+        if not check_atr_filter(atr, self.p.atr_min, self.p.atr_max):
             return False
         
         # Store ATR at signal detection for increment calculation
@@ -536,18 +536,12 @@ class SunsetOgleStrategy(bt.Strategy):
         # Calculate SL in pips for filtering and logging
         sl_pips = abs(entry_price - self.stop_level) / self.p.pip_value
         
-        # SL pips filter - reject trades outside min/max range
-        if self.p.use_sl_pips_filter:
-            if sl_pips < self.p.sl_pips_min:
-                if self.p.print_signals:
-                    print(f'{dt} [{self.data._name}] ENTRY REJECTED: SL {sl_pips:.1f} pips < min {self.p.sl_pips_min:.1f}')
-                self._reset_state()
-                return
-            if sl_pips > self.p.sl_pips_max:
-                if self.p.print_signals:
-                    print(f'{dt} [{self.data._name}] ENTRY REJECTED: SL {sl_pips:.1f} pips > max {self.p.sl_pips_max:.1f}')
-                self._reset_state()
-                return
+        # SL pips filter - reject trades outside min/max range (using shared filter)
+        if not check_sl_pips_filter(sl_pips, self.p.sl_pips_min, self.p.sl_pips_max, self.p.use_sl_pips_filter):
+            if self.p.print_signals:
+                print(f'{dt} [{self.data._name}] ENTRY REJECTED: SL {sl_pips:.1f} pips outside range {self.p.sl_pips_min:.1f}-{self.p.sl_pips_max:.1f}')
+            self._reset_state()
+            return
         
         # Calculate position size
         bt_size = self._calculate_position_size(entry_price, self.stop_level)
