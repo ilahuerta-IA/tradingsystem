@@ -66,6 +66,12 @@ class SunsetOgleStrategy(bt.Strategy):
         use_time_filter=True,
         allowed_hours=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
         
+        # SL pips filter - Filters trades by stop loss size in pips
+        # Useful for avoiding trades with too tight or too wide stops
+        use_sl_pips_filter=False,
+        sl_pips_min=20.0,
+        sl_pips_max=50.0,
+        
         # Risk management
         risk_percent=0.003,
         
@@ -77,7 +83,7 @@ class SunsetOgleStrategy(bt.Strategy):
         
         # Debug and reporting
         print_signals=True,
-        export_report=True,
+        export_report=False,  # Disabled - use logs/ folder instead
     )
     
     def __init__(self):
@@ -365,11 +371,8 @@ class SunsetOgleStrategy(bt.Strategy):
         
         return max(100, bt_size)
     
-    def _record_trade_entry(self, dt, entry_price, atr, angle):
+    def _record_trade_entry(self, dt, entry_price, atr, angle, sl_pips=0.0):
         """Record trade entry for detailed reporting."""
-        if not self.trade_report_file:
-            return
-        
         try:
             # Calculate bars to entry
             current_bar = len(self)
@@ -382,7 +385,7 @@ class SunsetOgleStrategy(bt.Strategy):
                 atr_increment = atr - self.signal_atr
             self.entry_atr_increment = atr_increment
             
-            # Store trade data
+            # Store trade data (always, for save_trade_log)
             trade_entry = {
                 'entry_time': dt,
                 'direction': 'LONG',
@@ -392,9 +395,14 @@ class SunsetOgleStrategy(bt.Strategy):
                 'current_atr': atr,
                 'atr_increment': atr_increment,
                 'current_angle': angle,
+                'sl_pips': sl_pips,
                 'bars_to_entry': bars_to_entry,
             }
             self.trade_reports.append(trade_entry)
+            
+            # Skip file writing if no report file
+            if not self.trade_report_file:
+                return
             
             # Write to file (same format as original)
             trade_num = len(self.trade_reports)
@@ -411,6 +419,14 @@ class SunsetOgleStrategy(bt.Strategy):
             
             self.trade_report_file.write(f"Angle Current: {angle:.2f} deg\n")
             self.trade_report_file.write(f"Angle Filter: ENABLED | Range: {self.p.angle_min:.1f}-{self.p.angle_max:.1f} deg | Valid: True\n")
+            
+            # SL pips info for optimization analysis
+            sl_filter_status = "ENABLED" if self.p.use_sl_pips_filter else "DISABLED"
+            if self.p.use_sl_pips_filter:
+                self.trade_report_file.write(f"SL Pips: {sl_pips:.1f} | Filter: {sl_filter_status} | Range: {self.p.sl_pips_min:.1f}-{self.p.sl_pips_max:.1f}\n")
+            else:
+                self.trade_report_file.write(f"SL Pips: {sl_pips:.1f} | Filter: {sl_filter_status}\n")
+            
             self.trade_report_file.write(f"Bars to Entry: {bars_to_entry}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
             self.trade_report_file.flush()
@@ -420,11 +436,13 @@ class SunsetOgleStrategy(bt.Strategy):
     
     def _record_trade_exit(self, dt, exit_price, pnl, exit_reason):
         """Record trade exit for detailed reporting."""
-        if not self.trade_report_file or not self.trade_reports:
+        if not self.trade_reports:
             return
         
         try:
             last_trade = self.trade_reports[-1]
+            
+            # Always update trade record (for save_trade_log)
             
             # Calculate duration
             entry_time = last_trade.get('entry_time')
@@ -440,7 +458,7 @@ class SunsetOgleStrategy(bt.Strategy):
             entry_price = last_trade.get('entry_price', 0)
             pips = (exit_price - entry_price) / self.p.pip_value if entry_price > 0 else 0
             
-            # Update trade record
+            # Update trade record (always, for save_trade_log)
             last_trade.update({
                 'exit_time': dt,
                 'exit_price': exit_price,
@@ -451,16 +469,17 @@ class SunsetOgleStrategy(bt.Strategy):
                 'duration_minutes': duration_minutes,
             })
             
-            # Write to file
-            trade_num = len(self.trade_reports)
-            self.trade_report_file.write(f"EXIT #{trade_num}\n")
-            self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            self.trade_report_file.write(f"Exit Reason: {exit_reason}\n")
-            self.trade_report_file.write(f"P&L: {pnl:.2f}\n")
-            self.trade_report_file.write(f"Pips: {pips:.1f}\n")
-            self.trade_report_file.write(f"Duration: {duration_bars} bars ({duration_minutes} min)\n")
-            self.trade_report_file.write("=" * 80 + "\n\n")
-            self.trade_report_file.flush()
+            # Write to file only if report file exists
+            if self.trade_report_file:
+                trade_num = len(self.trade_reports)
+                self.trade_report_file.write(f"EXIT #{trade_num}\n")
+                self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                self.trade_report_file.write(f"Exit Reason: {exit_reason}\n")
+                self.trade_report_file.write(f"P&L: {pnl:.2f}\n")
+                self.trade_report_file.write(f"Pips: {pips:.1f}\n")
+                self.trade_report_file.write(f"Duration: {duration_bars} bars ({duration_minutes} min)\n")
+                self.trade_report_file.write("=" * 80 + "\n\n")
+                self.trade_report_file.flush()
             
         except Exception as e:
             print(f"Trade exit recording error: {e}")
@@ -514,6 +533,22 @@ class SunsetOgleStrategy(bt.Strategy):
         self.stop_level = bar_low - atr * self.p.sl_mult
         self.take_level = bar_high + atr * self.p.tp_mult
         
+        # Calculate SL in pips for filtering and logging
+        sl_pips = abs(entry_price - self.stop_level) / self.p.pip_value
+        
+        # SL pips filter - reject trades outside min/max range
+        if self.p.use_sl_pips_filter:
+            if sl_pips < self.p.sl_pips_min:
+                if self.p.print_signals:
+                    print(f'{dt} [{self.data._name}] ENTRY REJECTED: SL {sl_pips:.1f} pips < min {self.p.sl_pips_min:.1f}')
+                self._reset_state()
+                return
+            if sl_pips > self.p.sl_pips_max:
+                if self.p.print_signals:
+                    print(f'{dt} [{self.data._name}] ENTRY REJECTED: SL {sl_pips:.1f} pips > max {self.p.sl_pips_max:.1f}')
+                self._reset_state()
+                return
+        
         # Calculate position size
         bt_size = self._calculate_position_size(entry_price, self.stop_level)
         if bt_size <= 0:
@@ -529,11 +564,11 @@ class SunsetOgleStrategy(bt.Strategy):
         print(f'{dt} [{self.data._name}] Time: {dt}')
         print(f'{dt} [{self.data._name}] Direction: LONG')
         print(f'{dt} [{self.data._name}] Price: {entry_price:.3f} | SL: {self.stop_level:.3f} | TP: {self.take_level:.3f}')
-        print(f'{dt} [{self.data._name}] ATR: {atr:.5f} | Angle: {angle:.1f}')
+        print(f'{dt} [{self.data._name}] ATR: {atr:.5f} | Angle: {angle:.1f} | SL Pips: {sl_pips:.1f}')
         print('-' * 40)
         
-        # Record entry for reporting
-        self._record_trade_entry(dt, entry_price, atr, angle)
+        # Record entry for reporting (pass sl_pips)
+        self._record_trade_entry(dt, entry_price, atr, angle, sl_pips)
         
         # Place order
         self.order = self.buy(size=bt_size)

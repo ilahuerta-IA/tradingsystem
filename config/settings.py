@@ -53,6 +53,12 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
             
+            # SL pips filter - Filters trades by stop loss size in pips
+            # Useful for avoiding trades with too tight or too wide stops
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 20.0,
+            'sl_pips_max': 50.0,
+            
             # Risk management
             'risk_percent': 0.003,
             

@@ -119,7 +119,7 @@ def run_backtest(config_name):
 
 
 def save_trade_log(strategy, config_name, asset_name):
-    """Save trade log to file using trade_reports from strategy."""
+    """Save detailed trade log to file using trade_reports from strategy."""
     logs_dir = Path('logs')
     logs_dir.mkdir(exist_ok=True)
     
@@ -127,24 +127,126 @@ def save_trade_log(strategy, config_name, asset_name):
     filename = f'{asset_name}_PRO_{timestamp}.txt'
     filepath = logs_dir / filename
     
-    # Use trade_reports from strategy (new format)
+    # Use trade_reports from strategy
     trade_reports = getattr(strategy, 'trade_reports', [])
     
+    # Get strategy params for configuration display
+    p = strategy.params
+    
     with open(filepath, 'w') as f:
-        f.write(f'=== TRADE LOG: {asset_name} ===\n')
-        f.write(f'Generated: {datetime.now()}\n')
-        f.write(f'Configuration: {config_name}\n\n')
+        # Header
+        f.write("=" * 80 + "\n")
+        f.write(f"=== SUNRISE STRATEGY TRADE REPORT ===\n")
+        f.write(f"Asset: {asset_name}\n")
+        f.write(f"Generated: {datetime.now()}\n")
+        f.write(f"Configuration: {config_name}\n")
+        f.write(f"Trading Direction: LONG\n")
+        f.write("=" * 80 + "\n\n")
         
+        # Configuration parameters
+        f.write("CONFIGURATION PARAMETERS:\n")
+        f.write("-" * 30 + "\n")
+        f.write("LONG Configuration:\n")
+        f.write(f"  ATR Range: {p.atr_min:.6f} - {p.atr_max:.6f}\n")
+        f.write(f"  Angle Range: {p.angle_min:.2f} to {p.angle_max:.2f} deg\n")
+        f.write(f"  Candle Direction Filter: DISABLED\n")
+        f.write(f"  Pullback Mode: True\n\n")
+        
+        f.write("Common Parameters:\n")
+        f.write(f"  Risk Percent: {p.risk_percent * 100:.1f}%\n")
+        
+        # Time filter display
+        if p.use_time_filter and hasattr(p, 'allowed_hours'):
+            hours = list(p.allowed_hours)
+            if hours:
+                start_hour = min(hours)
+                end_hour = max(hours) + 1
+                f.write(f"  Trading Hours: {start_hour:02d}:00 - {end_hour:02d}:00 UTC\n")
+        
+        f.write(f"  Window Time Offset: DISABLED (Immediate window opening)\n")
+        f.write(f"  LONG Stop Loss ATR Multiplier: {p.sl_mult}\n")
+        f.write(f"  LONG Take Profit ATR Multiplier: {p.tp_mult}\n")
+        
+        # SL Pips filter
+        if p.use_sl_pips_filter:
+            f.write(f"  SL Pips Filter: ENABLED | Range: {p.sl_pips_min:.1f} - {p.sl_pips_max:.1f}\n")
+        else:
+            f.write(f"  SL Pips Filter: DISABLED\n")
+        
+        f.write("\n" + "=" * 80 + "\n")
+        f.write("TRADE DETAILS\n")
+        f.write("=" * 80 + "\n\n")
+        
+        # Trade details
         for i, trade in enumerate(trade_reports, 1):
-            f.write(f'Trade #{i}\n')
-            f.write(f'  Entry: {trade.get("entry_time", "N/A")}\n')
-            f.write(f'  Exit: {trade.get("exit_time", "N/A")}\n')
-            f.write(f'  P&L: ${trade.get("pnl", 0):.2f}\n')
-            f.write('-' * 40 + '\n')
+            # Entry section
+            f.write(f"ENTRY #{i}\n")
+            entry_time = trade.get('entry_time')
+            if entry_time:
+                f.write(f"Time: {entry_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            else:
+                f.write(f"Time: N/A\n")
+            
+            f.write(f"Direction: {trade.get('direction', 'LONG')}\n")
+            
+            atr = trade.get('current_atr', 0)
+            f.write(f"ATR Current: {atr:.6f}\n")
+            
+            angle = trade.get('current_angle', 0)
+            f.write(f"Angle Current: {angle:.2f} deg\n")
+            f.write(f"Angle Filter: ENABLED | Range: {p.angle_min:.1f}-{p.angle_max:.1f} deg | Valid: True\n")
+            
+            # SL Pips info
+            sl_pips = trade.get('sl_pips', 0)
+            if p.use_sl_pips_filter:
+                f.write(f"SL Pips: {sl_pips:.1f} | Filter: ENABLED | Range: {p.sl_pips_min:.1f}-{p.sl_pips_max:.1f}\n")
+            else:
+                f.write(f"SL Pips: {sl_pips:.1f} | Filter: DISABLED\n")
+            
+            bars_to_entry = trade.get('bars_to_entry', 0)
+            f.write(f"Bars to Entry: {bars_to_entry}\n")
+            f.write("-" * 50 + "\n\n")
+            
+            # Exit section
+            f.write(f"EXIT #{i}\n")
+            exit_time = trade.get('exit_time')
+            if exit_time:
+                f.write(f"Time: {exit_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            else:
+                f.write(f"Time: N/A\n")
+            
+            f.write(f"Exit Reason: {trade.get('exit_reason', 'N/A')}\n")
+            f.write(f"P&L: {trade.get('pnl', 0):.2f}\n")
+            f.write(f"Pips: {trade.get('pips', 0):.1f}\n")
+            
+            duration_bars = trade.get('duration_bars', 0)
+            duration_min = trade.get('duration_minutes', 0)
+            f.write(f"Duration: {duration_bars} bars ({duration_min} min)\n")
+            f.write("=" * 80 + "\n\n")
+        
+        # Summary section
+        f.write("\n" + "=" * 80 + "\n")
+        f.write("SUMMARY\n")
+        f.write("=" * 80 + "\n")
+        
+        total_trades = len(trade_reports)
+        winning_trades = [t for t in trade_reports if t.get('pnl', 0) > 0]
+        losing_trades = [t for t in trade_reports if t.get('pnl', 0) <= 0]
         
         total_pnl = sum(t.get('pnl', 0) for t in trade_reports)
-        f.write(f'\nTotal Trades: {len(trade_reports)}\n')
-        f.write(f'Total P&L: ${total_pnl:.2f}\n')
+        win_rate = (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
+        
+        avg_win = sum(t.get('pnl', 0) for t in winning_trades) / len(winning_trades) if winning_trades else 0
+        avg_loss = sum(t.get('pnl', 0) for t in losing_trades) / len(losing_trades) if losing_trades else 0
+        
+        f.write(f"Total Trades: {total_trades}\n")
+        f.write(f"Winning Trades: {len(winning_trades)}\n")
+        f.write(f"Losing Trades: {len(losing_trades)}\n")
+        f.write(f"Win Rate: {win_rate:.2f}%\n")
+        f.write(f"Total P&L: {total_pnl:.2f}\n")
+        f.write(f"Average Win: {avg_win:.2f}\n")
+        f.write(f"Average Loss: {avg_loss:.2f}\n")
+        f.write("=" * 80 + "\n")
     
     print(f'\nTrade log saved: {filepath}')
 
