@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# Environment Variables
+.env
+.env.local
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data Files (Large CSVs should not be in git)
+data/*.csv
+data/*.zip
+
+# Logs and Reports
+logs/*.txt
+logs/*.log
+temp_reports/*.txt
+
+# Operating System
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Backtrader cache
+*.bt
+
+# Original/Legacy files (keep for reference but don't track changes)
+# originals/
