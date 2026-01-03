@@ -32,6 +32,7 @@ from lib.filters import (
     check_sl_pips_filter,
     check_ema_price_filter,
 )
+from lib.position_sizing import calculate_position_size, get_pair_type
 
 
 class SunsetOgleStrategy(bt.Strategy):
@@ -55,7 +56,8 @@ class SunsetOgleStrategy(bt.Strategy):
         atr_min=0.030,
         atr_max=0.090,
         
-        # Angle settings
+        # Angle Filter
+        use_angle_filter=True,
         angle_min=45.0,
         angle_max=95.0,
         angle_scale=100.0,
@@ -69,29 +71,26 @@ class SunsetOgleStrategy(bt.Strategy):
         window_periods=2,
         price_offset_mult=0.01,
         
-        # Time filter - List of allowed hours (UTC)
-        # Original range 5:00-18:00 means trading until 17:59
+        # Time filter
         use_time_filter=True,
         allowed_hours=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
         
-        # SL pips filter - Filters trades by stop loss size in pips
-        # Useful for avoiding trades with too tight or too wide stops
+        # SL pips filter
         use_sl_pips_filter=False,
         sl_pips_min=20.0,
         sl_pips_max=50.0,
         
         # Risk management
         risk_percent=0.003,
+        lot_size=100000,
         
         # JPY pair settings
-        is_jpy=True,
         jpy_rate=150.0,
-        lot_size=100000,
         pip_value=0.01,
         
         # Debug and reporting
         print_signals=True,
-        export_report=False,  # Disabled - use logs/ folder instead
+        export_report=False,
     )
     
     def __init__(self):
@@ -243,34 +242,32 @@ class SunsetOgleStrategy(bt.Strategy):
         self.entry_window_start = None
     
     def _check_signal(self):
-        """PHASE 1: Check for valid EMA crossover signal with all filters."""
-        # EMA crossover (confirm crosses above ANY of fast/medium/slow)
-        cross_any = (
-            self._cross_above(self.ema_confirm, self.ema_fast) or
-            self._cross_above(self.ema_confirm, self.ema_medium) or
-            self._cross_above(self.ema_confirm, self.ema_slow)
-        )
+        """Phase 1: Check for valid EMA crossover signal."""
+        # Check for bullish EMA crossover pattern
+        cross_fast = self._cross_above(self.ema_confirm, self.ema_fast)
+        cross_medium = self._cross_above(self.ema_confirm, self.ema_medium)
+        cross_slow = self._cross_above(self.ema_confirm, self.ema_slow)
+        
+        cross_any = cross_fast or cross_medium or cross_slow
         
         if not cross_any:
             return False
         
         # Price filter: close > EMA(70) - using shared filter
-        if not check_ema_price_filter(self.data.close[0], self.ema_filter[0], "LONG"):
+        if not check_ema_price_filter(self.data.close[0], self.ema_filter[0]):
             return False
         
-        # Angle filter: 45-95 degrees - using shared filter
-        angle = self._angle()
-        if not check_angle_filter(angle, self.p.angle_min, self.p.angle_max):
-            return False
-        
-        # ATR filter: 0.030-0.090 - using shared filter
-        atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0.0
+        # ATR filter - using shared filter
+        atr = self.atr[0]
         if not check_atr_filter(atr, self.p.atr_min, self.p.atr_max):
             return False
         
-        # Store ATR at signal detection for increment calculation
-        self.signal_atr = atr
-        self.entry_window_start = len(self)
+        # Angle filter - only if enabled
+        if self.p.use_angle_filter:
+            angle = self._angle()
+            if not check_angle_filter(angle, self.p.angle_min, self.p.angle_max):
+                return False
+        
         return True
     
     def _check_pullback(self):
@@ -349,28 +346,24 @@ class SunsetOgleStrategy(bt.Strategy):
         return True
     
     def _calculate_position_size(self, entry_price, stop_loss):
-        """Calculate position size based on risk parameters (JPY corrected)."""
-        raw_risk = entry_price - stop_loss
-        if raw_risk <= 0:
-            return 0
+        """Calculate position size based on risk parameters using modular system."""
+        # Get pair type from asset name
+        asset_name = getattr(self.data, '_name', 'EURJPY')
+        pair_type = get_pair_type(asset_name)
         
-        pip_risk = raw_risk / self.p.pip_value
-        pip_value_jpy = self.p.lot_size * self.p.pip_value
-        value_per_pip = pip_value_jpy / entry_price
+        # Use modular position sizing (exact replica of originals)
+        bt_size = calculate_position_size(
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            equity=self.broker.get_value(),
+            risk_percent=self.p.risk_percent,
+            pair_type=pair_type,
+            lot_size=self.p.lot_size,
+            jpy_rate=self.p.jpy_rate,
+            pip_value=self.p.pip_value,
+        )
         
-        equity = self.broker.get_value()
-        risk_amount = equity * self.p.risk_percent
-        
-        if pip_risk > 0 and value_per_pip > 0:
-            optimal_lots = risk_amount / (pip_risk * value_per_pip)
-        else:
-            return 0
-        
-        optimal_lots = max(0.01, round(optimal_lots, 2))
-        real_contracts = int(optimal_lots * self.p.lot_size)
-        bt_size = int(real_contracts / self.p.jpy_rate)
-        
-        return max(100, bt_size)
+        return bt_size
     
     def _record_trade_entry(self, dt, entry_price, atr, angle, sl_pips=0.0):
         """Record trade entry for detailed reporting."""

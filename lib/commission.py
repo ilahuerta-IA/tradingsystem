@@ -1,16 +1,18 @@
 """
-Commission schemes for different broker configurations.
-Includes JPY pair P&L correction for accurate backtest results.
-
-Replicates exactly the ForexCommission from sunrise_ogle_eurjpy_pro.py
+Commission schemes for different brokers and instrument types.
+Supports both JPY and Standard pairs with proper P&L calculation.
 """
 import backtrader as bt
 
 
-class ForexCommission(bt.CommInfoBase):
+class DarwinexZeroCommission(bt.CommInfoBase):
     """
-    Commission scheme for Forex pairs with fixed commission per lot.
-    Supports both JPY pairs (P&L conversion) and standard pairs.
+    Commission scheme for Darwinex Zero.
+    
+    For JPY pairs:
+    - Position size is divided by jpy_rate (~150) for margin management
+    - P&L must be multiplied back by jpy_rate to compensate
+    - This matches the original sunrise_ogle_eurjpy_pro.py implementation
     
     Darwinex Zero specs:
     - Commission: $2.50 per lot per order
@@ -24,6 +26,7 @@ class ForexCommission(bt.CommInfoBase):
         ('leverage', 500.0),
         ('automargin', True),
         ('commission', 2.50),
+        ('lot_size', 100000),
         ('is_jpy_pair', False),
         ('jpy_rate', 150.0),
     )
@@ -45,13 +48,13 @@ class ForexCommission(bt.CommInfoBase):
         if self.p.is_jpy_pair:
             actual_size = actual_size * self.p.jpy_rate  # Restore real size
         
-        lots = actual_size / 100000.0
+        lots = actual_size / self.p.lot_size
         comm = lots * self.p.commission
         
         if not pseudoexec:
-            ForexCommission.commission_calls += 1
-            ForexCommission.total_commission += comm
-            ForexCommission.total_lots += lots
+            DarwinexZeroCommission.commission_calls += 1
+            DarwinexZeroCommission.total_commission += comm
+            DarwinexZeroCommission.total_lots += lots
         
         return comm
 
@@ -59,20 +62,21 @@ class ForexCommission(bt.CommInfoBase):
         """
         Calculate P&L in USD from JPY-denominated gains/losses.
         
-        Since bt_size is divided by ~150 for margin management,
+        CRITICAL: Since bt_size is divided by ~150 for margin management,
         we multiply P&L by 150 to compensate and get correct USD P&L.
-        This matches the ERIS strategy approach.
+        
+        This is an EXACT replica of the original ForexCommission class
+        from sunrise_ogle_eurjpy_pro.py (lines 235-248).
         """
         if self.p.is_jpy_pair:
-            # Size was divided by forex_jpy_rate (~150), so we multiply back
-            JPY_RATE_COMPENSATION = 150.0
-            pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
+            # JPY pairs: compensate for size division
+            pnl_jpy = size * self.p.jpy_rate * (newprice - price)
             if newprice > 0:
                 pnl_usd = pnl_jpy / newprice
                 return pnl_usd
             return pnl_jpy
         else:
-            # Standard pairs
+            # Standard pairs: direct USD P&L
             return size * (newprice - price)
 
     def cashadjust(self, size, price, newprice):
@@ -80,8 +84,13 @@ class ForexCommission(bt.CommInfoBase):
         if not self._stocklike:
             if self.p.is_jpy_pair:
                 # Same compensation for cash adjustment
-                JPY_RATE_COMPENSATION = 150.0
-                pnl_jpy = size * JPY_RATE_COMPENSATION * (newprice - price)
+                pnl_jpy = size * self.p.jpy_rate * (newprice - price)
                 if newprice > 0:
                     return pnl_jpy / newprice
+                return pnl_jpy
+            else:
+                return size * (newprice - price)
         return 0.0
+
+# Alias for backward compatibility
+ForexCommission = DarwinexZeroCommission
