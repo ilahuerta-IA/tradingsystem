@@ -1,4 +1,3 @@
-```markdown
 # 🌅 Sunset Ogle Strategy
 
 **Type:** Trend Following / Volatility Expansion Breakout  
