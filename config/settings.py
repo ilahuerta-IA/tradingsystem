@@ -115,16 +115,82 @@ STRATEGIES_CONFIG = {
             'price_offset_mult': 0.01,
             
             # Time filter - EXACT from original (22:00-08:00 UTC)
-            'use_time_filter': False,
+            'use_time_filter': True,
             'allowed_hours': [22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             
             # SL pips filter - DISABLED
             'use_sl_pips_filter': False,
-            'sl_pips_min': 10.0,
-            'sl_pips_max': 50.0,
+            'sl_pips_min': 9.0,
+            'sl_pips_max': 21.0,
             
             # Risk management - EXACT from original
-            'risk_percent': 0.003,
+            'risk_percent': 0.01,
+            'lot_size': 100000,
+            
+            # Standard pair settings
+            'jpy_rate': 150.0,
+            'pip_value': 0.0001,
+            
+            # Debug
+            'print_signals': True,
+        }
+    },
+
+    'USDCAD_PRO': {
+        'active': True,  # Set to False to skip this config when running
+        'strategy_name': 'SunsetOgle',
+        'asset_name': 'USDCAD',
+        'data_path': 'data/USDCAD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+        
+        'params': {
+            # EMA settings 
+            'ema_fast_length': 24,
+            'ema_medium_length': 30,
+            'ema_slow_length': 36,
+            'ema_confirm_length': 1,
+            'ema_filter_price_length': 40,
+            
+            # ATR settings 
+            'atr_length': 10,
+            'atr_min': -1.00020,
+            'atr_max': 1.00040,
+            
+            # Angle Filter 
+            'use_angle_filter': True,
+            'angle_min': 45.0,
+            'angle_max': 75.0,
+            'angle_scale': 10000.0,
+            
+            # SL/TP multipliers 
+            'sl_mult': 3.0,
+            'tp_mult': 15.0,
+            
+            # Pullback settings
+            'pullback_candles': 2,
+            'window_periods': 1,
+            'price_offset_mult': 0.01,
+            
+            # Time filter - EXACT from original (18:00-12:00 UTC)
+            'use_time_filter': True,
+            'allowed_hours': [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            
+            # SL pips filter - DISABLED
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 9.0,
+            'sl_pips_max': 18.0,
+            
+            # Risk management - EXACT from original
+            'risk_percent': 0.01,
             'lot_size': 100000,
             
             # Standard pair settings
