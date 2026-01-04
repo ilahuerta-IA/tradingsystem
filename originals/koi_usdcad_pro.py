@@ -41,28 +41,6 @@ EXIT SYSTEM:
 FILTERS:
 - SL Range: 10.0-16.0 pips
 
-OPTIMIZATION RESULTS (5 Phases):
-Phase 1 (SL/TP): Best PF 1.26 with 59 trades ❌
-Phase 2 (CCI):   Best PF 1.43 with 61 trades ❌  
-Phase 3 (EMAs):  No significant improvement
-Phase 4 (Breakout): 113 trades, PF 1.21 ❌
-Phase 5 (SL Range): 145 trades, PF 1.14 ❌
-
-BEST ACHIEVABLE: 137 trades, PF 1.17, WR 24.1%
-REQUIRED: ≥120 trades AND PF > 1.5
-
-YEARLY BREAKDOWN (best params):
-- 2020: -$1,278 (27 trades, WR=18.5%) ❌
-- 2021: +$659 (22 trades, WR=22.7%) ✅
-- 2022: +$13,132 (30 trades, WR=43.3%) ✅ 
-- 2023: -$750 (20 trades, WR=20.0%) ❌
-- 2024: -$4,260 (15 trades, WR=6.7%) ❌ VERY BAD
-- 2025: +$57 (23 trades, WR=21.7%) ✅
-
-CONCLUSION: KOI strategy is not suitable for USDCAD.
-The bullish engulfing pattern with 5-EMA trend confirmation
-does not capture profitable long opportunities in USDCAD.
-
 COMMISSION MODEL: Darwinex Zero ($2.50/lot/order)
 """
 from __future__ import annotations

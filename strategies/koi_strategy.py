@@ -45,6 +45,7 @@ class KOIStrategy(bt.Strategy):
         # CCI
         cci_period=20,
         cci_threshold=110,
+        cci_max_threshold=999,  # Max CCI (999 = disabled)
         
         # ATR for SL/TP
         atr_length=10,
@@ -127,16 +128,13 @@ class KOIStrategy(bt.Strategy):
         self._trade_pnls = []
         self._starting_cash = self.broker.get_cash()
         
-        # Track daily equity for proper Sharpe/Sortino
-        self._daily_equity = {}
-        
-        # Trade reporting
+        # Trade reporting (KOI generates its own log like original)
         self.trade_reports = []
         self.trade_report_file = None
         self._init_trade_reporting()
 
     # =========================================================================
-    # TRADE REPORTING
+    # TRADE REPORTING (same as original koi_eurusd_pro.py)
     # =========================================================================
     
     def _init_trade_reporting(self):
@@ -193,7 +191,7 @@ class KOIStrategy(bt.Strategy):
             self.trade_report_file.write(f"CCI: {cci:.2f}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
             self.trade_report_file.flush()
-        except:
+        except Exception as e:
             pass
 
     def _record_trade_exit(self, dt, pnl, reason):
@@ -227,7 +225,7 @@ class KOIStrategy(bt.Strategy):
             return self.data.datetime.datetime(offset)
 
     # =========================================================================
-    # PATTERN DETECTION
+    # PATTERN DETECTION (EXACT from original koi_eurusd_pro.py)
     # =========================================================================
     
     def _check_bullish_engulfing(self) -> bool:
@@ -262,9 +260,14 @@ class KOIStrategy(bt.Strategy):
             return False
 
     def _check_cci_condition(self) -> bool:
-        """Check if CCI > threshold."""
+        """Check if CCI > threshold and < max_threshold."""
         try:
-            return float(self.cci[0]) > self.p.cci_threshold
+            cci_val = float(self.cci[0])
+            if cci_val <= self.p.cci_threshold:
+                return False
+            if cci_val >= self.p.cci_max_threshold:
+                return False
+            return True
         except:
             return False
 
@@ -305,6 +308,7 @@ class KOIStrategy(bt.Strategy):
     
     def _execute_entry(self, dt: datetime, atr_now: float, cci_now: float):
         """Execute entry with all filters applied."""
+        # ATR filter
         if not check_atr_filter(atr_now, self.p.atr_min, self.p.atr_max, self.p.use_atr_filter):
             return
         
@@ -314,9 +318,11 @@ class KOIStrategy(bt.Strategy):
         
         sl_pips = abs(entry_price - self.stop_level) / self.p.pip_value
         
+        # SL pips filter
         if not check_sl_pips_filter(sl_pips, self.p.sl_pips_min, self.p.sl_pips_max, self.p.use_sl_pips_filter):
             return
         
+        # Position sizing
         pair_type = 'JPY' if self.p.is_jpy_pair else 'STANDARD'
         bt_size = calculate_position_size(
             entry_price=entry_price,
@@ -346,14 +352,9 @@ class KOIStrategy(bt.Strategy):
     
     def next(self):
         """Main loop with breakout window state machine."""
-        current_value = self.broker.get_value()
-        self._portfolio_values.append(current_value)
+        self._portfolio_values.append(self.broker.get_value())
         
-        # Track daily equity (last value of each day)
         dt = self._get_datetime()
-        date_key = dt.date()
-        self._daily_equity[date_key] = current_value
-        
         current_bar = len(self)
         
         if self.order:
@@ -364,6 +365,7 @@ class KOIStrategy(bt.Strategy):
                 self._reset_breakout_state()
             return
         
+        # State machine for breakout window
         if self.p.use_breakout_window:
             if self.state == "SCANNING":
                 if self._check_entry_conditions(dt):
@@ -408,13 +410,14 @@ class KOIStrategy(bt.Strategy):
             return
 
         if order.status == order.Completed:
-            if order == self.order:
+            if order == self.order:  # Entry order
                 self.last_entry_price = order.executed.price
                 self.last_entry_bar = len(self)
                 
                 if self.p.print_signals:
                     print(f"[OK] KOI BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
 
+                # Place protective OCA orders
                 if self.stop_level and self.take_level:
                     self.stop_order = self.sell(
                         size=order.executed.size,
@@ -431,7 +434,7 @@ class KOIStrategy(bt.Strategy):
                 
                 self.order = None
 
-            else:
+            else:  # Exit order (SL/TP)
                 exit_reason = "UNKNOWN"
                 if order.exectype == bt.Order.Stop:
                     exit_reason = "STOP_LOSS"
@@ -485,7 +488,7 @@ class KOIStrategy(bt.Strategy):
         self._record_trade_exit(dt, pnl, reason)
 
     # =========================================================================
-    # STATISTICS
+    # STATISTICS (same as original)
     # =========================================================================
     
     def stop(self):
@@ -496,9 +499,17 @@ class KOIStrategy(bt.Strategy):
         profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
         
         # =================================================================
-        # MAX DRAWDOWN
+        # ADVANCED METRICS: Drawdown, Sharpe, Sortino, CAGR, Calmar
         # =================================================================
         max_drawdown_pct = 0.0
+        sharpe_ratio = 0.0
+        sortino_ratio = 0.0
+        cagr = 0.0
+        calmar_ratio = 0.0
+        monte_carlo_dd_95 = 0.0
+        monte_carlo_dd_99 = 0.0
+        
+        # Max Drawdown
         if self._portfolio_values:
             peak = self._portfolio_values[0]
             for value in self._portfolio_values:
@@ -508,69 +519,74 @@ class KOIStrategy(bt.Strategy):
                 if drawdown > max_drawdown_pct:
                     max_drawdown_pct = drawdown
         
-        # =================================================================
-        # DAILY RETURNS (from actual daily equity, not just trade days)
-        # =================================================================
+        # Daily returns for Sharpe/Sortino
         daily_returns = []
-        if len(self._daily_equity) > 1:
-            sorted_dates = sorted(self._daily_equity.keys())
-            for i in range(1, len(sorted_dates)):
-                prev_equity = self._daily_equity[sorted_dates[i-1]]
-                curr_equity = self._daily_equity[sorted_dates[i]]
-                if prev_equity > 0:
-                    daily_ret = (curr_equity - prev_equity) / prev_equity
+        if self._trade_pnls:
+            daily_pnl = defaultdict(float)
+            for trade in self._trade_pnls:
+                date_key = trade['date'].date()
+                daily_pnl[date_key] += trade['pnl']
+            
+            equity = self._starting_cash
+            sorted_dates = sorted(daily_pnl.keys())
+            for date in sorted_dates:
+                pnl = daily_pnl[date]
+                if equity > 0:
+                    daily_ret = pnl / equity
                     daily_returns.append(daily_ret)
+                    equity += pnl
         
-        # =================================================================
-        # SHARPE RATIO (proper calculation using all days)
-        # =================================================================
+        # SHARPE RATIO (same calculation as original sunrise_ogle)
         sharpe_ratio = 0.0
-        if len(daily_returns) > 20:
-            returns_array = np.array(daily_returns)
-            mean_return = np.mean(returns_array)
-            std_return = np.std(returns_array, ddof=1)
-            if std_return > 0:
-                sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
+        if len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                std_return = np.std(returns_array)
+                periods_per_year = 252 * 24 * 12  # 5-minute periods per year
+                if std_return > 0:
+                    sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
-        # =================================================================
-        # SORTINO RATIO (proper calculation)
-        # =================================================================
+        # SORTINO RATIO (same calculation as original sunrise_ogle)
         sortino_ratio = 0.0
-        if len(daily_returns) > 20:
-            returns_array = np.array(daily_returns)
-            mean_return = np.mean(returns_array)
-            negative_returns = returns_array[returns_array < 0]
-            if len(negative_returns) > 0:
-                downside_std = np.std(negative_returns, ddof=1)
-                if downside_std > 0:
-                    sortino_ratio = (mean_return / downside_std) * np.sqrt(252)
+        if len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                negative_returns = returns_array[returns_array < 0]
+                if len(negative_returns) > 0:
+                    downside_dev = np.std(negative_returns)
+                    periods_per_year = 252 * 24 * 12
+                    if downside_dev > 0:
+                        sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
         
-        # =================================================================
         # CAGR
-        # =================================================================
-        cagr = 0.0
-        if self._daily_equity and self._starting_cash > 0:
+        if self._portfolio_values and self._trade_pnls and self._starting_cash > 0:
             total_return = final_value / self._starting_cash
             if total_return > 0:
-                sorted_dates = sorted(self._daily_equity.keys())
-                if len(sorted_dates) > 1:
-                    days = (sorted_dates[-1] - sorted_dates[0]).days
-                    years = max(days / 365.25, 0.1)
-                    cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
+                first_date = self._trade_pnls[0]['date']
+                last_date = self._trade_pnls[-1]['date']
+                days = (last_date - first_date).days
+                years = max(days / 365.25, 0.1)
+                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
         
-        # =================================================================
-        # CALMAR RATIO
-        # =================================================================
-        calmar_ratio = 0.0
+        # Calmar Ratio
         if max_drawdown_pct > 0:
             calmar_ratio = cagr / max_drawdown_pct
         
         # =================================================================
         # MONTE CARLO SIMULATION
         # =================================================================
-        monte_carlo_dd_95 = 0.0
-        monte_carlo_dd_99 = 0.0
-        
         if self._trade_pnls and len(self._trade_pnls) >= 20:
             n_simulations = 10000
             pnl_list = [t['pnl'] for t in self._trade_pnls]
@@ -630,6 +646,7 @@ class KOIStrategy(bt.Strategy):
         print(f"Net P&L: ${total_pnl:,.0f}")
         print(f"Final Value: ${final_value:,.0f}")
         
+        # Advanced Metrics with quality indicators
         print(f"\n{'='*70}")
         print("ADVANCED RISK METRICS")
         print(f"{'='*70}")
@@ -649,7 +666,7 @@ class KOIStrategy(bt.Strategy):
         calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
         print(f"Calmar Ratio:        {calmar_ratio:>8.2f}  [{calmar_status}]")
         
-        # Monte Carlo
+        # Monte Carlo Analysis
         if monte_carlo_dd_95 > 0:
             mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
             mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"

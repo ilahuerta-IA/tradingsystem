@@ -364,6 +364,7 @@ STRATEGIES_CONFIG = {
             # CCI
             'cci_period': 20,
             'cci_threshold': 110,
+            'cci_max_threshold': 999,
             
             # ATR
             'atr_length': 10,
@@ -388,6 +389,74 @@ STRATEGIES_CONFIG = {
             
             # ATR Filter
             'use_atr_filter': True,
+            'atr_min': 0.00050,
+            'atr_max': 0.00100,
+            
+            # Asset config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'USDCAD_KOI': {
+        'active': True,
+        'strategy_name': 'KOI',
+        'asset_name': 'USDCAD',
+        'data_path': 'data/USDCAD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # 5 EMAs
+            'ema_1_period': 10,
+            'ema_2_period': 20,
+            'ema_3_period': 40,
+            'ema_4_period': 80,
+            'ema_5_period': 120,
+            
+            # CCI
+            'cci_period': 25,
+            'cci_threshold': 100,
+            'cci_max_threshold': 130,
+            
+            # ATR
+            'atr_length': 10,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 12.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 5,
+            'breakout_level_offset_pips': 5.0,
+            
+            # === FILTERS ===
+            
+            # Time Filter
+            'use_time_filter': True,
+            'allowed_hours': [1, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17],
+            
+            # SL Pips Filter
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 18.0,
+            
+            # ATR Filter
+            'use_atr_filter': False,
             'atr_min': 0.00050,
             'atr_max': 0.00100,
             
