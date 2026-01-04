@@ -74,7 +74,15 @@ def run_backtest(config_name):
     params = config['params']
     broker_config = BROKER_CONFIG['darwinex_zero']
     
-    is_jpy = params.get('is_jpy', False)
+    # Auto-detect JPY pair from asset name
+    asset_name = config['asset_name']
+    is_jpy = asset_name.upper().endswith('JPY')
+    
+    # Reset commission counters before run
+    ForexCommission.total_commission = 0.0
+    ForexCommission.total_lots = 0.0
+    ForexCommission.commission_calls = 0
+    
     commission = ForexCommission(
         commission=broker_config['commission_per_lot'],
         is_jpy_pair=is_jpy,
@@ -104,12 +112,30 @@ def run_backtest(config_name):
     starting_cash = config.get('starting_cash', 100000.0)
     total_return = ((final_value / starting_cash) - 1) * 100
     
+    # Get commission statistics
+    total_commission = ForexCommission.total_commission
+    total_lots = ForexCommission.total_lots
+    num_trades = len(getattr(strategy, 'trade_reports', []))
+    avg_commission = total_commission / num_trades if num_trades > 0 else 0
+    avg_lots = total_lots / num_trades if num_trades > 0 else 0
+    
+    # Print commission summary
+    print('\n' + '=' * 70)
+    print('COMMISSION SUMMARY')
+    print('=' * 70)
+    print(f'Total Commission Paid:    ${total_commission:,.2f}')
+    print(f'Total Lots Traded:        {total_lots:,.2f}')
+    print(f'Avg Commission per Trade: ${avg_commission:,.2f}')
+    print(f'Avg Lots per Trade:       {avg_lots:,.2f}')
+    print('=' * 70)
+    
     print(f'\nFinal Value: ${final_value:,.2f}')
     print(f'Return: {total_return:.2f}%')
     
     # Save log if enabled
     if config.get('save_log', False):
-        save_trade_log(strategy, config_name, config['asset_name'])
+        save_trade_log(strategy, config_name, config['asset_name'], 
+                      total_commission, avg_commission, total_lots)
     
     # Plot if enabled
     if config.get('run_plot', False):
@@ -118,7 +144,8 @@ def run_backtest(config_name):
     return results
 
 
-def save_trade_log(strategy, config_name, asset_name):
+def save_trade_log(strategy, config_name, asset_name, 
+                   total_commission=0, avg_commission=0, total_lots=0):
     """Save detailed trade log to file using trade_reports from strategy."""
     logs_dir = Path('logs')
     logs_dir.mkdir(exist_ok=True)
@@ -172,6 +199,12 @@ def save_trade_log(strategy, config_name, asset_name):
             f.write(f"  SL Pips Filter: ENABLED | Range: {p.sl_pips_min:.1f} - {p.sl_pips_max:.1f}\n")
         else:
             f.write(f"  SL Pips Filter: DISABLED\n")
+        
+        # Commission info
+        f.write(f"\nCOMMISSION:\n")
+        f.write(f"  Total Commission: ${total_commission:.2f}\n")
+        f.write(f"  Avg per Trade: ${avg_commission:.2f}\n")
+        f.write(f"  Total Lots: {total_lots:.2f}\n")
         
         f.write("\n" + "=" * 80 + "\n")
         f.write("TRADE DETAILS\n")
@@ -246,6 +279,8 @@ def save_trade_log(strategy, config_name, asset_name):
         f.write(f"Total P&L: {total_pnl:.2f}\n")
         f.write(f"Average Win: {avg_win:.2f}\n")
         f.write(f"Average Loss: {avg_loss:.2f}\n")
+        f.write(f"\nTotal Commission: ${total_commission:.2f}\n")
+        f.write(f"Net P&L (after commission): ${total_pnl - total_commission:.2f}\n")
         f.write("=" * 80 + "\n")
     
     print(f'\nTrade log saved: {filepath}')

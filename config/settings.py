@@ -115,7 +115,7 @@ STRATEGIES_CONFIG = {
             'price_offset_mult': 0.01,
             
             # Time filter - EXACT from original (22:00-08:00 UTC)
-            'use_time_filter': True,
+            'use_time_filter': False,
             'allowed_hours': [22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             
             # SL pips filter - DISABLED
@@ -124,7 +124,7 @@ STRATEGIES_CONFIG = {
             'sl_pips_max': 50.0,
             
             # Risk management - EXACT from original
-            'risk_percent': 0.01,
+            'risk_percent': 0.003,
             'lot_size': 100000,
             
             # Standard pair settings
