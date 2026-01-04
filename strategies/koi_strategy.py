@@ -1,0 +1,642 @@
+"""
+KOI Strategy - Bullish Engulfing + 5 EMA + CCI + Breakout Window
+
+ENTRY SYSTEM (4 PHASES):
+1. PATTERN: Bullish engulfing candle detected
+2. TREND: All 5 EMAs ascending (EMA[0] > EMA[-1])
+3. MOMENTUM: CCI > threshold
+4. BREAKOUT: Price breaks pattern HIGH + offset within N candles
+
+EXIT SYSTEM:
+- Stop Loss: Entry - (ATR x SL multiplier)
+- Take Profit: Entry + (ATR x TP multiplier)
+"""
+from __future__ import annotations
+import math
+from pathlib import Path
+from datetime import datetime
+from collections import defaultdict
+
+import backtrader as bt
+import numpy as np
+
+from lib.filters import (
+    check_time_filter,
+    check_atr_filter,
+    check_sl_pips_filter,
+)
+from lib.position_sizing import calculate_position_size
+
+
+class KOIStrategy(bt.Strategy):
+    """
+    KOI Strategy implementation.
+    Uses lib/filters.py and lib/position_sizing.py for consistency.
+    """
+    
+    params = dict(
+        # 5 EMAs
+        ema_1_period=10,
+        ema_2_period=20,
+        ema_3_period=40,
+        ema_4_period=80,
+        ema_5_period=120,
+        
+        # CCI
+        cci_period=20,
+        cci_threshold=110,
+        
+        # ATR for SL/TP
+        atr_length=10,
+        atr_sl_multiplier=2.0,
+        atr_tp_multiplier=6.0,
+        
+        # Breakout Window
+        use_breakout_window=True,
+        breakout_window_candles=3,
+        breakout_level_offset_pips=2.0,
+        
+        # === FILTERS (all with use_xxx flag) ===
+        
+        # Time Filter
+        use_time_filter=False,
+        allowed_hours=[],
+        
+        # SL Pips Filter
+        use_sl_pips_filter=False,
+        sl_pips_min=5.0,
+        sl_pips_max=50.0,
+        
+        # ATR Filter
+        use_atr_filter=False,
+        atr_min=0.0,
+        atr_max=1.0,
+        
+        # === ASSET CONFIG ===
+        pip_value=0.0001,
+        is_jpy_pair=False,
+        jpy_rate=150.0,
+        lot_size=100000,
+        
+        # Risk
+        risk_percent=0.005,
+        
+        # Debug & Reporting
+        print_signals=False,
+        export_reports=True,
+    )
+
+    def __init__(self):
+        d = self.data
+        
+        # Indicators
+        self.ema_1 = bt.ind.EMA(d.close, period=self.p.ema_1_period)
+        self.ema_2 = bt.ind.EMA(d.close, period=self.p.ema_2_period)
+        self.ema_3 = bt.ind.EMA(d.close, period=self.p.ema_3_period)
+        self.ema_4 = bt.ind.EMA(d.close, period=self.p.ema_4_period)
+        self.ema_5 = bt.ind.EMA(d.close, period=self.p.ema_5_period)
+        self.cci = bt.ind.CCI(d, period=self.p.cci_period)
+        self.atr = bt.ind.ATR(d, period=self.p.atr_length)
+        
+        # Orders
+        self.order = None
+        self.stop_order = None
+        self.limit_order = None
+        
+        # Levels
+        self.stop_level = None
+        self.take_level = None
+        self.last_entry_price = None
+        self.last_entry_bar = None
+        self.last_exit_reason = None
+        
+        # Breakout state machine
+        self.state = "SCANNING"
+        self.pattern_detected_bar = None
+        self.breakout_level = None
+        self.pattern_atr = None
+        self.pattern_cci = None
+        
+        # Stats
+        self.trades = 0
+        self.wins = 0
+        self.losses = 0
+        self.gross_profit = 0.0
+        self.gross_loss = 0.0
+        self._portfolio_values = []
+        self._trade_pnls = []
+        self._starting_cash = self.broker.get_cash()
+        
+        # Trade reporting (KOI generates its own log like original)
+        self.trade_reports = []
+        self.trade_report_file = None
+        self._init_trade_reporting()
+
+    # =========================================================================
+    # TRADE REPORTING (same as original koi_eurusd_pro.py)
+    # =========================================================================
+    
+    def _init_trade_reporting(self):
+        """Initialize trade report file."""
+        if not self.p.export_reports:
+            return
+        try:
+            report_dir = Path("logs")
+            report_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_path = report_dir / f"KOI_trades_{timestamp}.txt"
+            self.trade_report_file = open(report_path, 'w', encoding='utf-8')
+            self.trade_report_file.write("=== KOI STRATEGY TRADE REPORT ===\n")
+            self.trade_report_file.write(f"Generated: {datetime.now()}\n")
+            self.trade_report_file.write(f"EMAs: {self.p.ema_1_period}, {self.p.ema_2_period}, "
+                                        f"{self.p.ema_3_period}, {self.p.ema_4_period}, {self.p.ema_5_period}\n")
+            self.trade_report_file.write(f"CCI: {self.p.cci_period}/{self.p.cci_threshold}\n")
+            self.trade_report_file.write(f"Breakout: {self.p.breakout_level_offset_pips}pips, {self.p.breakout_window_candles}bars\n")
+            self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
+            if self.p.use_sl_pips_filter:
+                self.trade_report_file.write(f"SL Filter: {self.p.sl_pips_min}-{self.p.sl_pips_max} pips\n")
+            if self.p.use_atr_filter:
+                self.trade_report_file.write(f"ATR Filter: {self.p.atr_min}-{self.p.atr_max}\n")
+            if self.p.use_time_filter:
+                self.trade_report_file.write(f"Time Filter: {list(self.p.allowed_hours)}\n")
+            self.trade_report_file.write("\n")
+            print(f"Trade report: {report_path}")
+        except Exception as e:
+            print(f"Trade reporting init failed: {e}")
+
+    def _record_trade_entry(self, dt, entry_price, size, atr, cci, sl_pips):
+        """Record entry to trade report file."""
+        if not self.trade_report_file:
+            return
+        try:
+            entry = {
+                'entry_time': dt,
+                'entry_price': entry_price,
+                'size': size,
+                'atr': atr,
+                'cci': cci,
+                'sl_pips': sl_pips,
+                'stop_level': self.stop_level,
+                'take_level': self.take_level,
+            }
+            self.trade_reports.append(entry)
+            self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
+            self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.trade_report_file.write(f"Entry Price: {entry_price:.5f}\n")
+            self.trade_report_file.write(f"Stop Loss: {self.stop_level:.5f}\n")
+            self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
+            self.trade_report_file.write(f"SL Pips: {sl_pips:.1f}\n")
+            self.trade_report_file.write(f"ATR: {atr:.6f}\n")
+            self.trade_report_file.write(f"CCI: {cci:.2f}\n")
+            self.trade_report_file.write("-" * 50 + "\n\n")
+            self.trade_report_file.flush()
+        except Exception as e:
+            pass
+
+    def _record_trade_exit(self, dt, pnl, reason):
+        """Record exit to trade report file."""
+        if not self.trade_report_file or not self.trade_reports:
+            return
+        try:
+            self.trade_reports[-1]['pnl'] = pnl
+            self.trade_reports[-1]['exit_reason'] = reason
+            self.trade_reports[-1]['exit_time'] = dt
+            self.trade_report_file.write(f"EXIT #{len(self.trade_reports)}\n")
+            self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.trade_report_file.write(f"Exit Reason: {reason}\n")
+            self.trade_report_file.write(f"P&L: ${pnl:.2f}\n")
+            self.trade_report_file.write("=" * 80 + "\n\n")
+            self.trade_report_file.flush()
+        except:
+            pass
+
+    # =========================================================================
+    # DATETIME HELPER
+    # =========================================================================
+    
+    def _get_datetime(self, offset=0) -> datetime:
+        """Get correct datetime combining date and time."""
+        try:
+            dt_date = self.data.datetime.date(offset)
+            dt_time = self.data.datetime.time(offset)
+            return datetime.combine(dt_date, dt_time)
+        except Exception:
+            return self.data.datetime.datetime(offset)
+
+    # =========================================================================
+    # PATTERN DETECTION (EXACT from original koi_eurusd_pro.py)
+    # =========================================================================
+    
+    def _check_bullish_engulfing(self) -> bool:
+        """Check for bullish engulfing pattern."""
+        try:
+            prev_open = float(self.data.open[-1])
+            prev_close = float(self.data.close[-1])
+            if prev_close >= prev_open:
+                return False
+            
+            curr_open = float(self.data.open[0])
+            curr_close = float(self.data.close[0])
+            if curr_close <= curr_open:
+                return False
+            
+            if curr_open > prev_close or curr_close < prev_open:
+                return False
+            
+            return True
+        except:
+            return False
+
+    def _check_emas_ascending(self) -> bool:
+        """Check if ALL 5 EMAs are individually ascending."""
+        try:
+            emas = [self.ema_1, self.ema_2, self.ema_3, self.ema_4, self.ema_5]
+            for ema in emas:
+                if float(ema[0]) <= float(ema[-1]):
+                    return False
+            return True
+        except:
+            return False
+
+    def _check_cci_condition(self) -> bool:
+        """Check if CCI > threshold."""
+        try:
+            return float(self.cci[0]) > self.p.cci_threshold
+        except:
+            return False
+
+    def _check_entry_conditions(self, dt: datetime) -> bool:
+        """Check all entry conditions."""
+        if self.position or self.order:
+            return False
+        
+        # Time filter
+        if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
+            return False
+        
+        if not self._check_bullish_engulfing():
+            return False
+        
+        if not self._check_emas_ascending():
+            return False
+        
+        if not self._check_cci_condition():
+            return False
+        
+        return True
+
+    # =========================================================================
+    # BREAKOUT STATE MACHINE
+    # =========================================================================
+    
+    def _reset_breakout_state(self):
+        """Reset breakout window state."""
+        self.state = "SCANNING"
+        self.pattern_detected_bar = None
+        self.breakout_level = None
+        self.pattern_atr = None
+        self.pattern_cci = None
+
+    # =========================================================================
+    # ENTRY EXECUTION
+    # =========================================================================
+    
+    def _execute_entry(self, dt: datetime, atr_now: float, cci_now: float):
+        """Execute entry with all filters applied."""
+        # ATR filter
+        if not check_atr_filter(atr_now, self.p.atr_min, self.p.atr_max, self.p.use_atr_filter):
+            return
+        
+        entry_price = float(self.data.close[0])
+        self.stop_level = entry_price - (atr_now * self.p.atr_sl_multiplier)
+        self.take_level = entry_price + (atr_now * self.p.atr_tp_multiplier)
+        
+        sl_pips = abs(entry_price - self.stop_level) / self.p.pip_value
+        
+        # SL pips filter
+        if not check_sl_pips_filter(sl_pips, self.p.sl_pips_min, self.p.sl_pips_max, self.p.use_sl_pips_filter):
+            return
+        
+        # Position sizing
+        pair_type = 'JPY' if self.p.is_jpy_pair else 'STANDARD'
+        bt_size = calculate_position_size(
+            entry_price=entry_price,
+            stop_loss=self.stop_level,
+            equity=self.broker.get_value(),
+            risk_percent=self.p.risk_percent,
+            pair_type=pair_type,
+            lot_size=self.p.lot_size,
+            jpy_rate=self.p.jpy_rate,
+            pip_value=self.p.pip_value,
+        )
+        
+        if bt_size <= 0:
+            return
+        
+        self.order = self.buy(size=bt_size)
+        
+        if self.p.print_signals:
+            print(f">>> KOI BUY {dt:%Y-%m-%d %H:%M} price={entry_price:.5f} "
+                  f"SL={self.stop_level:.5f} TP={self.take_level:.5f} CCI={cci_now:.0f} SL_pips={sl_pips:.1f}")
+        
+        self._record_trade_entry(dt, entry_price, bt_size, atr_now, cci_now, sl_pips)
+
+    # =========================================================================
+    # MAIN LOOP
+    # =========================================================================
+    
+    def next(self):
+        """Main loop with breakout window state machine."""
+        self._portfolio_values.append(self.broker.get_value())
+        
+        dt = self._get_datetime()
+        current_bar = len(self)
+        
+        if self.order:
+            return
+        
+        if self.position:
+            if self.state != "SCANNING":
+                self._reset_breakout_state()
+            return
+        
+        # State machine for breakout window
+        if self.p.use_breakout_window:
+            if self.state == "SCANNING":
+                if self._check_entry_conditions(dt):
+                    atr_now = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0
+                    cci_now = float(self.cci[0])
+                    if atr_now <= 0:
+                        return
+                    
+                    self.pattern_detected_bar = current_bar
+                    offset = self.p.breakout_level_offset_pips * self.p.pip_value
+                    self.breakout_level = float(self.data.high[0]) + offset
+                    self.pattern_atr = atr_now
+                    self.pattern_cci = cci_now
+                    self.state = "WAITING_BREAKOUT"
+                    return
+            
+            elif self.state == "WAITING_BREAKOUT":
+                bars_since = current_bar - self.pattern_detected_bar
+                
+                if bars_since > self.p.breakout_window_candles:
+                    self._reset_breakout_state()
+                    return
+                
+                if float(self.data.high[0]) > self.breakout_level:
+                    self._execute_entry(dt, self.pattern_atr, self.pattern_cci)
+                    self._reset_breakout_state()
+                    return
+        else:
+            if self._check_entry_conditions(dt):
+                atr_now = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0
+                cci_now = float(self.cci[0])
+                if atr_now > 0:
+                    self._execute_entry(dt, atr_now, cci_now)
+
+    # =========================================================================
+    # ORDER NOTIFICATIONS
+    # =========================================================================
+    
+    def notify_order(self, order):
+        """Order notification with OCA for SL/TP."""
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+
+        if order.status == order.Completed:
+            if order == self.order:  # Entry order
+                self.last_entry_price = order.executed.price
+                self.last_entry_bar = len(self)
+                
+                if self.p.print_signals:
+                    print(f"[OK] KOI BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
+
+                # Place protective OCA orders
+                if self.stop_level and self.take_level:
+                    self.stop_order = self.sell(
+                        size=order.executed.size,
+                        exectype=bt.Order.Stop,
+                        price=self.stop_level,
+                        oco=self.limit_order
+                    )
+                    self.limit_order = self.sell(
+                        size=order.executed.size,
+                        exectype=bt.Order.Limit,
+                        price=self.take_level,
+                        oco=self.stop_order
+                    )
+                
+                self.order = None
+
+            else:  # Exit order (SL/TP)
+                exit_reason = "UNKNOWN"
+                if order.exectype == bt.Order.Stop:
+                    exit_reason = "STOP_LOSS"
+                elif order.exectype == bt.Order.Limit:
+                    exit_reason = "TAKE_PROFIT"
+                
+                self.last_exit_reason = exit_reason
+                
+                if self.p.print_signals:
+                    print(f"[EXIT] at {order.executed.price:.5f} reason={exit_reason}")
+
+                self.stop_order = None
+                self.limit_order = None
+                self.order = None
+                self.stop_level = None
+                self.take_level = None
+
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            is_expected_cancel = (self.stop_order and self.limit_order)
+            if not is_expected_cancel and self.p.print_signals:
+                print(f"Order {order.getstatusname()}: {order.ref}")
+            
+            if self.order and order.ref == self.order.ref: self.order = None
+            if self.stop_order and order.ref == self.stop_order.ref: self.stop_order = None
+            if self.limit_order and order.ref == self.limit_order.ref: self.limit_order = None
+
+    def notify_trade(self, trade):
+        """Handle trade close notifications."""
+        if not trade.isclosed:
+            return
+        
+        dt = self._get_datetime()
+        pnl = trade.pnlcomm
+        
+        self.trades += 1
+        if pnl > 0:
+            self.wins += 1
+            self.gross_profit += pnl
+        else:
+            self.losses += 1
+            self.gross_loss += abs(pnl)
+        
+        self._trade_pnls.append({
+            'date': dt,
+            'year': dt.year,
+            'pnl': pnl,
+            'is_winner': pnl > 0
+        })
+        
+        reason = getattr(self, 'last_exit_reason', 'UNKNOWN')
+        self._record_trade_exit(dt, pnl, reason)
+
+    # =========================================================================
+    # STATISTICS (same as original)
+    # =========================================================================
+    
+    def stop(self):
+        """Strategy end - print summary with advanced metrics."""
+        final_value = self.broker.get_value()
+        total_pnl = final_value - self._starting_cash
+        win_rate = (self.wins / self.trades * 100) if self.trades > 0 else 0
+        profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
+        
+        # Max Drawdown
+        max_drawdown_pct = 0.0
+        if self._portfolio_values:
+            values = np.array(self._portfolio_values)
+            peak = np.maximum.accumulate(values)
+            dd = (peak - values) / peak * 100
+            max_drawdown_pct = np.max(dd)
+        
+        # Daily returns for ratios
+        daily_returns = []
+        if self._trade_pnls:
+            daily_pnl = defaultdict(float)
+            for trade in self._trade_pnls:
+                date_key = trade['date'].date()
+                daily_pnl[date_key] += trade['pnl']
+            
+            equity = self._starting_cash
+            sorted_dates = sorted(daily_pnl.keys())
+            for date in sorted_dates:
+                pnl = daily_pnl[date]
+                if equity > 0:
+                    daily_ret = pnl / equity
+                    daily_returns.append(daily_ret)
+                    equity += pnl
+        
+        # Sharpe Ratio
+        sharpe_ratio = 0.0
+        if len(daily_returns) > 10:
+            returns_array = np.array(daily_returns)
+            mean_return = np.mean(returns_array)
+            std_return = np.std(returns_array)
+            if std_return > 0:
+                sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
+        
+        # CAGR
+        cagr = 0.0
+        if len(self._portfolio_values) > 1 and self._starting_cash > 0:
+            total_return = final_value / self._starting_cash
+            if self._trade_pnls:
+                first_date = self._trade_pnls[0]['date']
+                last_date = self._trade_pnls[-1]['date']
+                days = (last_date - first_date).days
+                years = max(days / 365.25, 0.1)
+            else:
+                years = 5.0
+            
+            if total_return > 0:
+                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
+        
+        # Sortino Ratio
+        sortino_ratio = 0.0
+        if len(daily_returns) > 10:
+            returns_array = np.array(daily_returns)
+            mean_return = np.mean(returns_array)
+            negative_returns = returns_array[returns_array < 0]
+            if len(negative_returns) > 0:
+                downside_dev = np.std(negative_returns)
+                if downside_dev > 0:
+                    sortino_ratio = (mean_return / downside_dev) * np.sqrt(252)
+        
+        # Calmar Ratio
+        calmar_ratio = 0.0
+        if max_drawdown_pct > 0:
+            calmar_ratio = cagr / max_drawdown_pct
+        
+        # Print Summary
+        print("\n" + "=" * 70)
+        print("=== KOI STRATEGY SUMMARY ===")
+        print("=" * 70)
+        
+        print(f"Total Trades: {self.trades}")
+        print(f"Wins: {self.wins} | Losses: {self.losses}")
+        print(f"Win Rate: {win_rate:.1f}%")
+        print(f"Profit Factor: {profit_factor:.2f}")
+        print(f"Gross Profit: ${self.gross_profit:,.2f}")
+        print(f"Gross Loss: ${self.gross_loss:,.2f}")
+        print(f"Net P&L: ${total_pnl:,.0f}")
+        print(f"Final Value: ${final_value:,.0f}")
+        
+        print(f"\n{'='*70}")
+        print("ADVANCED RISK METRICS")
+        print(f"{'='*70}")
+        
+        sharpe_status = "Poor" if sharpe_ratio < 0.5 else "Marginal" if sharpe_ratio < 1.0 else "Good" if sharpe_ratio < 2.0 else "Excellent"
+        print(f"Sharpe Ratio (Daily):  {sharpe_ratio:>8.2f}  [{sharpe_status}]")
+        
+        sortino_status = "Poor" if sortino_ratio < 0.5 else "Marginal" if sortino_ratio < 1.0 else "Good" if sortino_ratio < 2.0 else "Excellent"
+        print(f"Sortino Ratio (Daily): {sortino_ratio:>8.2f}  [{sortino_status}]")
+        
+        cagr_status = "Below Market" if cagr < 8 else "Market-level" if cagr < 12 else "Good" if cagr < 20 else "Exceptional"
+        print(f"CAGR:                  {cagr:>7.2f}%  [{cagr_status}]")
+        
+        dd_status = "Excellent" if max_drawdown_pct < 10 else "Acceptable" if max_drawdown_pct < 20 else "High" if max_drawdown_pct < 30 else "Dangerous"
+        print(f"Max Drawdown:          {max_drawdown_pct:>7.2f}%  [{dd_status}]")
+        
+        calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
+        print(f"Calmar Ratio:          {calmar_ratio:>8.2f}  [{calmar_status}]")
+        
+        # Yearly Statistics
+        yearly_stats = defaultdict(lambda: {
+            'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0,
+            'gross_profit': 0.0, 'gross_loss': 0.0
+        })
+        
+        for trade in self._trade_pnls:
+            year = trade['year']
+            yearly_stats[year]['trades'] += 1
+            yearly_stats[year]['pnl'] += trade['pnl']
+            if trade['is_winner']:
+                yearly_stats[year]['wins'] += 1
+                yearly_stats[year]['gross_profit'] += trade['pnl']
+            else:
+                yearly_stats[year]['losses'] += 1
+                yearly_stats[year]['gross_loss'] += abs(trade['pnl'])
+        
+        print(f"\n{'='*70}")
+        print("YEARLY STATISTICS")
+        print(f"{'='*70}")
+        print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12}")
+        print(f"{'-'*45}")
+        
+        for year in sorted(yearly_stats.keys()):
+            stats = yearly_stats[year]
+            wr = (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
+            year_pf = (stats['gross_profit'] / stats['gross_loss']) if stats['gross_loss'] > 0 else float('inf')
+            print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {year_pf:>7.2f} ${stats['pnl']:>10,.0f}")
+        
+        print(f"{'='*70}")
+        
+        # Active filters
+        print(f"\n{'='*70}")
+        print("ACTIVE FILTERS")
+        print(f"{'='*70}")
+        if self.p.use_time_filter:
+            print(f"  Time Filter: hours {list(self.p.allowed_hours)}")
+        if self.p.use_sl_pips_filter:
+            print(f"  SL Pips Filter: {self.p.sl_pips_min}-{self.p.sl_pips_max}")
+        if self.p.use_atr_filter:
+            print(f"  ATR Filter: {self.p.atr_min}-{self.p.atr_max}")
+        if not any([self.p.use_time_filter, self.p.use_sl_pips_filter, self.p.use_atr_filter]):
+            print("  No filters active")
+        print("=" * 70)
+        
+        # Close report file
+        if self.trade_report_file:
+            self.trade_report_file.close()
+            print(f"\nTrade report saved.")

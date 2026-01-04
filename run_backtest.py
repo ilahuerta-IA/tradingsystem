@@ -11,7 +11,15 @@ import backtrader as bt
 
 from config.settings import STRATEGIES_CONFIG, BROKER_CONFIG
 from strategies.sunset_ogle import SunsetOgleStrategy
+from strategies.koi_strategy import KOIStrategy
 from lib.commission import ForexCommission
+
+
+# Strategy registry
+STRATEGY_REGISTRY = {
+    'SunsetOgle': SunsetOgleStrategy,
+    'KOI': KOIStrategy,
+}
 
 
 def run_backtest(config_name):
@@ -90,8 +98,17 @@ def run_backtest(config_name):
     )
     cerebro.broker.addcommissioninfo(commission)
     
+    # Get strategy class
+    strategy_name = config.get('strategy_name', 'SunsetOgle')
+    if strategy_name not in STRATEGY_REGISTRY:
+        print(f'Strategy not found: {strategy_name}')
+        print(f'Available: {list(STRATEGY_REGISTRY.keys())}')
+        return None
+    
+    StrategyClass = STRATEGY_REGISTRY[strategy_name]
+    
     # Add strategy with parameters
-    cerebro.addstrategy(SunsetOgleStrategy, **params)
+    cerebro.addstrategy(StrategyClass, **params)
     
     # Add observers
     try:
@@ -132,8 +149,8 @@ def run_backtest(config_name):
     print(f'\nFinal Value: ${final_value:,.2f}')
     print(f'Return: {total_return:.2f}%')
     
-    # Save log if enabled
-    if config.get('save_log', False):
+    # Save log if enabled (only for SunsetOgle, KOI generates its own)
+    if config.get('save_log', False) and strategy_name == 'SunsetOgle':
         save_trade_log(strategy, config_name, config['asset_name'], 
                       total_commission, avg_commission, total_lots)
     

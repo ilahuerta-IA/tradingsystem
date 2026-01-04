@@ -1,6 +1,5 @@
 """
 Central configuration for all strategies and assets.
-Parameters match EXACTLY sunrise_ogle_eurjpy_pro.py and sunrise_ogle_eurusd_pro.py
 """
 import datetime
 
@@ -332,6 +331,77 @@ STRATEGIES_CONFIG = {
             
             # Debug
             'print_signals': True,
+        }
+    },
+
+    # =========================================================================
+    # KOI STRATEGY CONFIGURATIONS
+    # =========================================================================
+    
+    'EURUSD_KOI': {
+        'active': True,
+        'strategy_name': 'KOI',
+        'asset_name': 'EURUSD',
+        'data_path': 'data/EURUSD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # 5 EMAs
+            'ema_1_period': 10,
+            'ema_2_period': 20,
+            'ema_3_period': 40,
+            'ema_4_period': 80,
+            'ema_5_period': 120,
+            
+            # CCI
+            'cci_period': 20,
+            'cci_threshold': 110,
+            
+            # ATR
+            'atr_length': 10,
+            'atr_sl_multiplier': 2.0,
+            'atr_tp_multiplier': 6.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 3,
+            'breakout_level_offset_pips': 2.0,
+            
+            # === FILTERS ===
+            
+            # Time Filter
+            'use_time_filter': True,
+            'allowed_hours': [0, 4, 5, 7, 8, 10, 11, 12, 13, 14, 16, 18, 22, 23],
+            
+            # SL Pips Filter
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 8.0,
+            'sl_pips_max': 14.0,
+            
+            # ATR Filter
+            'use_atr_filter': True,
+            'atr_min': 0.00050,
+            'atr_max': 0.00100,
+            
+            # Asset config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            
+            # Risk
+            'risk_percent': 0.005,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
         }
     },
 }

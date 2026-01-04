@@ -791,7 +791,7 @@ if __name__ == '__main__':
     cerebro = bt.Cerebro(stdstats=False)
     
     # Data - Use custom ForexCSVData that correctly handles Date/Time columns
-    data_path = Path(__file__).parent.parent.parent / 'data' / DATA_FILENAME
+    data_path = Path(__file__).parent.parent / 'data' / DATA_FILENAME
     if not data_path.exists():
         data_path = Path(__file__).parent / DATA_FILENAME
     
