@@ -59,7 +59,7 @@ STRATEGIES_CONFIG = {
             'sl_pips_max': 50.0,
             
             # Risk management
-            'risk_percent': 0.003,
+            'risk_percent': 0.01,
             'lot_size': 100000,
             
             # JPY pair settings
@@ -70,6 +70,7 @@ STRATEGIES_CONFIG = {
             'print_signals': True,
         }
     },
+
     'EURUSD_PRO': {
         'active': True,  # Set to False to skip this config when running
         'strategy_name': 'SunsetOgle',
@@ -208,8 +209,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2023, 8, 1),
-        'to_date': datetime.datetime(2025, 8, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -262,6 +263,72 @@ STRATEGIES_CONFIG = {
             # Standard pair settings
             'jpy_rate': 150.0,
             'pip_value': 0.0001,
+            
+            # Debug
+            'print_signals': True,
+        }
+    },
+
+    'USDJPY_PRO': {
+        'active': True,  # Set to False to skip this config when running
+        'strategy_name': 'SunsetOgle',
+        'asset_name': 'USDJPY',
+        'data_path': 'data/USDJPY_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+        
+        'params': {
+            # EMA settings
+            'ema_fast_length': 12,
+            'ema_medium_length': 24,
+            'ema_slow_length': 24,
+            'ema_confirm_length': 1,
+            'ema_filter_price_length': 50,
+            
+            # ATR settings
+            'atr_length': 10,
+            'atr_min': 0.030,
+            'atr_max': 0.045,
+            
+            # Angle Filter
+            'use_angle_filter': True,
+            'angle_min': 45.0,
+            'angle_max': 90.0,
+            'angle_scale': 100.0,
+            
+            # SL/TP multipliers
+            'sl_mult': 1.5,
+            'tp_mult': 15.0,
+            
+            # Pullback settings
+            'pullback_candles': 1,
+            'window_periods': 2,
+            'price_offset_mult': 0.01,
+            
+            # Time filter - EXACT from original (1:00-15:00 UTC)
+            'use_time_filter': True,
+            'allowed_hours': [0, 1, 2, 3, 4, 10, 11, 12],
+            
+            # SL pips filter
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 4.0,
+            'sl_pips_max': 11.0,
+            
+            # Risk management
+            'risk_percent': 0.01,
+            'lot_size': 100000,
+            
+            # JPY pair settings
+            'jpy_rate': 150.0,
+            'pip_value': 0.01,
             
             # Debug
             'print_signals': True,
