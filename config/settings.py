@@ -397,7 +397,7 @@ STRATEGIES_CONFIG = {
             'jpy_rate': 150.0,
             
             # Risk
-            'risk_percent': 0.005,
+            'risk_percent': 0.01,
             
             # Debug & Reporting
             'print_signals': False,
