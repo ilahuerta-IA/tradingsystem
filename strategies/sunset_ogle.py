@@ -32,7 +32,7 @@ from lib.filters import (
     check_sl_pips_filter,
     check_ema_price_filter,
 )
-from lib.position_sizing import calculate_position_size, get_pair_type
+from lib.position_sizing import calculate_position_size
 
 
 class SunsetOgleStrategy(bt.Strategy):
@@ -84,7 +84,8 @@ class SunsetOgleStrategy(bt.Strategy):
         risk_percent=0.003,
         lot_size=100000,
         
-        # JPY pair settings
+        # JPY pair settings (unified with KOI)
+        is_jpy_pair=False,
         jpy_rate=150.0,
         pip_value=0.01,
         
@@ -347,9 +348,8 @@ class SunsetOgleStrategy(bt.Strategy):
     
     def _calculate_position_size(self, entry_price, stop_loss):
         """Calculate position size based on risk parameters using modular system."""
-        # Get pair type from asset name
-        asset_name = getattr(self.data, '_name', 'EURJPY')
-        pair_type = get_pair_type(asset_name)
+        # Use is_jpy_pair param (unified with KOI strategy)
+        pair_type = 'JPY' if self.p.is_jpy_pair else 'STANDARD'
         
         # Use modular position sizing (exact replica of originals)
         bt_size = calculate_position_size(

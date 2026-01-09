@@ -107,6 +107,13 @@ def run_backtest(config_name):
     
     StrategyClass = STRATEGY_REGISTRY[strategy_name]
     
+    # Auto-inject is_jpy_pair and pip_value into params
+    params['is_jpy_pair'] = is_jpy
+    if is_jpy:
+        params['pip_value'] = 0.01
+    else:
+        params['pip_value'] = 0.0001
+    
     # Add strategy with parameters
     cerebro.addstrategy(StrategyClass, **params)
     
