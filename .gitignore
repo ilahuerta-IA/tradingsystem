@@ -29,6 +29,11 @@ env/
 .env
 .env.local
 
+# Credentials (NEVER commit real credentials)
+config/credentials/mt5.json
+config/credentials/*.credentials
+!config/credentials/mt5_template.json
+
 # VS Code
 .vscode/
 
