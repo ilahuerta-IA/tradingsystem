@@ -12,8 +12,11 @@ import backtrader as bt
 from config.settings import STRATEGIES_CONFIG, BROKER_CONFIG
 from strategies.sunset_ogle import SunsetOgleStrategy
 from strategies.koi_strategy import KOIStrategy
-from lib.commission import ForexCommission
+from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
+
+# ETF symbols list
+ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM']
 
 # Strategy registry
 STRATEGY_REGISTRY = {
@@ -51,8 +54,11 @@ def run_backtest(config_name):
         print(f'Data file not found: {data_path}')
         return None
     
+    # Determine if asset is ETF
+    asset_name = config['asset_name']
+    is_etf = asset_name.upper() in ETF_SYMBOLS
+    
     # CSV format: Date,Time,Open,High,Low,Close,Volume (Darwinex format)
-    # Same as original sunrise_ogle_eurjpy_pro.py
     feed_kwargs = dict(
         dataname=str(data_path),
         dtformat='%Y%m%d',
@@ -64,39 +70,59 @@ def run_backtest(config_name):
         low=4,
         close=5,
         volume=6,
-        timeframe=bt.TimeFrame.Minutes,
-        compression=5,
+        openinterest=-1,
         fromdate=config['from_date'],
         todate=config['to_date'],
     )
     
-    data = bt.feeds.GenericCSVData(**feed_kwargs)
-    cerebro.adddata(data, name=config['asset_name'])
+    if is_etf:
+        # ETFs: Use custom ETFCSVData for correct datetime parsing
+        data = ETFCSVData(**feed_kwargs)
+    else:
+        # Forex: Use GenericCSVData with timeframe for correct datetime
+        feed_kwargs['timeframe'] = bt.TimeFrame.Minutes
+        feed_kwargs['compression'] = 5
+        data = bt.feeds.GenericCSVData(**feed_kwargs)
+    
+    cerebro.adddata(data, name=asset_name)
     
     print(f'Loaded data from {data_path}')
     
     # Set broker
     cerebro.broker.setcash(config.get('starting_cash', 100000.0))
     
-    # Set commission scheme (same as original)
+    # Set commission scheme based on instrument type
     params = config['params']
-    broker_config = BROKER_CONFIG['darwinex_zero']
-    
-    # Auto-detect JPY pair from asset name
-    asset_name = config['asset_name']
     is_jpy = asset_name.upper().endswith('JPY')
     
-    # Reset commission counters before run
-    ForexCommission.total_commission = 0.0
-    ForexCommission.total_lots = 0.0
-    ForexCommission.commission_calls = 0
-    
-    commission = ForexCommission(
-        commission=broker_config['commission_per_lot'],
-        is_jpy_pair=is_jpy,
-        jpy_rate=params.get('jpy_rate', 150.0) if is_jpy else 1.0,
-    )
-    cerebro.broker.addcommissioninfo(commission)
+    if is_etf:
+        # ETF commission: $0.02/contract
+        broker_config = BROKER_CONFIG.get('darwinex_zero_etf', BROKER_CONFIG['darwinex_zero'])
+        ETFCommission.total_commission = 0.0
+        ETFCommission.total_contracts = 0.0
+        ETFCommission.commission_calls = 0
+        
+        commission = ETFCommission(
+            commission=broker_config.get('commission_per_contract', 0.02),
+            margin_pct=broker_config.get('margin_percent', 20.0),
+        )
+        cerebro.broker.addcommissioninfo(commission)
+        print(f'Commission: ${broker_config.get("commission_per_contract", 0.02)}/contract (ETF)')
+        print(f'Margin: {broker_config.get("margin_percent", 20.0)}%')
+    else:
+        # Forex commission: $2.50/lot
+        broker_config = BROKER_CONFIG['darwinex_zero']
+        ForexCommission.total_commission = 0.0
+        ForexCommission.total_lots = 0.0
+        ForexCommission.commission_calls = 0
+        
+        commission = ForexCommission(
+            commission=broker_config['commission_per_lot'],
+            is_jpy_pair=is_jpy,
+            jpy_rate=params.get('jpy_rate', 150.0) if is_jpy else 1.0,
+        )
+        cerebro.broker.addcommissioninfo(commission)
+        print(f'Commission: ${broker_config["commission_per_lot"]}/lot (Forex)')
     
     # Get strategy class
     strategy_name = config.get('strategy_name', 'SunsetOgle')
@@ -107,12 +133,17 @@ def run_backtest(config_name):
     
     StrategyClass = STRATEGY_REGISTRY[strategy_name]
     
-    # Auto-inject is_jpy_pair and pip_value into params
+    # Auto-inject asset-specific params
     params['is_jpy_pair'] = is_jpy
-    if is_jpy:
+    params['is_etf'] = is_etf
+    
+    if is_etf:
+        params['pip_value'] = params.get('pip_value', 0.01)
+        params['margin_pct'] = params.get('margin_pct', 20.0)
+    elif is_jpy:
         params['pip_value'] = 0.01
     else:
-        params['pip_value'] = 0.0001
+        params['pip_value'] = params.get('pip_value', 0.0001)
     
     # Add strategy with parameters
     cerebro.addstrategy(StrategyClass, **params)
@@ -136,22 +167,39 @@ def run_backtest(config_name):
     starting_cash = config.get('starting_cash', 100000.0)
     total_return = ((final_value / starting_cash) - 1) * 100
     
-    # Get commission statistics
-    total_commission = ForexCommission.total_commission
-    total_lots = ForexCommission.total_lots
+    # Get commission statistics based on instrument type
     num_trades = len(getattr(strategy, 'trade_reports', []))
-    avg_commission = total_commission / num_trades if num_trades > 0 else 0
-    avg_lots = total_lots / num_trades if num_trades > 0 else 0
     
-    # Print commission summary
-    print('\n' + '=' * 70)
-    print('COMMISSION SUMMARY')
-    print('=' * 70)
-    print(f'Total Commission Paid:    ${total_commission:,.2f}')
-    print(f'Total Lots Traded:        {total_lots:,.2f}')
-    print(f'Avg Commission per Trade: ${avg_commission:,.2f}')
-    print(f'Avg Lots per Trade:       {avg_lots:,.2f}')
-    print('=' * 70)
+    if is_etf:
+        total_commission = ETFCommission.total_commission
+        total_contracts = ETFCommission.total_contracts
+        avg_commission = total_commission / num_trades if num_trades > 0 else 0
+        avg_contracts = total_contracts / num_trades if num_trades > 0 else 0
+        
+        # Print commission summary for ETF
+        print('\n' + '=' * 70)
+        print('COMMISSION SUMMARY (ETF)')
+        print('=' * 70)
+        print(f'Total Commission Paid:       ${total_commission:,.2f}')
+        print(f'Total Contracts Traded:      {total_contracts:,.0f}')
+        print(f'Avg Commission per Trade:    ${avg_commission:,.2f}')
+        print(f'Avg Contracts per Trade:     {avg_contracts:,.0f}')
+        print('=' * 70)
+    else:
+        total_commission = ForexCommission.total_commission
+        total_lots = ForexCommission.total_lots
+        avg_commission = total_commission / num_trades if num_trades > 0 else 0
+        avg_lots = total_lots / num_trades if num_trades > 0 else 0
+        
+        # Print commission summary for Forex
+        print('\n' + '=' * 70)
+        print('COMMISSION SUMMARY')
+        print('=' * 70)
+        print(f'Total Commission Paid:    ${total_commission:,.2f}')
+        print(f'Total Lots Traded:        {total_lots:,.2f}')
+        print(f'Avg Commission per Trade: ${avg_commission:,.2f}')
+        print(f'Avg Lots per Trade:       {avg_lots:,.2f}')
+        print('=' * 70)
     
     print(f'\nFinal Value: ${final_value:,.2f}')
     print(f'Return: {total_return:.2f}%')

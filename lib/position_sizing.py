@@ -17,6 +17,7 @@ def calculate_position_size(
     lot_size: int = 100000,
     jpy_rate: float = 150.0,
     pip_value: float = 0.0001,
+    margin_pct: float = 20.0,
 ) -> int:
     """
     Calculate position size based on pair type.
@@ -24,7 +25,11 @@ def calculate_position_size(
     Returns:
         Position size in units for Backtrader (bt_size).
     """
-    if pair_type == 'JPY':
+    if pair_type == 'ETF':
+        return _calculate_etf_position(
+            entry_price, stop_loss, equity, risk_percent, margin_pct
+        )
+    elif pair_type == 'JPY':
         return _calculate_jpy_pair(
             entry_price, stop_loss, equity, risk_percent,
             lot_size, jpy_rate, pip_value
@@ -139,15 +144,53 @@ JPY_PAIRS = [
     'CADJPY', 'CHFJPY',
 ]
 
+ETF_SYMBOLS = [
+    'DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM',
+]
+
 
 def get_pair_type(asset_name: str) -> str:
     """Determine pair type from asset name."""
     asset_upper = asset_name.upper()
     
-    if asset_upper in JPY_PAIRS or asset_upper.endswith('JPY'):
+    if asset_upper in ETF_SYMBOLS:
+        return 'ETF'
+    elif asset_upper in JPY_PAIRS or asset_upper.endswith('JPY'):
         return 'JPY'
     else:
         return 'STANDARD'
+
+
+def _calculate_etf_position(
+    entry_price: float,
+    stop_loss: float,
+    equity: float,
+    risk_percent: float,
+    margin_pct: float = 20.0,
+) -> int:
+    """
+    Position sizing for ETFs (DIA, TLT, GLD, etc.)
+    
+    ETF position sizing:
+    - Calculate shares based on risk amount / price risk
+    - Apply margin constraint (20% for Darwinex Zero)
+    - Return integer shares (minimum 1)
+    """
+    price_risk = abs(entry_price - stop_loss)
+    
+    if price_risk <= 0:
+        return 0
+    
+    risk_amount = equity * risk_percent
+    
+    # shares = risk_amount / price_risk
+    shares = risk_amount / price_risk
+    
+    # Margin check: shares * price * margin_pct <= equity
+    max_shares = equity / (entry_price * (margin_pct / 100.0))
+    shares = min(shares, max_shares)
+    
+    return int(max(1, shares))  # At least 1 share
 
 
 def get_pip_value(asset_name: str) -> float:

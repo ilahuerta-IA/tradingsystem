@@ -94,3 +94,92 @@ class DarwinexZeroCommission(bt.CommInfoBase):
 
 # Alias for backward compatibility
 ForexCommission = DarwinexZeroCommission
+
+
+# =============================================================================
+# ETF COMMISSION CLASS - Darwinex Zero ($0.02/contract/order)
+# =============================================================================
+class ETFCommission(bt.CommInfoBase):
+    """
+    Generic commission scheme for ETF trading (DIA, TLT, GLD, etc.).
+    Darwinex Zero specs:
+    - Commission: $0.02 per contract per order
+    - Margin: 20% (5:1 leverage)
+    - Contract size: 1 share
+    """
+    params = (
+        ('stocklike', True),
+        ('commtype', bt.CommInfoBase.COMM_FIXED),
+        ('percabs', True),
+        ('leverage', 5.0),
+        ('automargin', True),
+        ('commission', 0.02),
+        ('margin_pct', 20.0),
+    )
+    
+    # Debug counters (class-level)
+    commission_calls = 0
+    total_commission = 0.0
+    total_contracts = 0.0
+
+    def _getcommission(self, size, price, pseudoexec):
+        """Return commission based on contract count ($0.02/contract)."""
+        contracts = abs(size)
+        comm = contracts * self.p.commission
+        
+        if not pseudoexec:
+            ETFCommission.commission_calls += 1
+            ETFCommission.total_commission += comm
+            ETFCommission.total_contracts += contracts
+        
+        return comm
+
+    def get_margin(self, price):
+        """Return margin requirement per contract."""
+        return price * (self.p.margin_pct / 100.0)
+
+
+# =============================================================================
+# ETF CSV DATA FEED - Fixes Date/Time separate columns issue
+# =============================================================================
+class ETFCSVData(bt.feeds.GenericCSVData):
+    """
+    Custom CSV Data Feed for ETFs that correctly handles separate Date and Time columns.
+    
+    The standard GenericCSVData doesn't properly combine datetime when Date and Time
+    are in separate columns (always shows 23:59:59). This class fixes that by
+    overriding the _loadline method to properly parse and combine the columns.
+    
+    CSV Format expected:
+        Date,Time,Open,High,Low,Close,Volume
+        20200102,14:30:00,286.30,286.70,286.30,286.56,670000
+    
+    NOTE: Date filtering is handled by Backtrader internally, NOT in _loadline.
+    This ensures warmup bars are available for indicators.
+    """
+    from datetime import datetime as _datetime
+    
+    def _loadline(self, linetokens):
+        # Parse Date (column 0) and Time (column 1) 
+        dt_str = linetokens[0]  # '20200102'
+        tm_str = linetokens[1]  # '14:30:00'
+        
+        # Combine into datetime
+        try:
+            dt = self._datetime.strptime(f"{dt_str} {tm_str}", '%Y%m%d %H:%M:%S')
+        except ValueError:
+            return False
+        
+        # Set datetime as float (matplotlib date number)
+        # Let Backtrader handle fromdate/todate filtering internally
+        self.lines.datetime[0] = bt.date2num(dt)
+        
+        # Set OHLCV
+        self.lines.open[0] = float(linetokens[2])
+        self.lines.high[0] = float(linetokens[3])
+        self.lines.low[0] = float(linetokens[4])
+        self.lines.close[0] = float(linetokens[5])
+        self.lines.volume[0] = float(linetokens[6])
+        self.lines.openinterest[0] = 0.0
+        
+        return True

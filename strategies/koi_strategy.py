@@ -78,6 +78,8 @@ class KOIStrategy(bt.Strategy):
         is_jpy_pair=False,
         jpy_rate=150.0,
         lot_size=100000,
+        is_etf=False,
+        margin_pct=3.33,
         
         # Risk
         risk_percent=0.005,
@@ -323,7 +325,13 @@ class KOIStrategy(bt.Strategy):
             return
         
         # Position sizing
-        pair_type = 'JPY' if self.p.is_jpy_pair else 'STANDARD'
+        if self.p.is_etf:
+            pair_type = 'ETF'
+        elif self.p.is_jpy_pair:
+            pair_type = 'JPY'
+        else:
+            pair_type = 'STANDARD'
+        
         bt_size = calculate_position_size(
             entry_price=entry_price,
             stop_loss=self.stop_level,
@@ -333,6 +341,7 @@ class KOIStrategy(bt.Strategy):
             lot_size=self.p.lot_size,
             jpy_rate=self.p.jpy_rate,
             pip_value=self.p.pip_value,
+            margin_pct=self.p.margin_pct,
         )
         
         if bt_size <= 0:
