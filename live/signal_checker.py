@@ -44,6 +44,7 @@ from lib.filters import (
     check_ema_price_filter,
 )
 from config.settings import STRATEGIES_CONFIG
+from live.timezone import broker_to_utc
 
 
 class SignalDirection(Enum):
@@ -442,14 +443,20 @@ class SignalChecker:
             if current_high >= self.window_top:
                 
                 # Time filter at entry (if enabled)
+                # IMPORTANT: Convert broker time to UTC for comparison with allowed_hours
                 if self.params.get('use_time_filter', False):
                     allowed_hours = self.params.get('allowed_hours', [])
-                    if not check_time_filter(current_dt, allowed_hours, True):
-                        self.logger.info(f"Time filter blocked: hour {current_dt.hour} not in {allowed_hours}")
+                    # Convert broker time to UTC for filter comparison
+                    current_dt_utc = broker_to_utc(current_dt)
+                    if not check_time_filter(current_dt_utc, allowed_hours, True):
+                        self.logger.info(
+                            f"Time filter blocked: broker={current_dt.hour}h, "
+                            f"UTC={current_dt_utc.hour}h not in {allowed_hours}"
+                        )
                         return Signal(
                             valid=False,
                             direction=SignalDirection.NONE,
-                            reason=f"Time filter: {current_dt.hour}h not allowed",
+                            reason=f"Time filter: UTC {current_dt_utc.hour}h not allowed",
                             timestamp=now
                         )
                 
