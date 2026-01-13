@@ -1,8 +1,0 @@
-{"timestamp": "2026-01-10T15:53:19.295893", "event_type": "MONITOR_START", "config": "EURUSD_PRO", "symbol": "EURUSD", "demo_only": true, "account": 22745391}
-{"timestamp": "2026-01-10T15:53:19.333720", "event_type": "ERROR", "config": "EURUSD_PRO", "symbol": "EURUSD", "error": "'SignalChecker' object has no attribute 'update'", "phase": "process_candle"}
-{"timestamp": "2026-01-10T15:57:59.481245", "event_type": "MONITOR_START", "config": "EURUSD_PRO", "symbol": "EURUSD", "demo_only": true, "account": 22745391}
-{"timestamp": "2026-01-10T15:57:59.505847", "event_type": "ERROR", "config": "EURUSD_PRO", "symbol": "EURUSD", "error": "unsupported format string passed to NoneType.__format__", "phase": "process_candle"}
-{"timestamp": "2026-01-10T16:02:23.073936", "event_type": "MONITOR_START", "config": "EURUSD_PRO", "symbol": "EURUSD", "demo_only": true, "account": 22745391}
-{"timestamp": "2026-01-10T16:17:18.137657", "event_type": "MONITOR_START", "config": "EURUSD_PRO", "symbol": "EURUSD", "demo_only": true, "account": 22745391}
-{"timestamp": "2026-01-10T16:17:51.849661", "event_type": "MONITOR_STOP", "config": "EURUSD_PRO", "symbol": "EURUSD", "start_time": "2026-01-10T16:17:16.860514", "runtime_minutes": 0.58315245, "candles_processed": 0, "signals_detected": 0, "trades_executed": 0, "errors_count": 0, "last_candle_time": null}
-{"timestamp": "2026-01-10T16:17:51.849661", "event_type": "MONITOR_STOP", "config": "EURUSD_PRO", "symbol": "EURUSD", "start_time": "2026-01-10T16:17:16.860514", "runtime_minutes": 0.58315245, "candles_processed": 0, "signals_detected": 0, "trades_executed": 0, "errors_count": 0, "last_candle_time": null}
