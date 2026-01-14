@@ -206,8 +206,9 @@ def run_backtest(config_name):
     
     # Save log if enabled (only for SunsetOgle, KOI generates its own)
     if config.get('save_log', False) and strategy_name == 'SunsetOgle':
+        lots_or_contracts = total_contracts if is_etf else total_lots
         save_trade_log(strategy, config_name, config['asset_name'], 
-                      total_commission, avg_commission, total_lots)
+                      total_commission, avg_commission, lots_or_contracts)
     
     # Plot if enabled
     if config.get('run_plot', False):

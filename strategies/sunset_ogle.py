@@ -89,6 +89,10 @@ class SunsetOgleStrategy(bt.Strategy):
         jpy_rate=150.0,
         pip_value=0.01,
         
+        # ETF settings
+        is_etf=False,
+        margin_pct=20.0,
+        
         # Debug and reporting
         print_signals=True,
         export_report=False,
@@ -339,17 +343,23 @@ class SunsetOgleStrategy(bt.Strategy):
         if self.data.close[0] <= self.ema_filter[0]:
             return False
         
-        # Angle filter
-        angle = self._angle()
-        if not (self.p.angle_min <= angle <= self.p.angle_max):
-            return False
+        # Angle filter - only if enabled
+        if self.p.use_angle_filter:
+            angle = self._angle()
+            if not (self.p.angle_min <= angle <= self.p.angle_max):
+                return False
         
         return True
     
     def _calculate_position_size(self, entry_price, stop_loss):
         """Calculate position size based on risk parameters using modular system."""
-        # Use is_jpy_pair param (unified with KOI strategy)
-        pair_type = 'JPY' if self.p.is_jpy_pair else 'STANDARD'
+        # Determine pair type (same logic as KOI)
+        if self.p.is_etf:
+            pair_type = 'ETF'
+        elif self.p.is_jpy_pair:
+            pair_type = 'JPY'
+        else:
+            pair_type = 'STANDARD'
         
         # Use modular position sizing (exact replica of originals)
         bt_size = calculate_position_size(
@@ -361,6 +371,7 @@ class SunsetOgleStrategy(bt.Strategy):
             lot_size=self.p.lot_size,
             jpy_rate=self.p.jpy_rate,
             pip_value=self.p.pip_value,
+            margin_pct=self.p.margin_pct,
         )
         
         return bt_size
@@ -578,28 +589,7 @@ class SunsetOgleStrategy(bt.Strategy):
         
         dt = self.datas[0].datetime.datetime(0)
         
-        # Cancel phantom orders when no position
-        if not self.position:
-            if self.order:
-                try:
-                    self.cancel(self.order)
-                except Exception:
-                    pass
-                self.order = None
-            if self.stop_order:
-                try:
-                    self.cancel(self.stop_order)
-                except Exception:
-                    pass
-                self.stop_order = None
-            if self.limit_order:
-                try:
-                    self.cancel(self.limit_order)
-                except Exception:
-                    pass
-                self.limit_order = None
-        
-        # Wait for pending entry orders
+        # Wait for pending entry orders (KOI pattern - simple wait, no cancellation)
         if self.order:
             return
         
