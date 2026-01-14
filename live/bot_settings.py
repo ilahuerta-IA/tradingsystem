@@ -13,27 +13,39 @@ Only values here, no code. Functions go in separate modules.
 # Value = True (enabled) or False (disabled)
 
 ENABLED_CONFIGS = {
-    # Sunset Ogle strategy
+    # Sunset Ogle strategy (Forex)
     "EURUSD_PRO": True,
-    "EURJPY_PRO": False,
-    "USDCAD_PRO": False,
-    "USDCHF_PRO": False,
-    "USDJPY_PRO": False,
+    "EURJPY_PRO": True,
+    "USDCAD_PRO": True,
+    "USDCHF_PRO": True,
+    "USDJPY_PRO": True,
     
-    # KOI strategy
+    # KOI strategy (Forex)
     "EURUSD_KOI": True,
+    "USDCAD_KOI": True,
+    "USDCHF_KOI": True,
+    "USDJPY_KOI": True,
+    "EURJPY_KOI": True,
+    
+    # KOI strategy (ETFs) - disabled until broker availability confirmed
     "DIA_KOI": False,
     "TLT_KOI": False,
 }
 
 # Strategy type mapping (which checker class to use)
 STRATEGY_TYPES = {
+    # SunsetOgle
     "EURUSD_PRO": "SunsetOgle",
     "EURJPY_PRO": "SunsetOgle",
     "USDCAD_PRO": "SunsetOgle",
     "USDCHF_PRO": "SunsetOgle",
     "USDJPY_PRO": "SunsetOgle",
+    # KOI
     "EURUSD_KOI": "KOI",
+    "USDCAD_KOI": "KOI",
+    "USDCHF_KOI": "KOI",
+    "USDJPY_KOI": "KOI",
+    "EURJPY_KOI": "KOI",
     "DIA_KOI": "KOI",
     "TLT_KOI": "KOI",
 }

@@ -334,6 +334,74 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    'DIA_PRO': {
+        'active': True,  # Set to False to skip this config when running
+        'strategy_name': 'SunsetOgle',
+        'asset_name': 'DIA',
+        'data_path': 'data/DIA_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+        
+        'params': {
+            # EMA settings 
+            'ema_fast_length': 24,
+            'ema_medium_length': 30,
+            'ema_slow_length': 36,
+            'ema_confirm_length': 1,
+            'ema_filter_price_length': 40,
+            
+            # ATR settings 
+            'atr_length': 10,
+            'atr_min': 0.0003,
+            'atr_max': 0.0009,
+            
+            # Angle Filter 
+            'use_angle_filter': False,
+            'angle_min': 45.0,
+            'angle_max': 75.0,
+            'angle_scale': 10000.0,
+            
+            # SL/TP multipliers 
+            'sl_mult': 2.5,
+            'tp_mult': 10.0,
+            
+            # Pullback settings
+            'pullback_candles': 2,
+            'window_periods': 2,
+            'price_offset_mult': 0.01,
+            
+            # Time filter 
+            'use_time_filter': True,
+            'allowed_hours': [3, 6, 7, 9, 10, 11, 12, 13, 17, 20],
+            
+            # SL pips filter - DISABLED
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 7.0,
+            'sl_pips_max': 21.0,
+            
+            # Risk management
+            'risk_percent': 0.01,
+                                               
+            # ETF Asset config
+            'pip_value': 0.01,   # ETF: 2 decimal places
+            'lot_size': 1,       # ETF: 1 share per contract
+            'jpy_rate': 1.0,     # Not used for ETF
+            'is_etf': True,
+            'margin_pct': 20.0,  # 20% margin (5:1 leverage)
+            
+            # Debug
+            'print_signals': True,
+        }
+    },
+
     # =========================================================================
     # KOI STRATEGY CONFIGURATIONS
     # =========================================================================

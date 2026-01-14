@@ -210,8 +210,8 @@ AUTO_PLOT_SINGLE_MODE = False         # Automatically plot in single mode (LONG-
 # === LONG ATR VOLATILITY FILTER ===
 # ETF ATR values are much larger than Forex (e.g., DIA ~$0.20-$0.50 per 5min bar)
 LONG_USE_ATR_FILTER = False                   # ENABLED for ETF filtering
-LONG_ATR_MIN_THRESHOLD = 0.20               # DIA typical ATR min (~$0.20)
-LONG_ATR_MAX_THRESHOLD = 0.50               # DIA typical ATR max (~$0.50)
+LONG_ATR_MIN_THRESHOLD = 0.17               # DIA typical ATR min (~$0.20)
+LONG_ATR_MAX_THRESHOLD = 0.69               # DIA typical ATR max (~$0.50)
 
 # ATR INCREMENT FILTER - For ETFs values are much larger
 LONG_USE_ATR_INCREMENT_FILTER = False        # DISABLED: Start optimization from scratch for DIA
