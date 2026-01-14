@@ -422,7 +422,7 @@ class LiveTradingMonitor:
     
     def start(self) -> bool:
         """
-        Start the monitor (initialize components).
+        Start the monitor (initialize components with retry logic).
         
         Returns:
             True if started successfully
@@ -434,20 +434,31 @@ class LiveTradingMonitor:
         self.logger.info(f"Demo Only: {self.demo_only}")
         self.logger.info("=" * 50)
         
-        if not self._initialize_components():
-            self.state = MonitorState.ERROR
-            return False
+        # Retry initialization with backoff
+        for attempt in range(self.MAX_RECONNECT_ATTEMPTS):
+            if self._initialize_components():
+                self.running = True
+                self.state = MonitorState.RUNNING
+                
+                # Log start event
+                self._log_event('MONITOR_START', {
+                    'demo_only': self.demo_only,
+                    'account': self.connector.account.login if self.connector.account else None
+                })
+                
+                return True
+            
+            if attempt < self.MAX_RECONNECT_ATTEMPTS - 1:
+                wait_time = self.RECONNECT_DELAY_SECONDS * (attempt + 1)
+                self.logger.warning(
+                    f"Initialization failed (attempt {attempt + 1}/{self.MAX_RECONNECT_ATTEMPTS}), "
+                    f"retrying in {wait_time}s..."
+                )
+                time.sleep(wait_time)
         
-        self.running = True
-        self.state = MonitorState.RUNNING
-        
-        # Log start event
-        self._log_event('MONITOR_START', {
-            'demo_only': self.demo_only,
-            'account': self.connector.account.login if self.connector.account else None
-        })
-        
-        return True
+        self.logger.error(f"Failed to initialize after {self.MAX_RECONNECT_ATTEMPTS} attempts")
+        self.state = MonitorState.ERROR
+        return False
     
     def stop(self):
         """Stop the monitor gracefully."""

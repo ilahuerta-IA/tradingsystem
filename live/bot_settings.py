@@ -22,7 +22,12 @@ BROKER_FOLLOWS_DST = True
 # CONNECTION
 # =============================================================================
 
-MT5_CONNECTION_TIMEOUT = 60
+# MT5 initialization timeout (milliseconds) - 2 minutes to allow manual login
+MT5_INIT_TIMEOUT_MS = 120000
+
+# MT5 login timeout (milliseconds)
+MT5_LOGIN_TIMEOUT_MS = 60000
+
 MAX_RECONNECT_ATTEMPTS = 5
 RECONNECT_DELAY_SECONDS = 30
 HEALTH_CHECK_INTERVAL = 60

@@ -180,22 +180,54 @@ class MT5Connector:
             return False
         
         try:
-            # Initialize MT5 terminal
-            if not mt5.initialize():
+            # Initialize MT5 terminal with extended timeout
+            self.logger.info("Initializing MT5 terminal...")
+            
+            # Try to find MT5 terminal path
+            mt5_paths = [
+                Path(r"C:\Program Files\MetaTrader 5\terminal64.exe"),
+                Path(r"C:\Program Files\Darwinex MT5\terminal64.exe"),
+                Path(r"C:\Program Files (x86)\MetaTrader 5\terminal64.exe"),
+            ]
+            
+            mt5_path = None
+            for path in mt5_paths:
+                if path.exists():
+                    mt5_path = str(path)
+                    break
+            
+            # Initialize with path if found, otherwise let MT5 find it
+            init_kwargs = {"timeout": 120000}  # 2 minutes timeout
+            if mt5_path:
+                init_kwargs["path"] = mt5_path
+                self.logger.info(f"Using MT5 path: {mt5_path}")
+            
+            if not mt5.initialize(**init_kwargs):
                 error = mt5.last_error()
                 self.logger.error(f"MT5 initialization failed: {error}")
+                self.logger.error("Ensure MT5 terminal is running and logged in")
                 return False
+            
+            self.logger.info("MT5 terminal initialized, attempting login...")
+            
+            # Clean server string (remove port if present)
+            server = str(self._credentials['server'])
+            if ':' in server:
+                server = server.split(':')[0]
+                self.logger.info(f"Server cleaned to: {server}")
             
             # Login to account
             login_result = mt5.login(
                 login=int(self._credentials['login']),
                 password=str(self._credentials['password']),
-                server=str(self._credentials['server'])
+                server=server,
+                timeout=60000  # 60 seconds for login
             )
             
             if not login_result:
                 error = mt5.last_error()
                 self.logger.error(f"MT5 login failed: {error}")
+                self.logger.error(f"Server: {self._credentials['server']}, Login: {self._credentials['login']}")
                 mt5.shutdown()
                 return False
             
