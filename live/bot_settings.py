@@ -6,6 +6,40 @@ Only values here, no code. Functions go in separate modules.
 """
 
 # =============================================================================
+# ENABLED STRATEGIES AND SYMBOLS
+# =============================================================================
+# Use this to enable/disable strategies and symbols for testing.
+# Key = config name from config/settings.py
+# Value = True (enabled) or False (disabled)
+
+ENABLED_CONFIGS = {
+    # Sunset Ogle strategy
+    "EURUSD_PRO": True,
+    "EURJPY_PRO": False,
+    "USDCAD_PRO": False,
+    "USDCHF_PRO": False,
+    "USDJPY_PRO": False,
+    
+    # KOI strategy
+    "EURUSD_KOI": True,
+    "DIA_KOI": False,
+    "TLT_KOI": False,
+}
+
+# Strategy type mapping (which checker class to use)
+STRATEGY_TYPES = {
+    "EURUSD_PRO": "SunsetOgle",
+    "EURJPY_PRO": "SunsetOgle",
+    "USDCAD_PRO": "SunsetOgle",
+    "USDCHF_PRO": "SunsetOgle",
+    "USDJPY_PRO": "SunsetOgle",
+    "EURUSD_KOI": "KOI",
+    "DIA_KOI": "KOI",
+    "TLT_KOI": "KOI",
+}
+
+
+# =============================================================================
 # BROKER TIMEZONE
 # =============================================================================
 
