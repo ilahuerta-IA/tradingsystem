@@ -159,6 +159,48 @@ class OrderExecutor:
         name_hash = sum(ord(c) for c in config_name) % 10000
         return self.MAGIC_NUMBER_BASE + name_hash
     
+    def _get_filling_mode(self, symbol: str) -> int:
+        """
+        Detect broker-supported filling mode for symbol.
+        
+        Error 10030 (INVALID_FILL) occurs when using unsupported filling mode.
+        filling_mode flags: 1=FOK, 2=IOC, 4=RETURN (can be combined)
+        
+        Args:
+            symbol: Trading symbol
+            
+        Returns:
+            MT5 filling mode constant
+        """
+        try:
+            symbol_info = mt5.symbol_info(symbol)
+            if symbol_info is None:
+                self.logger.warning(f"Cannot get symbol info for {symbol}, defaulting to FOK")
+                return mt5.ORDER_FILLING_FOK
+            
+            filling_mode = symbol_info.filling_mode
+            
+            # Priority: IOC > FOK > RETURN
+            if filling_mode & 2:  # IOC supported
+                selected = mt5.ORDER_FILLING_IOC
+                self.logger.debug(f"{symbol}: Using IOC filling (broker supports: {filling_mode})")
+            elif filling_mode & 1:  # FOK supported
+                selected = mt5.ORDER_FILLING_FOK
+                self.logger.debug(f"{symbol}: Using FOK filling (broker supports: {filling_mode})")
+            elif filling_mode & 4:  # RETURN supported
+                selected = mt5.ORDER_FILLING_RETURN
+                self.logger.debug(f"{symbol}: Using RETURN filling (broker supports: {filling_mode})")
+            else:
+                # Fallback to FOK
+                selected = mt5.ORDER_FILLING_FOK
+                self.logger.warning(f"{symbol}: Unknown filling mode {filling_mode}, defaulting to FOK")
+            
+            return selected
+            
+        except Exception as e:
+            self.logger.error(f"Error detecting filling mode for {symbol}: {e}")
+            return mt5.ORDER_FILLING_FOK
+    
     def get_positions(self, symbol: Optional[str] = None) -> List[Dict]:
         """
         Get open positions for this strategy.
@@ -369,6 +411,9 @@ class OrderExecutor:
             stop_loss = round(stop_loss, digits)
             take_profit = round(take_profit, digits)
             
+            # Detect broker-supported filling mode (fixes error 10030)
+            filling_mode = self._get_filling_mode(symbol)
+            
             # Prepare order request
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
@@ -382,7 +427,7 @@ class OrderExecutor:
                 "magic": self.magic_number,
                 "comment": comment or f"TradingSystem {self.config_name}",
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": filling_mode,
             }
             
             self.logger.info(
@@ -497,6 +542,9 @@ class OrderExecutor:
             tick = mt5.symbol_info_tick(pos.symbol)
             price = tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask
             
+            # Detect broker-supported filling mode
+            filling_mode = self._get_filling_mode(pos.symbol)
+            
             # Prepare close request
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
@@ -509,7 +557,7 @@ class OrderExecutor:
                 "magic": self.magic_number,
                 "comment": "Close position",
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": filling_mode,
             }
             
             result = mt5.order_send(request)
