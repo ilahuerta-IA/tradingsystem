@@ -32,6 +32,30 @@ from .connector import MT5Connector
 from .data_provider import DataProvider, Timeframe
 from .executor import OrderExecutor
 from .checkers import get_checker, BaseChecker, Signal, SignalDirection
+from .timezone import utc_to_broker
+
+
+class BrokerTimeFormatter(logging.Formatter):
+    """Custom formatter that uses broker time (UTC+3) instead of local time."""
+    
+    def formatTime(self, record, datefmt=None):
+        """Override to use broker time."""
+        from .timezone import get_broker_utc_offset
+        from datetime import timezone, timedelta
+        
+        # Get record time and convert to broker time
+        ct = datetime.fromtimestamp(record.created)
+        # Local to UTC (assuming system is UTC+1 Spain)
+        # Then UTC to broker
+        broker_offset = get_broker_utc_offset()
+        # Simple approach: add (broker_offset - local_offset) hours
+        # For now, assume we want broker time = UTC + broker_offset
+        utc_time = datetime.utcfromtimestamp(record.created)
+        broker_time = utc_time + timedelta(hours=broker_offset)
+        
+        if datefmt:
+            return broker_time.strftime(datefmt)
+        return broker_time.strftime("%Y-%m-%d %H:%M:%S") + f",{int(record.msecs):03d}"
 
 
 class MonitorState(Enum):
@@ -133,7 +157,7 @@ class MultiStrategyMonitor:
         self.trade_log_path = self.log_dir / f"trades_multi_{datetime.now().strftime('%Y%m%d')}.jsonl"
     
     def _setup_logging(self):
-        """Configure logging with file and console handlers."""
+        """Configure logging with file and console handlers using broker time."""
         self.logger = logging.getLogger("MultiMonitor")
         self.logger.setLevel(logging.DEBUG)
         
@@ -141,20 +165,20 @@ class MultiStrategyMonitor:
         if self.logger.handlers:
             return
         
-        # Console handler
+        # Console handler (broker time)
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
-        console.setFormatter(logging.Formatter(
+        console.setFormatter(BrokerTimeFormatter(
             "%(asctime)s | %(levelname)-7s | %(message)s",
             datefmt="%H:%M:%S"
         ))
         self.logger.addHandler(console)
         
-        # File handler (detailed)
+        # File handler (detailed, broker time)
         log_file = self.log_dir / f"monitor_multi_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter(
+        file_handler.setFormatter(BrokerTimeFormatter(
             "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
         ))
         self.logger.addHandler(file_handler)
