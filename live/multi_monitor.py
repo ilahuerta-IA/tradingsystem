@@ -346,6 +346,8 @@ class MultiStrategyMonitor:
         Returns:
             True if candle closed, False if interrupted or connection lost
         """
+        from .timezone import get_broker_utc_offset
+        
         now = datetime.now()
         
         # Calculate seconds until next candle close
@@ -358,11 +360,16 @@ class MultiStrategyMonitor:
         # Add buffer for data availability
         seconds_to_wait += CANDLE_CLOSE_BUFFER_SECONDS
         
-        next_candle_time = now + timedelta(seconds=seconds_to_wait)
+        # Calculate next candle time in broker timezone for display
+        next_candle_local = now + timedelta(seconds=seconds_to_wait)
+        broker_offset = get_broker_utc_offset()
+        # Local to UTC to Broker: UTC = local - local_offset, Broker = UTC + broker_offset
+        next_candle_utc = datetime.utcnow() + timedelta(seconds=seconds_to_wait)
+        next_candle_broker = next_candle_utc + timedelta(hours=broker_offset)
         
         self.logger.info(
             f"Waiting {seconds_to_wait}s until candle close "
-            f"(~{next_candle_time.strftime('%H:%M:%S')})"
+            f"(~{next_candle_broker.strftime('%H:%M:%S')})"
         )
         
         self.state = MonitorState.WAITING_CANDLE
