@@ -320,7 +320,7 @@ class MultiStrategyMonitor:
         Wait until next candle close.
         
         Returns:
-            True if candle closed, False if interrupted
+            True if candle closed, False if interrupted or connection lost
         """
         now = datetime.now()
         
@@ -344,14 +344,19 @@ class MultiStrategyMonitor:
         self.state = MonitorState.WAITING_CANDLE
         
         # Wait in chunks for responsiveness
-        while seconds_to_wait > 0 and self.running:
-            sleep_time = min(seconds_to_wait, 10)  # Check every 10s
-            time.sleep(sleep_time)
-            seconds_to_wait -= sleep_time
-            
-            # Periodic connection check
-            if not self._check_connection():
-                return False
+        try:
+            while seconds_to_wait > 0 and self.running:
+                sleep_time = min(seconds_to_wait, 10)  # Check every 10s
+                time.sleep(sleep_time)
+                seconds_to_wait -= sleep_time
+                
+                # Periodic connection check
+                if not self._check_connection():
+                    self.logger.warning("Connection lost during wait")
+                    return False
+        except Exception as e:
+            self.logger.error(f"Error during candle wait: {e}")
+            return False
         
         return self.running
     
@@ -568,6 +573,11 @@ class MultiStrategyMonitor:
     def run(self):
         """
         Main trading loop. Runs until interrupted.
+        
+        Implements robust error handling with automatic recovery:
+        - Connection loss triggers reconnection attempts
+        - Individual iteration failures don't crash the bot
+        - All errors are logged for debugging
         """
         if not self.running:
             if not self.start():
@@ -575,17 +585,54 @@ class MultiStrategyMonitor:
         
         self.logger.info("Entering main trading loop")
         
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
         try:
             while self.running:
-                # Wait for next candle close
-                if not self._wait_for_candle_close():
-                    break
-                
-                # Process the closed candle
-                self._process_candle()
-                
-                # Brief pause before next cycle
-                time.sleep(1)
+                try:
+                    # Check connection before each cycle
+                    if not self._check_connection():
+                        self.logger.error("Connection check failed, will retry next cycle")
+                        consecutive_errors += 1
+                        if consecutive_errors >= max_consecutive_errors:
+                            self.logger.error(f"Too many consecutive errors ({consecutive_errors}), stopping")
+                            break
+                        time.sleep(RECONNECT_DELAY_SECONDS)
+                        continue
+                    
+                    # Wait for next candle close
+                    if not self._wait_for_candle_close():
+                        if not self.running:
+                            break
+                        # Connection lost during wait
+                        self.logger.warning("Candle wait interrupted, checking connection...")
+                        consecutive_errors += 1
+                        continue
+                    
+                    # Process the closed candle
+                    self._process_candle()
+                    
+                    # Reset error counter on success
+                    consecutive_errors = 0
+                    
+                    # Brief pause before next cycle
+                    time.sleep(1)
+                    
+                except Exception as e:
+                    consecutive_errors += 1
+                    self.logger.error(f"Error in main loop iteration: {e}")
+                    self._log_event("ITERATION_ERROR", {
+                        "error": str(e),
+                        "consecutive_errors": consecutive_errors
+                    })
+                    
+                    if consecutive_errors >= max_consecutive_errors:
+                        self.logger.error(f"Too many consecutive errors ({consecutive_errors}), stopping")
+                        break
+                    
+                    # Wait before retry
+                    time.sleep(RECONNECT_DELAY_SECONDS)
                 
         except KeyboardInterrupt:
             self.logger.info("Keyboard interrupt received")
