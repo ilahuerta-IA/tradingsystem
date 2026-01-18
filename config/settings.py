@@ -402,6 +402,74 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    'TLT_PRO': {
+        'active': True,  # Set to False to skip this config when running
+        'strategy_name': 'SunsetOgle',
+        'asset_name': 'TLT',
+        'data_path': 'data/TLT_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+        
+        'params': {
+            # EMA settings 
+            'ema_fast_length': 5,
+            'ema_medium_length': 7,
+            'ema_slow_length': 12,
+            'ema_confirm_length': 1,
+            'ema_filter_price_length': 30,
+            
+            # ATR settings 
+            'atr_length': 10,
+            'atr_min': 0.00,
+            'atr_max': 1.00,
+            
+            # Angle Filter 
+            'use_angle_filter': False,
+            'angle_min': 0.0,
+            'angle_max': 85.0,
+            'angle_scale': 10000.0,
+            
+            # SL/TP multipliers 
+            'sl_mult': 3.5,
+            'tp_mult': 8.0,
+            
+            # Pullback settings
+            'pullback_candles': 2,
+            'window_periods': 3,
+            'price_offset_mult': 0.01,
+            
+            # Time filter 
+            'use_time_filter': True,
+            'allowed_hours': [14, 15, 16, 18, 19],
+            
+            # SL pips filter - DISABLED
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 20.0,
+            'sl_pips_max': 60.0,
+            
+            # Risk management
+            'risk_percent': 0.01,
+                                               
+            # ETF Asset config
+            'pip_value': 0.01,   # ETF: 2 decimal places
+            'lot_size': 1,       # ETF: 1 share per contract
+            'jpy_rate': 1.0,     # Not used for ETF
+            'is_etf': True,
+            'margin_pct': 20.0,  # 20% margin (5:1 leverage)
+            
+            # Debug
+            'print_signals': False,
+        }
+    },
+
     # =========================================================================
     # KOI STRATEGY CONFIGURATIONS
     # =========================================================================
