@@ -311,8 +311,9 @@ class MT5Connector:
                 import time
                 time.sleep(0.1)
             
-            # All retries failed
-            self.logger.warning("terminal_info() returned None after retries")
+            # All retries failed - connection is stale, mark as disconnected
+            self.logger.warning("terminal_info() returned None after retries, marking as disconnected")
+            self._connected = False
             return False
         except Exception as e:
             self.logger.warning(f"is_connected check failed: {e}")
@@ -323,11 +324,16 @@ class MT5Connector:
         """
         Attempt to reconnect after connection loss.
         
+        Forces full reconnection even if _connected flag is True.
+        
         Returns:
             True if reconnected successfully
         """
-        self.logger.info("Attempting to reconnect...")
+        self.logger.info("Forcing full reconnection...")
+        # Always cleanup and reinitialize, regardless of _connected state
         self._cleanup()
+        import time
+        time.sleep(1)  # Brief pause to ensure MT5 releases resources
         return self.connect()
     
     def get_symbol_info(self, symbol: str) -> Optional[Dict[str, Any]]:
