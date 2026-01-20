@@ -408,7 +408,7 @@ class MultiStrategyMonitor:
                     count=200  # Extra for indicators
                 )
                 
-                if bars.empty:
+                if bars is None or bars.empty:
                     self.logger.warning(f"No data for {symbol}")
                     continue
                 

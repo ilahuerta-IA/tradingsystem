@@ -302,9 +302,20 @@ class MT5Connector:
         
         try:
             # Try to get terminal info as health check
-            info = mt5.terminal_info()
-            return info is not None
-        except Exception:
+            # Retry up to 3 times as terminal_info() can fail intermittently
+            for attempt in range(3):
+                info = mt5.terminal_info()
+                if info is not None:
+                    return True
+                # Brief pause before retry
+                import time
+                time.sleep(0.1)
+            
+            # All retries failed
+            self.logger.warning("terminal_info() returned None after retries")
+            return False
+        except Exception as e:
+            self.logger.warning(f"is_connected check failed: {e}")
             self._connected = False
             return False
     

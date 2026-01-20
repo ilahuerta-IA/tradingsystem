@@ -58,7 +58,7 @@ STRATEGY_TYPES = {
 # Current broker UTC offset (hours)
 # - Darwinex/ICMarkets: UTC+2 (winter) / UTC+3 (summer)
 # - OANDA: UTC+0
-BROKER_UTC_OFFSET = 3
+BROKER_UTC_OFFSET = 2
 
 # Does broker follow EET daylight saving time?
 BROKER_FOLLOWS_DST = True
