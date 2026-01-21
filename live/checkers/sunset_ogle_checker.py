@@ -67,7 +67,7 @@ class SunsetOgleChecker(BaseChecker):
         self.window_expiry_bar: Optional[int] = None
         self.signal_atr: Optional[float] = None
         
-        self.logger.info(f"[{self.strategy_name}] Checker initialized for {config_name}")
+        self.logger.info(f"[{self.config_name}] Checker initialized")
     
     def reset_state(self) -> None:
         """Reset state machine to SCANNING."""
@@ -270,7 +270,7 @@ class SunsetOgleChecker(BaseChecker):
                     current_dt_utc = broker_to_utc(current_dt)
                     if not check_time_filter(current_dt_utc, allowed_hours, True):
                         reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
-                        self.logger.info(f"[{self.strategy_name}] {reason}")
+                        self.logger.info(f"[{self.config_name}] {reason}")
                         return self._create_no_signal(reason)
                 
                 # Calculate SL/TP
@@ -283,7 +283,7 @@ class SunsetOgleChecker(BaseChecker):
                 sl_pips = abs(entry_price - stop_loss) / pip_value
                 
                 self.logger.info(
-                    f"[{self.strategy_name}] SIGNAL LONG | "
+                    f"[{self.config_name}] SIGNAL LONG | "
                     f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
                     f"ATR: {current_atr:.5f}, SL_pips: {sl_pips:.1f}"
                 )

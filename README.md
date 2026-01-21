@@ -10,7 +10,7 @@
 
 This repository implements a **clean, scalable architecture** for backtesting and live trading. It features centralized configuration, multi-asset support, and professional reporting.
 
-**Current Version:** v0.2.8  
+**Current Version:** v0.2.9  
 **Strategies:** Sunset Ogle (4-phase breakout) + KOI (Engulfing + EMA momentum)  
 **Live Trading:** MT5 integration with multi-symbol monitoring
 
@@ -148,6 +148,9 @@ python run_multi_live.py
 ---
 
 ## 📋 Changelog
+
+### v0.2.9 (2026-01-21)
+- Improved logging clarity: logs now show config_name (e.g., "EURJPY_KOI") instead of just strategy_name ("KOI")
 
 ### v0.2.8 (2026-01-21)
 - Enhanced logging: shows which EMA failed, ATR in signals, SL pips

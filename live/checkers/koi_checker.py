@@ -63,7 +63,7 @@ class KOIChecker(BaseChecker):
             params.get("ema_period_5", 120),
         ]
         
-        self.logger.info(f"[{self.strategy_name}] Checker initialized for {config_name}")
+        self.logger.info(f"[{self.config_name}] Checker initialized")
     
     def reset_state(self) -> None:
         """Reset state machine to SCANNING."""
@@ -294,11 +294,11 @@ class KOIChecker(BaseChecker):
                 
                 if not check_sl_pips_filter(sl_pips, sl_pips_min, sl_pips_max, use_sl_pips_filter):
                     reason = f"SL pips filter: {sl_pips:.1f} not in [{sl_pips_min}-{sl_pips_max}]"
-                    self.logger.info(f"[{self.strategy_name}] {reason} - Signal rejected")
+                    self.logger.info(f"[{self.config_name}] {reason} - Signal rejected")
                     return self._create_no_signal(reason)
                 
                 self.logger.info(
-                    f"[{self.strategy_name}] SIGNAL LONG (immediate) | "
+                    f"[{self.config_name}] SIGNAL LONG (immediate) | "
                     f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
                     f"CCI: {current_cci:.1f}, SL pips: {sl_pips:.1f}"
                 )
@@ -346,12 +346,12 @@ class KOIChecker(BaseChecker):
                 
                 if not check_sl_pips_filter(sl_pips, sl_pips_min, sl_pips_max, use_sl_pips_filter):
                     reason = f"SL pips filter: {sl_pips:.1f} not in [{sl_pips_min}-{sl_pips_max}]"
-                    self.logger.info(f"[{self.strategy_name}] {reason} - Signal rejected")
+                    self.logger.info(f"[{self.config_name}] {reason} - Signal rejected")
                     self.reset_state()
                     return self._create_no_signal(reason)
                 
                 self.logger.info(
-                    f"[{self.strategy_name}] SIGNAL LONG (breakout) | "
+                    f"[{self.config_name}] SIGNAL LONG (breakout) | "
                     f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
                     f"Bars waited: {bars_since}, SL pips: {sl_pips:.1f}"
                 )

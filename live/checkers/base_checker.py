@@ -119,14 +119,14 @@ class BaseChecker(ABC):
     
     def _log_state_transition(self, from_state: str, to_state: str, reason: str = ""):
         """Log state machine transition."""
-        msg = f"[{self.strategy_name}] {from_state} -> {to_state}"
+        msg = f"[{self.config_name}] {from_state} -> {to_state}"
         if reason:
             msg += f" | {reason}"
         self.logger.info(msg)
     
     def _log_signal_check(self, reason: str):
         """Log signal check result (debug level)."""
-        self.logger.debug(f"[{self.strategy_name}] No signal: {reason}")
+        self.logger.debug(f"[{self.config_name}] No signal: {reason}")
     
     def _create_no_signal(self, reason: str) -> Signal:
         """Helper to create a no-signal response."""
