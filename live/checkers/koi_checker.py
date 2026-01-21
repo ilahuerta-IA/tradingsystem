@@ -157,25 +157,26 @@ class KOIChecker(BaseChecker):
         
         return True
     
-    def _check_emas_ascending(self, emas: Dict[str, pd.Series]) -> bool:
+    def _check_emas_ascending(self, emas: Dict[str, pd.Series]) -> tuple:
         """
         Check if all 5 EMAs are individually ascending.
         
         Each EMA's current value must be > its previous value.
+        Returns: (is_valid, failed_ema_index or None)
         """
         for i in range(1, 6):
             ema_key = f"ema_{i}"
             ema = emas.get(ema_key)
             if ema is None or len(ema) < 2:
-                return False
+                return False, i
             
             current = float(ema.iloc[-1])
             previous = float(ema.iloc[-2])
             
             if current <= previous:
-                return False
+                return False, i
         
-        return True
+        return True, None
     
     def _check_cci_condition(self, cci: float) -> bool:
         """Check CCI momentum filter."""
@@ -242,8 +243,10 @@ class KOIChecker(BaseChecker):
                 return self._create_no_signal("No bullish engulfing")
             
             # Check 5 EMAs ascending
-            if not self._check_emas_ascending(emas):
-                reason = "EMAs not all ascending"
+            emas_valid, failed_ema = self._check_emas_ascending(emas)
+            if not emas_valid:
+                ema_period = self.ema_periods[failed_ema - 1] if failed_ema else '?'
+                reason = f"EMAs not all ascending (EMA{failed_ema}={ema_period} failed)"
                 self._log_signal_check(reason)
                 return self._create_no_signal(reason)
             
@@ -270,7 +273,7 @@ class KOIChecker(BaseChecker):
                 
                 self._log_state_transition(
                     "SCANNING", "WAITING_BREAKOUT",
-                    f"Pattern high: {current_high:.5f}, Breakout: {self.breakout_level:.5f}, CCI: {current_cci:.1f}"
+                    f"Pattern high: {current_high:.5f}, Breakout: {self.breakout_level:.5f}, CCI: {current_cci:.1f}, ATR: {current_atr:.5f}"
                 )
                 
                 return self._create_no_signal("Waiting for breakout confirmation")

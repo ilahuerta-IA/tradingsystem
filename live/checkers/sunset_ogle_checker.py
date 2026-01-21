@@ -278,9 +278,14 @@ class SunsetOgleChecker(BaseChecker):
                 stop_loss = current_low - (current_atr * self.params["sl_mult"])
                 take_profit = current_high + (current_atr * self.params["tp_mult"])
                 
+                # Calculate SL pips for logging
+                pip_value = self.params.get("pip_value", 0.0001)
+                sl_pips = abs(entry_price - stop_loss) / pip_value
+                
                 self.logger.info(
                     f"[{self.strategy_name}] SIGNAL LONG | "
-                    f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}"
+                    f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
+                    f"ATR: {current_atr:.5f}, SL_pips: {sl_pips:.1f}"
                 )
                 
                 signal = self._create_signal(
