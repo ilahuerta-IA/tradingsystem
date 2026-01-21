@@ -16,7 +16,7 @@ from enum import Enum
 import pandas as pd
 
 from .base_checker import BaseChecker, Signal, SignalDirection
-from lib.filters import check_time_filter
+from lib.filters import check_time_filter, check_sl_pips_filter
 from live.timezone import broker_to_utc
 
 
@@ -281,9 +281,23 @@ class KOIChecker(BaseChecker):
                 stop_loss = entry_price - (current_atr * self.params.get("atr_sl_multiplier", 2.0))
                 take_profit = entry_price + (current_atr * self.params.get("atr_tp_multiplier", 6.0))
                 
+                # SL Pips Filter (matching backtest behavior)
+                pip_value = self.params.get("pip_value", 0.0001)
+                sl_pips = abs(entry_price - stop_loss) / pip_value
+                
+                use_sl_pips_filter = self.params.get("use_sl_pips_filter", False)
+                sl_pips_min = self.params.get("sl_pips_min", 0)
+                sl_pips_max = self.params.get("sl_pips_max", 999)
+                
+                if not check_sl_pips_filter(sl_pips, sl_pips_min, sl_pips_max, use_sl_pips_filter):
+                    reason = f"SL pips filter: {sl_pips:.1f} not in [{sl_pips_min}-{sl_pips_max}]"
+                    self.logger.info(f"[{self.strategy_name}] {reason} - Signal rejected")
+                    return self._create_no_signal(reason)
+                
                 self.logger.info(
                     f"[{self.strategy_name}] SIGNAL LONG (immediate) | "
-                    f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, CCI: {current_cci:.1f}"
+                    f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
+                    f"CCI: {current_cci:.1f}, SL pips: {sl_pips:.1f}"
                 )
                 
                 return self._create_signal(
@@ -319,10 +333,24 @@ class KOIChecker(BaseChecker):
                 stop_loss = entry_price - (atr_for_sl * self.params.get("atr_sl_multiplier", 2.0))
                 take_profit = entry_price + (atr_for_sl * self.params.get("atr_tp_multiplier", 6.0))
                 
+                # SL Pips Filter (matching backtest behavior)
+                pip_value = self.params.get("pip_value", 0.0001)
+                sl_pips = abs(entry_price - stop_loss) / pip_value
+                
+                use_sl_pips_filter = self.params.get("use_sl_pips_filter", False)
+                sl_pips_min = self.params.get("sl_pips_min", 0)
+                sl_pips_max = self.params.get("sl_pips_max", 999)
+                
+                if not check_sl_pips_filter(sl_pips, sl_pips_min, sl_pips_max, use_sl_pips_filter):
+                    reason = f"SL pips filter: {sl_pips:.1f} not in [{sl_pips_min}-{sl_pips_max}]"
+                    self.logger.info(f"[{self.strategy_name}] {reason} - Signal rejected")
+                    self.reset_state()
+                    return self._create_no_signal(reason)
+                
                 self.logger.info(
                     f"[{self.strategy_name}] SIGNAL LONG (breakout) | "
                     f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
-                    f"Bars waited: {bars_since}"
+                    f"Bars waited: {bars_since}, SL pips: {sl_pips:.1f}"
                 )
                 
                 signal = self._create_signal(
