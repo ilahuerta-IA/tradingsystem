@@ -364,6 +364,8 @@ class MT5Connector:
                 'name': info.name,
                 'digits': info.digits,
                 'point': info.point,
+                'tick_size': info.trade_tick_size,
+                'tick_value': info.trade_tick_value,
                 'trade_contract_size': info.trade_contract_size,
                 'volume_min': info.volume_min,
                 'volume_max': info.volume_max,

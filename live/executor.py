@@ -274,7 +274,10 @@ class OrderExecutor:
         stop_loss: float
     ) -> float:
         """
-        Calculate lot size using lib/position_sizing.py.
+        Calculate lot size using BROKER-SPECIFIC values (tick_value, tick_size, point).
+        
+        This is the CORRECT formula for live trading with MT5:
+        lot_size = risk_amount / (sl_distance_in_points x value_per_point)
         
         Args:
             symbol: Trading symbol
@@ -285,59 +288,90 @@ class OrderExecutor:
             Lot size (volume)
         """
         if not self.connector.is_connected():
+            self.logger.warning("Not connected, using minimum lot size")
             return 0.01  # Minimum
         
         # Get account equity
         account = self.connector.account
         if account is None:
+            self.logger.warning("No account info, using minimum lot size")
             return 0.01
         
         equity = account.equity
         risk_percent = self.params.get('risk_percent', 0.01)
-        lot_size = self.params.get('lot_size', 100000)
         
-        # Determine pair type
-        pair_type = 'JPY' if symbol.endswith('JPY') else 'STANDARD'
-        jpy_rate = self.params.get('jpy_rate', 150.0)
-        pip_value = self.params.get('pip_value', 0.0001)
-        
-        # Calculate using lib function
-        bt_size = calculate_position_size(
-            entry_price=entry_price,
-            stop_loss=stop_loss,
-            equity=equity,
-            risk_percent=risk_percent,
-            pair_type=pair_type,
-            lot_size=lot_size,
-            jpy_rate=jpy_rate,
-            pip_value=pip_value
-        )
-        
-        # Convert bt_size to lots
-        # bt_size is in units, lots = bt_size / lot_size
-        calculated_lots = bt_size / lot_size
-        
-        # Get symbol constraints
+        # Get symbol info from broker (critical for correct calculation)
         symbol_info = self.connector.get_symbol_info(symbol)
-        if symbol_info:
-            min_lot = symbol_info['volume_min']
-            max_lot = symbol_info['volume_max']
-            lot_step = symbol_info['volume_step']
-            
-            # Round to lot step
-            calculated_lots = round(calculated_lots / lot_step) * lot_step
-            
-            # Clamp to limits
-            calculated_lots = max(min_lot, min(calculated_lots, max_lot))
-        else:
-            # Default constraints
-            calculated_lots = max(0.01, min(calculated_lots, 10.0))
-            calculated_lots = round(calculated_lots, 2)
+        if symbol_info is None:
+            self.logger.error(f"Cannot get symbol info for {symbol}, using minimum")
+            return 0.01
         
-        self.logger.debug(
-            f"Position size: equity=${equity:.2f}, risk={risk_percent*100}%, "
-            f"lots={calculated_lots:.2f}"
+        # Extract broker-specific values
+        point = symbol_info['point']  # Minimum price unit (e.g., 0.00001 for EURUSD, 0.001 for USDJPY)
+        tick_size = symbol_info['tick_size']  # Minimum price change (usually == point)
+        tick_value = symbol_info['tick_value']  # Value per tick in account currency
+        min_lot = symbol_info['volume_min']
+        max_lot = symbol_info['volume_max']
+        lot_step = symbol_info['volume_step']
+        
+        # Calculate risk amount
+        risk_amount = equity * risk_percent
+        
+        # Calculate SL distance in price
+        sl_distance = abs(entry_price - stop_loss)
+        
+        if sl_distance <= 0:
+            self.logger.error(f"Invalid SL distance: {sl_distance}")
+            return min_lot
+        
+        # Calculate value per point from broker data
+        # tick_value = value change per tick in account currency
+        # point / tick_size handles cases where they differ
+        if tick_size > 0 and point > 0:
+            value_per_point = tick_value * (point / tick_size)
+        else:
+            self.logger.warning(f"Invalid tick data for {symbol}, tick_size={tick_size}, point={point}")
+            value_per_point = tick_value if tick_value > 0 else 1.0
+        
+        # Calculate SL distance in points
+        sl_distance_in_points = sl_distance / point
+        
+        # Calculate lot size using broker-specific formula
+        # Formula: lot_size = risk_amount / (sl_distance_in_points x value_per_point)
+        if value_per_point > 0 and sl_distance_in_points > 0:
+            calculated_lots = risk_amount / (sl_distance_in_points * value_per_point)
+        else:
+            self.logger.error(
+                f"Invalid calculation: value_per_point={value_per_point}, "
+                f"sl_points={sl_distance_in_points}"
+            )
+            return min_lot
+        
+        # Round to lot step
+        calculated_lots = round(calculated_lots / lot_step) * lot_step
+        
+        # Clamp to broker limits
+        calculated_lots = max(min_lot, min(calculated_lots, max_lot))
+        
+        # Log detailed position sizing info
+        self.logger.info(
+            f"=== POSITION SIZING for {symbol} ===\n"
+            f"   Equity: ${equity:,.2f}\n"
+            f"   Risk: {risk_percent*100:.1f}% = ${risk_amount:.2f}\n"
+            f"   Entry: {entry_price:.5f}, SL: {stop_loss:.5f}\n"
+            f"   SL Distance: {sl_distance:.5f} = {sl_distance_in_points:.1f} points\n"
+            f"   Broker Values: point={point}, tick_value=${tick_value:.4f}\n"
+            f"   Value per Point: ${value_per_point:.5f}\n"
+            f"   Lot Calculation: ${risk_amount:.2f} / ({sl_distance_in_points:.1f} x ${value_per_point:.5f})\n"
+            f"   Result: {calculated_lots:.2f} lots"
         )
+        
+        # Risk verification
+        actual_risk = calculated_lots * sl_distance_in_points * value_per_point
+        if abs(actual_risk - risk_amount) > risk_amount * 0.05:  # > 5% difference
+            self.logger.warning(
+                f"Risk mismatch! Expected ${risk_amount:.2f}, actual ${actual_risk:.2f}"
+            )
         
         return calculated_lots
     
