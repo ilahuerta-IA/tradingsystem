@@ -957,6 +957,83 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
+
+    # =========================================================================
+    # SEDNA STRATEGY CONFIGURATIONS
+    # =========================================================================
+    
+    'DIA_SEDNA': {
+        'active': True,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'DIA',
+        'data_path': 'data/DIA_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings (replaces 5 EMAs)
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            
+            # HL2 EMA for KAMA comparison (period=1 = raw HL2)
+            'hl2_ema_period': 1,
+            
+            # CCI settings (on HL2)
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 10,
+            'atr_sl_multiplier': 2.0,
+            'atr_tp_multiplier': 10.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 3,
+            'breakout_level_offset_pips': 2.0,
+            
+            # === FILTERS ===
+            
+            # Time Filter
+            'use_time_filter': False,
+            'allowed_hours': [14, 15, 16, 17, 18, 19],
+            
+            # SL Pips Filter
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 60,
+            'sl_pips_max': 75,
+            
+            # ATR Filter (uses average ATR)
+            'use_atr_filter': True,
+            'atr_min': 0.00,
+            'atr_max': 0.80,
+            'atr_avg_period': 20,
+            
+            # ETF Asset config
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+            
+            # Risk
+            'risk_percent': 0.005,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
 }
 
 # Broker settings for commission calculation

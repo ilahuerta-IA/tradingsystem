@@ -12,6 +12,7 @@ import backtrader as bt
 from config.settings import STRATEGIES_CONFIG, BROKER_CONFIG
 from strategies.sunset_ogle import SunsetOgleStrategy
 from strategies.koi_strategy import KOIStrategy
+from strategies.sedna_strategy import SEDNAStrategy
 from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
@@ -22,6 +23,7 @@ ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM']
 STRATEGY_REGISTRY = {
     'SunsetOgle': SunsetOgleStrategy,
     'KOI': KOIStrategy,
+    'SEDNA': SEDNAStrategy,
 }
 
 
