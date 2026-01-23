@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.settings import STRATEGIES_CONFIG
+from . import __version__
 from .bot_settings import (
     ENABLED_CONFIGS,
     STRATEGY_TYPES,
@@ -480,6 +481,7 @@ class MultiStrategyMonitor:
         )
         
         self._log_event("SIGNAL", {
+            "version": __version__,
             "config": config_name,
             "symbol": symbol,
             "strategy": checker.strategy_name,
@@ -524,6 +526,7 @@ class MultiStrategyMonitor:
             )
             
             self._log_event("TRADE", {
+                "version": __version__,
                 "config": config_name,
                 "symbol": symbol,
                 "strategy": checker.strategy_name,
@@ -550,7 +553,7 @@ class MultiStrategyMonitor:
             True if started successfully
         """
         self.logger.info("=" * 60)
-        self.logger.info("Starting Multi-Strategy Trading Monitor")
+        self.logger.info(f"Starting Multi-Strategy Trading Monitor v{__version__}")
         self.logger.info(f"Demo Only: {self.demo_only}")
         self.logger.info("=" * 60)
         
@@ -566,6 +569,7 @@ class MultiStrategyMonitor:
                 
                 # Log start event
                 self._log_event("MONITOR_START", {
+                    "version": __version__,
                     "demo_only": self.demo_only,
                     "account": self.connector.account.login if self.connector.account else None,
                     "enabled_configs": enabled,

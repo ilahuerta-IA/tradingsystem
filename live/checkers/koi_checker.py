@@ -16,7 +16,7 @@ from enum import Enum
 import pandas as pd
 
 from .base_checker import BaseChecker, Signal, SignalDirection
-from lib.filters import check_time_filter, check_sl_pips_filter
+from lib.filters import check_time_filter, check_sl_pips_filter, check_atr_filter
 from live.timezone import broker_to_utc
 
 
@@ -280,6 +280,17 @@ class KOIChecker(BaseChecker):
             
             else:
                 # Immediate entry (no breakout confirmation)
+                
+                # ATR Filter (matching backtest _execute_entry behavior)
+                use_atr_filter = self.params.get("use_atr_filter", False)
+                atr_min = self.params.get("atr_min", 0)
+                atr_max = self.params.get("atr_max", 999)
+                
+                if not check_atr_filter(current_atr, atr_min, atr_max, use_atr_filter):
+                    reason = f"ATR filter: {current_atr:.6f} not in [{atr_min}-{atr_max}]"
+                    self.logger.info(f"[{self.config_name}] {reason} - Signal rejected")
+                    return self._create_no_signal(reason)
+                
                 entry_price = current_close
                 stop_loss = entry_price - (current_atr * self.params.get("atr_sl_multiplier", 2.0))
                 take_profit = entry_price + (current_atr * self.params.get("atr_tp_multiplier", 6.0))
@@ -332,6 +343,17 @@ class KOIChecker(BaseChecker):
                 # Breakout confirmed - generate signal
                 entry_price = self.breakout_level
                 atr_for_sl = self.pattern_atr if self.pattern_atr else current_atr
+                
+                # ATR Filter (matching backtest _execute_entry behavior)
+                use_atr_filter = self.params.get("use_atr_filter", False)
+                atr_min = self.params.get("atr_min", 0)
+                atr_max = self.params.get("atr_max", 999)
+                
+                if not check_atr_filter(atr_for_sl, atr_min, atr_max, use_atr_filter):
+                    reason = f"ATR filter: {atr_for_sl:.6f} not in [{atr_min}-{atr_max}]"
+                    self.logger.info(f"[{self.config_name}] {reason} - Signal rejected")
+                    self.reset_state()
+                    return self._create_no_signal(reason)
                 
                 stop_loss = entry_price - (atr_for_sl * self.params.get("atr_sl_multiplier", 2.0))
                 take_profit = entry_price + (atr_for_sl * self.params.get("atr_tp_multiplier", 6.0))
