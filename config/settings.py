@@ -1026,6 +1026,12 @@ STRATEGIES_CONFIG = {
             'htf_er_period': 10,  # Efficiency Ratio period on HTF
             'htf_er_threshold': 0.40,  # Min ER to allow entry (0.0-1.0)
             
+            # === PULLBACK DETECTION ===
+            # Detects consolidation after HH for trend continuation
+            'use_pullback_filter': True,
+            'pullback_min_bars': 2,  # Min bars without new HH
+            'pullback_max_bars': 5,  # Max bars to wait (timeout)
+            
             # === EXIT CONDITIONS ===
             
             # KAMA Exit: Close when KAMA > EMA (trend reversal)

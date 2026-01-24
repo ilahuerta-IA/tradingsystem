@@ -1,17 +1,17 @@
 """
-SEDNA Strategy - HTF Trend + KAMA + CCI (optional) + Breakout Window
+SEDNA Strategy - HTF Trend + Pullback + Breakout
 
 Based on KOI with these key differences:
 1. KAMA on HL2 instead of 5 EMAs ascending
-2. CCI calculated on HL2 (with flag to disable completely)
+2. CCI calculated on HL2 (optional, can be disabled)
 3. ATR filter uses average ATR over N periods
 4. HTF filter as main trigger (replaces Bullish Engulfing)
+5. Pullback detection for trend continuation entries
 
-ENTRY SYSTEM (4 PHASES):
+ENTRY SYSTEM (3 PHASES):
 1. HTF TREND: ER >= threshold AND Close > KAMA (15m equiv)
-2. TREND: EMA(HL2) > KAMA(HL2) - configurable EMA period (default 1 = raw HL2)
-3. MOMENTUM: CCI(HL2) > threshold (optional, can be disabled)
-4. BREAKOUT: Price breaks pattern HIGH + offset within N candles
+2. PULLBACK: N bars without new HH, price respects KAMA
+3. BREAKOUT: High > pullback HH + offset within N candles
 
 EXIT SYSTEM:
 - Stop Loss: Entry - (ATR x SL multiplier)
@@ -31,6 +31,8 @@ from lib.filters import (
     check_atr_filter,
     check_sl_pips_filter,
     check_efficiency_ratio_filter,
+    detect_pullback,
+    check_pullback_breakout,
 )
 from lib.indicators import EfficiencyRatio
 from lib.position_sizing import calculate_position_size
@@ -175,6 +177,12 @@ class SEDNAStrategy(bt.Strategy):
         htf_er_period=10,  # ER period on HTF equivalent
         htf_er_threshold=0.35,  # Min ER to allow entry
         
+        # === PULLBACK DETECTION ===
+        # Detects consolidation after HH for trend continuation
+        use_pullback_filter=False,
+        pullback_min_bars=2,  # Min bars without new HH
+        pullback_max_bars=5,  # Max bars to wait (timeout)
+        
         # === EXIT CONDITIONS ===
         
         # KAMA Exit: Close position when KAMA > EMA (trend reversal)
@@ -264,6 +272,15 @@ class SEDNAStrategy(bt.Strategy):
         
         # ATR history for averaging
         self.atr_history = []
+        
+        # Price history for pullback detection (reusable standard approach)
+        self.price_history = {
+            'highs': [],
+            'lows': [],
+            'closes': [],
+            'kama': []
+        }
+        self.pullback_data = None  # Stores detected pullback info
         
         # Stats
         self.trades = 0
@@ -535,24 +552,62 @@ class SEDNAStrategy(bt.Strategy):
         except:
             return True  # On error, allow entry
 
+    def _check_pullback_condition(self) -> bool:
+        """
+        Check pullback condition using standard reusable filter.
+        
+        Pullback = N bars without new HH, price respects KAMA.
+        Stores pullback data for breakout detection.
+        """
+        if not self.p.use_pullback_filter:
+            return True
+        
+        # Need enough price history
+        required_len = self.p.pullback_max_bars + 2
+        if len(self.price_history['highs']) < required_len:
+            return False
+        
+        # Use standard pullback detection function
+        result = detect_pullback(
+            highs=self.price_history['highs'],
+            lows=self.price_history['lows'],
+            closes=self.price_history['closes'],
+            kama_values=self.price_history['kama'],
+            min_bars=self.p.pullback_min_bars,
+            max_bars=self.p.pullback_max_bars,
+            enabled=True
+        )
+        
+        if result['valid']:
+            self.pullback_data = result
+            return True
+        
+        return False
+
     def _check_entry_conditions(self, dt: datetime) -> bool:
-        """Check all entry conditions."""
+        """
+        Check all entry conditions (3-phase system).
+        
+        1. HTF TREND: ER >= threshold AND Close > KAMA
+        2. PULLBACK: N bars without new HH, respects KAMA
+        3. BREAKOUT: Handled in state machine (High > pullback HH + buffer)
+        """
         if self.position or self.order:
             return False
         
         if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
             return False
         
-        # HTF filter - MAIN TRIGGER (ER >= threshold AND Close > KAMA)
-        # Replaces Bullish Engulfing pattern
+        # Phase 1: HTF filter (ER >= threshold AND Close > KAMA)
         if not self._check_htf_filter():
             return False
         
-        # KAMA condition (HL2 > KAMA for additional confirmation)
-        if not self._check_kama_condition():
+        # Phase 2: Pullback detection (N bars without new HH, respects KAMA)
+        if not self._check_pullback_condition():
             return False
         
-        # CCI condition (optional)
+        # Phase 3: Breakout handled in state machine
+        # CCI condition (optional, legacy support)
         if not self._check_cci_condition():
             return False
         
@@ -569,6 +624,34 @@ class SEDNAStrategy(bt.Strategy):
         self.breakout_level = None
         self.pattern_atr = None
         self.pattern_cci = None
+        self.pullback_data = None
+
+    def _update_price_history(self):
+        """
+        Update price history for pullback detection.
+        
+        Maintains rolling window of prices for reusable pullback filter.
+        """
+        try:
+            # Get current bar values
+            current_high = float(self.data.high[0])
+            current_low = float(self.data.low[0])
+            current_close = float(self.data.close[0])
+            current_kama = float(self.kama[0])
+            
+            # Append to history
+            self.price_history['highs'].append(current_high)
+            self.price_history['lows'].append(current_low)
+            self.price_history['closes'].append(current_close)
+            self.price_history['kama'].append(current_kama)
+            
+            # Keep only what we need (max_bars + 5 buffer)
+            max_len = self.p.pullback_max_bars + 10
+            for key in self.price_history:
+                if len(self.price_history[key]) > max_len:
+                    self.price_history[key] = self.price_history[key][-max_len:]
+        except:
+            pass  # Skip on error (warmup period)
 
     # =========================================================================
     # EXIT EXECUTION
@@ -666,6 +749,9 @@ class SEDNAStrategy(bt.Strategy):
         if current_atr > 0:
             self.atr_history.append(current_atr)
         
+        # Update price history for pullback detection (standard reusable approach)
+        self._update_price_history()
+        
         dt = self._get_datetime()
         current_bar = len(self)
         
@@ -701,7 +787,13 @@ class SEDNAStrategy(bt.Strategy):
                     
                     self.pattern_detected_bar = current_bar
                     offset = self.p.breakout_level_offset_pips * self.p.pip_value
-                    self.breakout_level = float(self.data.high[0]) + offset
+                    
+                    # Use pullback breakout level if available, else current high
+                    if self.pullback_data and self.pullback_data.get('breakout_level'):
+                        self.breakout_level = self.pullback_data['breakout_level'] + offset
+                    else:
+                        self.breakout_level = float(self.data.high[0]) + offset
+                    
                     self.pattern_atr = atr_avg  # Use average ATR
                     self.pattern_cci = cci_now
                     self.state = "WAITING_BREAKOUT"
@@ -714,7 +806,9 @@ class SEDNAStrategy(bt.Strategy):
                     self._reset_breakout_state()
                     return
                 
-                if float(self.data.high[0]) > self.breakout_level:
+                # Check breakout using standard function
+                current_high = float(self.data.high[0])
+                if check_pullback_breakout(current_high, self.breakout_level, buffer_pips=0, pip_value=self.p.pip_value):
                     self._execute_entry(dt, self.pattern_atr, self.pattern_cci)
                     self._reset_breakout_state()
                     return

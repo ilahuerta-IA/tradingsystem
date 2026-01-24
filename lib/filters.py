@@ -190,6 +190,137 @@ def calculate_efficiency_ratio(prices: list, period: int = 10) -> float:
 
 
 # =============================================================================
+# PULLBACK DETECTION (Reusable for any strategy)
+# =============================================================================
+
+def detect_pullback(
+    highs: list,
+    lows: list,
+    closes: list,
+    kama_values: list,
+    min_bars: int = 2,
+    max_bars: int = 5,
+    enabled: bool = True
+) -> dict:
+    """
+    Detect pullback pattern for trend continuation entries.
+    
+    Pullback definition:
+    1. Price made a Higher High (HH) in lookback period
+    2. N consecutive bars without new HH (consolidation)
+    3. Price respects support level (stays above KAMA)
+    
+    This is a REUSABLE function for any strategy needing pullback detection.
+    
+    Args:
+        highs: List of high prices (most recent last), needs max_bars + 2 values
+        lows: List of low prices (most recent last)
+        closes: List of close prices (most recent last)
+        kama_values: List of KAMA/MA values (most recent last)
+        min_bars: Minimum bars without new HH to confirm pullback
+        max_bars: Maximum bars to wait (timeout if exceeded)
+        enabled: If False, returns invalid pullback
+    
+    Returns:
+        dict with:
+            'valid': bool - True if pullback detected
+            'bars_since_hh': int - Bars since last HH
+            'hh_price': float - The Higher High price
+            'pullback_low': float - Lowest low during pullback
+            'breakout_level': float - HH price (for breakout detection)
+            'respects_support': bool - Price stayed above KAMA
+    
+    Example:
+        result = detect_pullback(highs, lows, closes, kama_values, min_bars=2, max_bars=5)
+        if result['valid']:
+            breakout_level = result['breakout_level']
+    """
+    if not enabled:
+        return {'valid': False, 'bars_since_hh': 0, 'hh_price': 0, 
+                'pullback_low': 0, 'breakout_level': 0, 'respects_support': False}
+    
+    # Need enough data
+    required_len = max_bars + 2
+    if len(highs) < required_len or len(lows) < required_len:
+        return {'valid': False, 'bars_since_hh': 0, 'hh_price': 0,
+                'pullback_low': 0, 'breakout_level': 0, 'respects_support': False}
+    
+    # Find the Higher High in lookback
+    # We look back max_bars+1 to find the HH, then count bars since
+    lookback_highs = highs[-(max_bars + 2):-1]  # Exclude current bar
+    hh_price = max(lookback_highs)
+    hh_index = len(lookback_highs) - 1 - lookback_highs[::-1].index(hh_price)
+    
+    # Bars since HH (how many bars ago was the HH?)
+    bars_since_hh = len(lookback_highs) - 1 - hh_index
+    
+    # Current bar high
+    current_high = highs[-1]
+    
+    # If current bar makes new HH, no pullback yet
+    if current_high >= hh_price:
+        return {'valid': False, 'bars_since_hh': 0, 'hh_price': hh_price,
+                'pullback_low': 0, 'breakout_level': 0, 'respects_support': False}
+    
+    # Check if we have min_bars without new HH
+    if bars_since_hh < min_bars:
+        return {'valid': False, 'bars_since_hh': bars_since_hh, 'hh_price': hh_price,
+                'pullback_low': 0, 'breakout_level': 0, 'respects_support': False}
+    
+    # Check if exceeded max_bars (timeout)
+    if bars_since_hh > max_bars:
+        return {'valid': False, 'bars_since_hh': bars_since_hh, 'hh_price': hh_price,
+                'pullback_low': 0, 'breakout_level': 0, 'respects_support': False}
+    
+    # Calculate pullback low (lowest low since HH)
+    pullback_lows = lows[-(bars_since_hh + 1):]
+    pullback_low = min(pullback_lows)
+    
+    # Check if price respects KAMA (all closes above KAMA during pullback)
+    pullback_closes = closes[-(bars_since_hh + 1):]
+    pullback_kamas = kama_values[-(bars_since_hh + 1):]
+    respects_support = all(c > k for c, k in zip(pullback_closes, pullback_kamas))
+    
+    # Valid pullback: min_bars <= bars_since_hh <= max_bars AND respects support
+    valid = respects_support
+    
+    return {
+        'valid': valid,
+        'bars_since_hh': bars_since_hh,
+        'hh_price': hh_price,
+        'pullback_low': pullback_low,
+        'breakout_level': hh_price,  # Breakout = break above HH
+        'respects_support': respects_support
+    }
+
+
+def check_pullback_breakout(
+    current_high: float,
+    breakout_level: float,
+    buffer_pips: float = 0.0,
+    pip_value: float = 0.01
+) -> bool:
+    """
+    Check if price breaks above pullback high (breakout confirmation).
+    
+    Args:
+        current_high: Current bar high price
+        breakout_level: The HH price to break
+        buffer_pips: Additional buffer in pips above breakout level
+        pip_value: Value of 1 pip for this asset
+    
+    Returns:
+        True if high > breakout_level + buffer
+    
+    Example:
+        if check_pullback_breakout(150.25, 150.10, buffer_pips=5, pip_value=0.01):
+            # Breakout confirmed, enter trade
+    """
+    buffer = buffer_pips * pip_value
+    return current_high > (breakout_level + buffer)
+
+
+# =============================================================================
 # EMA PRICE FILTERS
 # =============================================================================
 
