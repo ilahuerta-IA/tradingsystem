@@ -133,6 +133,11 @@ class SEDNAStrategy(bt.Strategy):
         atr_max=1.0,
         atr_avg_period=20,  # Period for ATR averaging
         
+        # === EXIT CONDITIONS ===
+        
+        # KAMA Exit: Close position when KAMA > EMA (trend reversal)
+        use_kama_exit=False,
+        
         # === ASSET CONFIG ===
         pip_value=0.01,
         is_jpy_pair=False,
@@ -381,6 +386,21 @@ class SEDNAStrategy(bt.Strategy):
         except:
             return False
 
+    def _check_kama_exit_condition(self) -> bool:
+        """
+        Check if KAMA > EMA (trend reversal = exit signal).
+        
+        This is the INVERSE of entry condition:
+        - Entry: EMA > KAMA (bullish)
+        - Exit: KAMA > EMA (bearish / trend lost)
+        """
+        try:
+            hl2_ema_value = float(self.hl2_ema[0])
+            kama_value = float(self.kama[0])
+            return kama_value > hl2_ema_value
+        except:
+            return False
+
     def _check_cci_condition(self) -> bool:
         """Check if CCI(HL2) > threshold and < max_threshold."""
         if not self.p.use_cci_filter:
@@ -428,6 +448,37 @@ class SEDNAStrategy(bt.Strategy):
         self.breakout_level = None
         self.pattern_atr = None
         self.pattern_cci = None
+
+    # =========================================================================
+    # EXIT EXECUTION
+    # =========================================================================
+    
+    def _execute_kama_exit(self, dt: datetime):
+        """
+        Execute exit when KAMA crosses above EMA (trend reversal).
+        
+        Steps:
+        1. Cancel pending SL/TP orders (OCA)
+        2. Close position at market
+        3. Set exit reason for tracking
+        """
+        # Cancel pending OCA orders
+        if self.stop_order:
+            self.cancel(self.stop_order)
+        if self.limit_order:
+            self.cancel(self.limit_order)
+        
+        # Set exit reason BEFORE closing (for notify_trade)
+        self.last_exit_reason = "KAMA_REVERSAL"
+        
+        # Close position at market
+        self.close()
+        
+        if self.p.print_signals:
+            kama_val = float(self.kama[0])
+            ema_val = float(self.hl2_ema[0])
+            print(f">>> SEDNA KAMA EXIT {dt:%Y-%m-%d %H:%M} "
+                  f"KAMA={kama_val:.5f} > EMA={ema_val:.5f}")
 
     # =========================================================================
     # ENTRY EXECUTION
@@ -503,6 +554,10 @@ class SEDNAStrategy(bt.Strategy):
         if self.position:
             if self.state != "SCANNING":
                 self._reset_breakout_state()
+            
+            # Check KAMA exit condition (if enabled)
+            if self.p.use_kama_exit and self._check_kama_exit_condition():
+                self._execute_kama_exit(dt)
             return
         
         # Get average ATR for this bar
@@ -574,14 +629,19 @@ class SEDNAStrategy(bt.Strategy):
                 
                 self.order = None
 
-            else:  # Exit order (SL/TP)
+            else:  # Exit order (SL/TP or KAMA exit)
                 exit_reason = "UNKNOWN"
                 if order.exectype == bt.Order.Stop:
                     exit_reason = "STOP_LOSS"
                 elif order.exectype == bt.Order.Limit:
                     exit_reason = "TAKE_PROFIT"
+                elif order.exectype == bt.Order.Market:
+                    # Market order from self.close() = KAMA exit
+                    exit_reason = self.last_exit_reason or "KAMA_REVERSAL"
                 
-                self.last_exit_reason = exit_reason
+                # Only update if not already set by _execute_kama_exit
+                if self.last_exit_reason is None:
+                    self.last_exit_reason = exit_reason
                 
                 if self.p.print_signals:
                     print(f"[EXIT] at {order.executed.price:.5f} reason={exit_reason}")

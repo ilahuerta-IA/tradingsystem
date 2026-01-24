@@ -243,7 +243,7 @@ def _check_cci_condition(self) -> bool:
 
 ## Exit Logic
 
-### Stop Loss and Take Profit (OCA Orders)
+### 1. Stop Loss and Take Profit (OCA Orders)
 
 ```python
 # On entry execution:
@@ -260,6 +260,38 @@ limit_order = self.sell(
 ```
 
 **OCA (One-Cancels-All):** When one order executes, the other is automatically cancelled.
+
+### 2. KAMA Reversal Exit (Optional)
+
+When `use_kama_exit=True`, the strategy can exit early if the trend reverses:
+
+```python
+def _check_kama_exit_condition(self) -> bool:
+    # KAMA > EMA = trend reversed = exit signal
+    # This is the INVERSE of entry condition
+    return KAMA(HL2) > EMA(HL2)
+```
+
+**Exit Flow:**
+```
+Position Open + use_kama_exit=True
+    |
+    v
+next() at candle close
+    |
+    +-- KAMA > EMA? (trend lost)
+            |
+            +-- YES: Cancel SL/TP orders
+            |        Close position at market
+            |        exit_reason = "KAMA_REVERSAL"
+            |
+            +-- NO: Continue waiting for SL/TP
+```
+
+**Key Points:**
+- Evaluated at candle close (values are final)
+- Cancels pending OCA orders before closing
+- Tracks exit reason for reporting
 
 ### Level Calculation
 
@@ -333,6 +365,12 @@ bt_size = calculate_position_size(
 | `breakout_window_candles` | 3 | Max candles to wait for breakout |
 | `breakout_level_offset_pips` | 5.0 | Offset above pattern High |
 
+### Exit Conditions
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `use_kama_exit` | False | Enable KAMA reversal exit |
+
 ---
 
 ## Current Configuration (DIA)
@@ -390,6 +428,7 @@ bt_size = calculate_position_size(
 | **CCI** | ❌ Disabled |
 | **Breakout Window** | ✅ 3 candles, +2 pips offset |
 | **ATR Filter** | ✅ Avg 20 periods, max 0.80 |
+| **KAMA Exit** | ❌ Disabled (for A/B testing) |
 | **Time Filter** | ❌ Disabled |
 | **SL Pips Filter** | ❌ Disabled |
 | **Risk per Trade** | 0.5% |
@@ -410,12 +449,18 @@ SEDNA generates automatic reports with the following metrics:
 - **Calmar Ratio**: CAGR / Max Drawdown
 - **Yearly Statistics**: Breakdown by year
 
+**Exit Reasons Tracked:**
+- `STOP_LOSS` - Hit stop loss level
+- `TAKE_PROFIT` - Hit take profit level
+- `KAMA_REVERSAL` - KAMA crossed above EMA (if enabled)
+
 ---
 
 ## Changelog
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-01-24 | 1.1 | Add KAMA reversal exit condition (use_kama_exit) |
 | 2026-01-24 | 1.0 | Initial version derived from KOI |
 
 ---

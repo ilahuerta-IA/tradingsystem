@@ -1019,6 +1019,11 @@ STRATEGIES_CONFIG = {
             'atr_max': 0.80,
             'atr_avg_period': 20,
             
+            # === EXIT CONDITIONS ===
+            
+            # KAMA Exit: Close when KAMA > EMA (trend reversal)
+            'use_kama_exit': False,  # Disabled for A/B testing
+            
             # ETF Asset config
             'pip_value': 0.01,
             'lot_size': 1,
