@@ -178,6 +178,9 @@ class SunsetOgleChecker(BaseChecker):
         else:
             current_dt = now
         
+        # Convert to UTC for logging
+        current_dt_utc = broker_to_utc(current_dt)
+        
         # ========================================
         # STATE MACHINE
         # ========================================
@@ -212,7 +215,7 @@ class SunsetOgleChecker(BaseChecker):
             
             self._log_state_transition(
                 "SCANNING", "ARMED_LONG",
-                f"ATR: {current_atr:.6f}, Angle: {current_angle:.1f}"
+                f"Broker: {current_dt:%H:%M}, UTC: {current_dt_utc:%H:%M} | ATR: {current_atr:.6f}, Angle: {current_angle:.1f}"
             )
             
             return self._create_no_signal("Armed - waiting for pullback")
@@ -238,7 +241,7 @@ class SunsetOgleChecker(BaseChecker):
                     
                     self._log_state_transition(
                         "ARMED_LONG", "WINDOW_OPEN",
-                        f"Pullbacks: {self.pullback_count}, Breakout: {self.window_top:.5f}"
+                        f"Broker: {current_dt:%H:%M}, UTC: {current_dt_utc:%H:%M} | Pullbacks: {self.pullback_count}, Breakout: {self.window_top:.5f}"
                     )
                 
                 return self._create_no_signal(f"Pullback {self.pullback_count}/{self.params['pullback_candles']}")
@@ -267,7 +270,6 @@ class SunsetOgleChecker(BaseChecker):
                 # Time filter
                 if self.params.get("use_time_filter", False):
                     allowed_hours = self.params.get("allowed_hours", [])
-                    current_dt_utc = broker_to_utc(current_dt)
                     if not check_time_filter(current_dt_utc, allowed_hours, True):
                         reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
                         self.logger.info(f"[{self.config_name}] {reason}")
@@ -284,6 +286,7 @@ class SunsetOgleChecker(BaseChecker):
                 
                 self.logger.info(
                     f"[{self.config_name}] SIGNAL LONG | "
+                    f"Broker: {current_dt:%H:%M}, UTC: {current_dt_utc:%H:%M} | "
                     f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
                     f"ATR: {current_atr:.5f}, SL_pips: {sl_pips:.1f}"
                 )

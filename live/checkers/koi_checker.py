@@ -225,13 +225,15 @@ class KOIChecker(BaseChecker):
         # STATE MACHINE
         # ========================================
         
+        # Convert to UTC for time filter and logging
+        current_dt_utc = broker_to_utc(current_dt)
+        
         # --- SCANNING STATE ---
         if self.state == KOIState.SCANNING:
             
             # Time filter (optional)
             if self.params.get("use_time_filter", False):
                 allowed_hours = self.params.get("allowed_hours", [])
-                current_dt_utc = broker_to_utc(current_dt)
                 if not check_time_filter(current_dt_utc, allowed_hours, True):
                     reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
                     self._log_signal_check(reason)
@@ -273,7 +275,7 @@ class KOIChecker(BaseChecker):
                 
                 self._log_state_transition(
                     "SCANNING", "WAITING_BREAKOUT",
-                    f"Pattern high: {current_high:.5f}, Breakout: {self.breakout_level:.5f}, CCI: {current_cci:.1f}, ATR: {current_atr:.5f}"
+                    f"Broker: {current_dt:%H:%M}, UTC: {current_dt_utc:%H:%M} | Pattern high: {current_high:.5f}, Breakout: {self.breakout_level:.5f}, CCI: {current_cci:.1f}, ATR: {current_atr:.5f}"
                 )
                 
                 return self._create_no_signal("Waiting for breakout confirmation")
@@ -310,6 +312,7 @@ class KOIChecker(BaseChecker):
                 
                 self.logger.info(
                     f"[{self.config_name}] SIGNAL LONG (immediate) | "
+                    f"Broker: {current_dt:%H:%M}, UTC: {current_dt_utc:%H:%M} | "
                     f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
                     f"CCI: {current_cci:.1f}, SL pips: {sl_pips:.1f}"
                 )
@@ -374,6 +377,7 @@ class KOIChecker(BaseChecker):
                 
                 self.logger.info(
                     f"[{self.config_name}] SIGNAL LONG (breakout) | "
+                    f"Broker: {current_dt:%H:%M}, UTC: {current_dt_utc:%H:%M} | "
                     f"Entry: {entry_price:.5f}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}, "
                     f"Bars waited: {bars_since}, SL pips: {sl_pips:.1f}"
                 )
