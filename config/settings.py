@@ -968,8 +968,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
@@ -994,7 +994,7 @@ STRATEGIES_CONFIG = {
             
             # ATR
             'atr_length': 10,
-            'atr_sl_multiplier': 2.0,
+            'atr_sl_multiplier': 3.0,
             'atr_tp_multiplier': 10.0,
             
             # Breakout Window
@@ -1014,17 +1014,17 @@ STRATEGIES_CONFIG = {
             'sl_pips_max': 75,
             
             # ATR Filter (uses average ATR)
-            'use_atr_filter': True,
+            'use_atr_filter': False,
             'atr_min': 0.00,
             'atr_max': 0.80,
             'atr_avg_period': 20,
             
             # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
             # Filters entries when market is choppy on higher timeframe
-            'use_htf_filter': False,  # Set True to enable HTF filter
+            'use_htf_filter': True,  # Set True to enable HTF filter
             'htf_timeframe_minutes': 15,  # Resample to this timeframe (15, 30, 60)
             'htf_er_period': 10,  # Efficiency Ratio period on HTF
-            'htf_er_threshold': 0.35,  # Min ER to allow entry (0.0-1.0)
+            'htf_er_threshold': 0.40,  # Min ER to allow entry (0.0-1.0)
             
             # === EXIT CONDITIONS ===
             

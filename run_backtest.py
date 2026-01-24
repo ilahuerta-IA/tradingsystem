@@ -4,10 +4,14 @@ Orchestrates data loading, strategy initialization, and result reporting.
 Replicates exactly the behavior of sunrise_ogle_eurjpy_pro.py
 """
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
 
 import backtrader as bt
+
+# Suppress matplotlib AutoDateLocator warning (cosmetic, large date ranges)
+warnings.filterwarnings('ignore', message='AutoDateLocator was unable to pick')
 
 from config.settings import STRATEGIES_CONFIG, BROKER_CONFIG
 from strategies.sunset_ogle import SunsetOgleStrategy

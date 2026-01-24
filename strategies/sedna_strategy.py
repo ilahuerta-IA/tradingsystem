@@ -1,13 +1,14 @@
 """
-SEDNA Strategy - Bullish Engulfing + KAMA + CCI (optional) + Breakout Window
+SEDNA Strategy - HTF Trend + KAMA + CCI (optional) + Breakout Window
 
 Based on KOI with these key differences:
 1. KAMA on HL2 instead of 5 EMAs ascending
 2. CCI calculated on HL2 (with flag to disable completely)
 3. ATR filter uses average ATR over N periods
+4. HTF filter as main trigger (replaces Bullish Engulfing)
 
 ENTRY SYSTEM (4 PHASES):
-1. PATTERN: Bullish engulfing candle detected
+1. HTF TREND: ER >= threshold AND Close > KAMA (15m equiv)
 2. TREND: EMA(HL2) > KAMA(HL2) - configurable EMA period (default 1 = raw HL2)
 3. MOMENTUM: CCI(HL2) > threshold (optional, can be disabled)
 4. BREAKOUT: Price breaks pattern HIGH + offset within N candles
@@ -502,22 +503,35 @@ class SEDNAStrategy(bt.Strategy):
 
     def _check_htf_filter(self) -> bool:
         """
-        Check Higher Timeframe Efficiency Ratio filter.
+        Check Higher Timeframe trend filter (MAIN TRIGGER).
         
-        Filters entries when market is too choppy on HTF.
-        ER >= threshold = trending market, allow entry.
-        ER < threshold = choppy market, block entry.
+        Two conditions required:
+        1. ER >= threshold (market is trending, not choppy)
+        2. Close > KAMA (bullish direction)
+        
+        This replaces Bullish Engulfing as the entry trigger.
         """
-        if not self.p.use_htf_filter or self.htf_er is None:
+        if not self.p.use_htf_filter:
             return True
         
         try:
-            er_value = float(self.htf_er[0])
-            return check_efficiency_ratio_filter(
-                er_value=er_value,
-                threshold=self.p.htf_er_threshold,
-                enabled=True
-            )
+            # Condition 1: ER >= threshold (trending market)
+            if self.htf_er is not None:
+                er_value = float(self.htf_er[0])
+                if not check_efficiency_ratio_filter(
+                    er_value=er_value,
+                    threshold=self.p.htf_er_threshold,
+                    enabled=True
+                ):
+                    return False
+            
+            # Condition 2: Close > KAMA (bullish direction)
+            close_price = float(self.data.close[0])
+            kama_value = float(self.kama[0])
+            if close_price <= kama_value:
+                return False
+            
+            return True
         except:
             return True  # On error, allow entry
 
@@ -529,14 +543,12 @@ class SEDNAStrategy(bt.Strategy):
         if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
             return False
         
-        # HTF filter (Efficiency Ratio on higher timeframe)
+        # HTF filter - MAIN TRIGGER (ER >= threshold AND Close > KAMA)
+        # Replaces Bullish Engulfing pattern
         if not self._check_htf_filter():
             return False
         
-        if not self._check_bullish_engulfing():
-            return False
-        
-        # KAMA condition (replaces 5 EMAs)
+        # KAMA condition (HL2 > KAMA for additional confirmation)
         if not self._check_kama_condition():
             return False
         
