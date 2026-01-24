@@ -982,6 +982,34 @@ class SEDNAStrategy(bt.Strategy):
         # Calmar Ratio
         calmar_ratio = cagr / max_drawdown_pct if max_drawdown_pct > 0 else 0
         
+        # Monte Carlo Simulation
+        monte_carlo_dd_95 = 0.0
+        monte_carlo_dd_99 = 0.0
+        if len(self._trade_pnls) >= 20:
+            n_simulations = 10000
+            pnl_list = [t['pnl'] for t in self._trade_pnls]
+            mc_max_drawdowns = []
+            
+            for _ in range(n_simulations):
+                shuffled_pnl = np.random.permutation(pnl_list)
+                equity = self._starting_cash
+                peak = equity
+                max_dd = 0.0
+                
+                for pnl in shuffled_pnl:
+                    equity += pnl
+                    if equity > peak:
+                        peak = equity
+                    dd = (peak - equity) / peak * 100.0 if peak > 0 else 0.0
+                    if dd > max_dd:
+                        max_dd = dd
+                
+                mc_max_drawdowns.append(max_dd)
+            
+            mc_max_drawdowns = np.array(mc_max_drawdowns)
+            monte_carlo_dd_95 = np.percentile(mc_max_drawdowns, 95)
+            monte_carlo_dd_99 = np.percentile(mc_max_drawdowns, 99)
+        
         # Yearly Statistics
         yearly_stats = defaultdict(lambda: {
             'trades': 0, 'wins': 0, 'pnl': 0.0,
@@ -1020,6 +1048,14 @@ class SEDNAStrategy(bt.Strategy):
         print(f"CAGR:                {cagr:>7.2f}%")
         print(f"Max Drawdown:        {max_drawdown_pct:>7.2f}%")
         print(f"Calmar Ratio:        {calmar_ratio:>8.2f}")
+        
+        if monte_carlo_dd_95 > 0:
+            mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
+            mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"
+            print(f"\nMonte Carlo Analysis (10,000 simulations):")
+            print(f"  95th Percentile DD: {monte_carlo_dd_95:>6.2f}%  [{mc_status}]")
+            print(f"  99th Percentile DD: {monte_carlo_dd_99:>6.2f}%")
+            print(f"  Historical vs MC95: {mc_ratio:.2f}x")
         print(f"{'='*70}")
         
         # Yearly Statistics

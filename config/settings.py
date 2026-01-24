@@ -1003,8 +1003,8 @@ STRATEGIES_CONFIG = {
             # === FILTERS ===
             
             # Time Filter
-            'use_time_filter': False,
-            'allowed_hours': [13, 14, 15, 18, 19, 20, 21, 22, 23, 0],
+            'use_time_filter': True,
+            'allowed_hours': [13, 14, 15, 17, 18, 19, 20, 21, 22, 23],
             
             # SL Pips Filter
             'use_sl_pips_filter': False,
@@ -1014,7 +1014,7 @@ STRATEGIES_CONFIG = {
             # ATR Filter (uses average ATR)
             'use_atr_filter': True,
             'atr_min': 0.30,
-            'atr_max': 1.80,
+            'atr_max': 9.99,
             'atr_avg_period': 20,
             
             # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===

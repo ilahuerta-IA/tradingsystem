@@ -140,18 +140,21 @@ def analyze_by_range(trades, value_func, ranges, range_name, decimals=0):
 
 
 def main():
+    # Log directory is ../logs relative to tools/
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.path.join(script_dir, '..', 'logs')
+    log_dir = os.path.abspath(log_dir)
     
     # Get log file
     if len(sys.argv) > 1:
         log_file = sys.argv[1]
     else:
-        log_file = find_latest_log(script_dir)
+        log_file = find_latest_log(log_dir)
         if not log_file:
-            print('No SEDNA log files found.')
+            print(f'No SEDNA log files found in {log_dir}')
             return
     
-    filepath = os.path.join(script_dir, log_file)
+    filepath = os.path.join(log_dir, log_file)
     if not os.path.exists(filepath):
         print(f'Log file not found: {filepath}')
         return
