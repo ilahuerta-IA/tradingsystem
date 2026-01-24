@@ -1037,6 +1037,9 @@ STRATEGIES_CONFIG = {
             # Debug & Reporting
             'print_signals': False,
             'export_reports': True,
+            
+            # Plot options
+            'plot_entry_exit_lines': True,  # Show entry/SL/TP dashed lines
         }
     },
 }

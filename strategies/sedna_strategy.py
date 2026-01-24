@@ -81,6 +81,37 @@ class KAMA(bt.Indicator):
         self.lines.kama[0] = self.lines.kama[-1] + sc * (self.data[0] - self.lines.kama[-1])
 
 
+class EntryExitLines(bt.Indicator):
+    """
+    Indicator to plot entry/exit price levels as horizontal dashed lines.
+    
+    Shows:
+    - Entry price (green dashed)
+    - Stop Loss level (red dashed)
+    - Take Profit level (blue dashed)
+    
+    Lines persist until position is closed.
+    """
+    lines = ('entry', 'stop_loss', 'take_profit')
+    
+    plotinfo = dict(
+        subplot=False,  # Plot on price chart
+        plotlinelabels=True,
+    )
+    plotlines = dict(
+        entry=dict(color='green', linestyle='--', linewidth=1.0),
+        stop_loss=dict(color='red', linestyle='--', linewidth=1.0),
+        take_profit=dict(color='blue', linestyle='--', linewidth=1.0),
+    )
+    
+    def __init__(self):
+        pass
+    
+    def next(self):
+        # Values are set externally by the strategy
+        pass
+
+
 class SEDNAStrategy(bt.Strategy):
     """
     SEDNA Strategy implementation.
@@ -152,6 +183,9 @@ class SEDNAStrategy(bt.Strategy):
         # Debug & Reporting
         print_signals=False,
         export_reports=True,
+        
+        # Plot options
+        plot_entry_exit_lines=True,  # Show entry/SL/TP dashed lines on chart
     )
 
     def __init__(self):
@@ -181,6 +215,12 @@ class SEDNAStrategy(bt.Strategy):
         
         # ATR
         self.atr = bt.ind.ATR(d, period=self.p.atr_length)
+        
+        # Entry/Exit plot lines (dashed lines on chart)
+        if self.p.plot_entry_exit_lines:
+            self.entry_exit_lines = EntryExitLines(d)
+        else:
+            self.entry_exit_lines = None
         
         # Orders
         self.order = None
@@ -339,6 +379,28 @@ class SEDNAStrategy(bt.Strategy):
             self.trade_report_file.flush()
         except:
             pass
+
+    # =========================================================================
+    # PLOT LINES UPDATE
+    # =========================================================================
+    
+    def _update_plot_lines(self, entry_price=None, stop_level=None, take_level=None):
+        """
+        Update entry/exit plot lines on chart.
+        
+        Args:
+            entry_price: Entry price level (or None to clear)
+            stop_level: Stop loss level (or None to clear)
+            take_level: Take profit level (or None to clear)
+        """
+        if not self.entry_exit_lines:
+            return
+        
+        # Use NaN to hide line when no position
+        nan = float('nan')
+        self.entry_exit_lines.lines.entry[0] = entry_price if entry_price else nan
+        self.entry_exit_lines.lines.stop_loss[0] = stop_level if stop_level else nan
+        self.entry_exit_lines.lines.take_profit[0] = take_level if take_level else nan
 
     # =========================================================================
     # DATETIME HELPER
@@ -555,6 +617,13 @@ class SEDNAStrategy(bt.Strategy):
             if self.state != "SCANNING":
                 self._reset_breakout_state()
             
+            # Update plot lines while position is open
+            self._update_plot_lines(
+                entry_price=self.last_entry_price,
+                stop_level=self.stop_level,
+                take_level=self.take_level
+            )
+            
             # Check KAMA exit condition (if enabled)
             if self.p.use_kama_exit and self._check_kama_exit_condition():
                 self._execute_kama_exit(dt)
@@ -646,6 +715,9 @@ class SEDNAStrategy(bt.Strategy):
                 if self.p.print_signals:
                     print(f"[EXIT] at {order.executed.price:.5f} reason={exit_reason}")
 
+                # Clear plot lines when position closes
+                self._update_plot_lines(None, None, None)
+                
                 self.stop_order = None
                 self.limit_order = None
                 self.order = None
