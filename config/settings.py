@@ -1019,6 +1019,13 @@ STRATEGIES_CONFIG = {
             'atr_max': 0.80,
             'atr_avg_period': 20,
             
+            # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
+            # Filters entries when market is choppy on higher timeframe
+            'use_htf_filter': False,  # Set True to enable HTF filter
+            'htf_timeframe_minutes': 15,  # Resample to this timeframe (15, 30, 60)
+            'htf_er_period': 10,  # Efficiency Ratio period on HTF
+            'htf_er_threshold': 0.35,  # Min ER to allow entry (0.0-1.0)
+            
             # === EXIT CONDITIONS ===
             
             # KAMA Exit: Close when KAMA > EMA (trend reversal)

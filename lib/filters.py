@@ -119,6 +119,77 @@ def check_sl_pips_filter(sl_pips: float, min_pips: float, max_pips: float, enabl
 
 
 # =============================================================================
+# EFFICIENCY RATIO (HTF) FILTERS
+# =============================================================================
+
+def check_efficiency_ratio_filter(
+    er_value: float, 
+    threshold: float, 
+    enabled: bool = True
+) -> bool:
+    """
+    Check if market is trending using Efficiency Ratio.
+    
+    Efficiency Ratio (ER) measures trend strength:
+    - ER close to 1.0 = Strong trend (directional movement)
+    - ER close to 0.0 = Choppy/sideways (no clear direction)
+    
+    Filters out entries when market is too choppy.
+    
+    Args:
+        er_value: Current Efficiency Ratio value (0.0 to 1.0)
+        threshold: Minimum ER required to allow entry (e.g., 0.35)
+        enabled: If False, always returns True
+    
+    Returns:
+        True if ER >= threshold or filter disabled
+    
+    Example:
+        check_efficiency_ratio_filter(0.42, 0.35)  # True - trending
+        check_efficiency_ratio_filter(0.20, 0.35)  # False - choppy
+    """
+    if not enabled:
+        return True
+    return er_value >= threshold
+
+
+def calculate_efficiency_ratio(prices: list, period: int = 10) -> float:
+    """
+    Calculate Efficiency Ratio from price list.
+    
+    Pure function for use in any context (backtest, live, analysis).
+    
+    ER = |Price change over N periods| / Sum(|Individual price changes|)
+    
+    Args:
+        prices: List of prices (most recent last), needs period + 1 values
+        period: Lookback period for calculation
+    
+    Returns:
+        Efficiency Ratio value (0.0 to 1.0)
+    
+    Example:
+        prices = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110]
+        er = calculate_efficiency_ratio(prices, period=10)  # ~1.0 (strong trend)
+    """
+    if len(prices) < period + 1:
+        return 0.0
+    
+    # Directional change
+    change = abs(prices[-1] - prices[-period - 1])
+    
+    # Sum of individual absolute changes
+    volatility = sum(
+        abs(prices[-i] - prices[-i - 1])
+        for i in range(1, period + 1)
+    )
+    
+    if volatility > 0:
+        return change / volatility
+    return 0.0
+
+
+# =============================================================================
 # EMA PRICE FILTERS
 # =============================================================================
 

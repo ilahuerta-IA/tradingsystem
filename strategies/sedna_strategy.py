@@ -29,7 +29,9 @@ from lib.filters import (
     check_time_filter,
     check_atr_filter,
     check_sl_pips_filter,
+    check_efficiency_ratio_filter,
 )
+from lib.indicators import EfficiencyRatio
 from lib.position_sizing import calculate_position_size
 
 
@@ -164,6 +166,14 @@ class SEDNAStrategy(bt.Strategy):
         atr_max=1.0,
         atr_avg_period=20,  # Period for ATR averaging
         
+        # === HTF FILTER (Higher Timeframe Trend Detection) ===
+        # Uses Efficiency Ratio to filter choppy markets
+        # ER close to 1.0 = trending, ER close to 0.0 = choppy
+        use_htf_filter=False,
+        htf_timeframe_minutes=15,  # Target HTF (used to scale ER period)
+        htf_er_period=10,  # ER period on HTF equivalent
+        htf_er_threshold=0.35,  # Min ER to allow entry
+        
         # === EXIT CONDITIONS ===
         
         # KAMA Exit: Close position when KAMA > EMA (trend reversal)
@@ -215,6 +225,16 @@ class SEDNAStrategy(bt.Strategy):
         
         # ATR
         self.atr = bt.ind.ATR(d, period=self.p.atr_length)
+        
+        # HTF Efficiency Ratio (scaled period to simulate higher timeframe)
+        # Example: 5m data, HTF=15m -> multiplier=3, ER period=10*3=30 bars
+        self.htf_er = None
+        if self.p.use_htf_filter:
+            base_tf_minutes = 5  # Data timeframe
+            htf_multiplier = self.p.htf_timeframe_minutes // base_tf_minutes
+            scaled_er_period = self.p.htf_er_period * htf_multiplier
+            self.htf_er = EfficiencyRatio(d.close, period=scaled_er_period)
+            self.htf_er.plotinfo.plotname = f'ER({self.p.htf_timeframe_minutes}m equiv)'
         
         # Entry/Exit plot lines (dashed lines on chart)
         if self.p.plot_entry_exit_lines:
@@ -328,6 +348,8 @@ class SEDNAStrategy(bt.Strategy):
                 self.trade_report_file.write(f"ATR Filter: {self.p.atr_min}-{self.p.atr_max} (avg {self.p.atr_avg_period})\n")
             if self.p.use_time_filter:
                 self.trade_report_file.write(f"Time Filter: {list(self.p.allowed_hours)}\n")
+            if self.p.use_htf_filter:
+                self.trade_report_file.write(f"HTF Filter: ER(period={self.p.htf_er_period}, TF={self.p.htf_timeframe_minutes}m) >= {self.p.htf_er_threshold}\n")
             self.trade_report_file.write("\n")
             print(f"Trade report: {report_path}")
         except Exception as e:
@@ -478,12 +500,37 @@ class SEDNAStrategy(bt.Strategy):
         except:
             return False
 
+    def _check_htf_filter(self) -> bool:
+        """
+        Check Higher Timeframe Efficiency Ratio filter.
+        
+        Filters entries when market is too choppy on HTF.
+        ER >= threshold = trending market, allow entry.
+        ER < threshold = choppy market, block entry.
+        """
+        if not self.p.use_htf_filter or self.htf_er is None:
+            return True
+        
+        try:
+            er_value = float(self.htf_er[0])
+            return check_efficiency_ratio_filter(
+                er_value=er_value,
+                threshold=self.p.htf_er_threshold,
+                enabled=True
+            )
+        except:
+            return True  # On error, allow entry
+
     def _check_entry_conditions(self, dt: datetime) -> bool:
         """Check all entry conditions."""
         if self.position or self.order:
             return False
         
         if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
+            return False
+        
+        # HTF filter (Efficiency Ratio on higher timeframe)
+        if not self._check_htf_filter():
             return False
         
         if not self._check_bullish_engulfing():
