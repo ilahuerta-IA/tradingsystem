@@ -978,16 +978,14 @@ STRATEGIES_CONFIG = {
         'save_log': True,
         
         'params': {
-            # KAMA settings (replaces 5 EMAs)
+            # KAMA settings
             'kama_period': 10,
             'kama_fast': 2,
             'kama_slow': 30,
+            'hl2_ema_period': 1,  # EMA period for KAMA comparison (1 = raw HL2)
             
-            # HL2 EMA for KAMA comparison (period=1 = raw HL2)
-            'hl2_ema_period': 1,
-            
-            # CCI settings (on HL2)
-            'use_cci_filter': False,
+            # CCI settings (optional momentum filter)
+            'use_cci_filter': False,  # Disabled - not part of 3-phase system
             'cci_period': 20,
             'cci_threshold': 100,
             'cci_max_threshold': 999,
@@ -1020,22 +1018,22 @@ STRATEGIES_CONFIG = {
             'atr_avg_period': 20,
             
             # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
-            # Filters entries when market is choppy on higher timeframe
-            'use_htf_filter': True,  # Set True to enable HTF filter
-            'htf_timeframe_minutes': 15,  # Resample to this timeframe (15, 30, 60)
-            'htf_er_period': 10,  # Efficiency Ratio period on HTF
-            'htf_er_threshold': 0.40,  # Min ER to allow entry (0.0-1.0)
+            # Main trigger: ER >= threshold AND Close > KAMA
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.40,
             
             # === PULLBACK DETECTION ===
             # Detects consolidation after HH for trend continuation
             'use_pullback_filter': True,
-            'pullback_min_bars': 2,  # Min bars without new HH
-            'pullback_max_bars': 5,  # Max bars to wait (timeout)
+            'pullback_min_bars': 2,
+            'pullback_max_bars': 5,
             
             # === EXIT CONDITIONS ===
             
             # KAMA Exit: Close when KAMA > EMA (trend reversal)
-            'use_kama_exit': False,  # Disabled for A/B testing
+            'use_kama_exit': False,
             
             # ETF Asset config
             'pip_value': 0.01,
