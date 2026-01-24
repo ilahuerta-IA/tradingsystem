@@ -968,8 +968,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -991,20 +991,20 @@ STRATEGIES_CONFIG = {
             'cci_max_threshold': 999,
             
             # ATR
-            'atr_length': 10,
+            'atr_length': 14,
             'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 10.0,
+            'atr_tp_multiplier': 8.0,
             
             # Breakout Window
             'use_breakout_window': True,
-            'breakout_window_candles': 3,
-            'breakout_level_offset_pips': 2.0,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 1.0,
             
             # === FILTERS ===
             
             # Time Filter
             'use_time_filter': False,
-            'allowed_hours': [14, 15, 16, 17, 18, 19],
+            'allowed_hours': [13, 14, 15, 18, 19, 20, 21, 22, 23, 0],
             
             # SL Pips Filter
             'use_sl_pips_filter': False,
@@ -1012,9 +1012,9 @@ STRATEGIES_CONFIG = {
             'sl_pips_max': 75,
             
             # ATR Filter (uses average ATR)
-            'use_atr_filter': False,
-            'atr_min': 0.00,
-            'atr_max': 0.80,
+            'use_atr_filter': True,
+            'atr_min': 0.30,
+            'atr_max': 1.80,
             'atr_avg_period': 20,
             
             # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
@@ -1022,13 +1022,13 @@ STRATEGIES_CONFIG = {
             'use_htf_filter': True,
             'htf_timeframe_minutes': 15,
             'htf_er_period': 10,
-            'htf_er_threshold': 0.40,
+            'htf_er_threshold': 0.45,
             
             # === PULLBACK DETECTION ===
             # Detects consolidation after HH for trend continuation
             'use_pullback_filter': True,
-            'pullback_min_bars': 2,
-            'pullback_max_bars': 5,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
             
             # === EXIT CONDITIONS ===
             
