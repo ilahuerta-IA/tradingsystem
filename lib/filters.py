@@ -43,6 +43,29 @@ def check_time_filter(dt: datetime, allowed_hours: List[int], enabled: bool = Tr
     return dt.hour in allowed_hours
 
 
+def check_day_filter(dt: datetime, allowed_days: List[int], enabled: bool = True) -> bool:
+    """
+    Check if datetime day of week is in allowed days list.
+    
+    Args:
+        dt: Current datetime
+        allowed_days: List of allowed weekdays (0=Monday, 6=Sunday)
+                      e.g., [0,1,2,3,4] for Monday-Friday
+        enabled: If False, always returns True (filter disabled)
+    
+    Returns:
+        True if day is allowed or filter disabled
+    
+    Example:
+        check_day_filter(dt, [0,1,2,4])  # Monday, Tuesday, Wednesday, Friday (skip Thursday)
+    """
+    if not enabled:
+        return True
+    if not allowed_days:
+        return True  # Empty list = no restriction
+    return dt.weekday() in allowed_days
+
+
 # =============================================================================
 # ATR FILTERS
 # =============================================================================

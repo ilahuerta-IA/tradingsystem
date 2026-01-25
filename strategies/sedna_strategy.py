@@ -28,6 +28,7 @@ import numpy as np
 
 from lib.filters import (
     check_time_filter,
+    check_day_filter,
     check_atr_filter,
     check_sl_pips_filter,
     check_efficiency_ratio_filter,
@@ -157,6 +158,10 @@ class SEDNAStrategy(bt.Strategy):
         # Time Filter
         use_time_filter=False,
         allowed_hours=[],
+        
+        # Day Filter (0=Monday, 6=Sunday)
+        use_day_filter=False,
+        allowed_days=[0, 1, 2, 3, 4],  # Default: Monday-Friday
         
         # SL Pips Filter
         use_sl_pips_filter=False,
@@ -596,6 +601,9 @@ class SEDNAStrategy(bt.Strategy):
             return False
         
         if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
+            return False
+        
+        if not check_day_filter(dt, self.p.allowed_days, self.p.use_day_filter):
             return False
         
         # Phase 1: HTF filter (ER >= threshold AND Close > KAMA)

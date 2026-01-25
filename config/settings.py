@@ -1006,6 +1006,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [13, 14, 15, 17, 18, 19, 20, 21, 22, 23],
             
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            
             # SL Pips Filter
             'use_sl_pips_filter': False,
             'sl_pips_min': 60,
@@ -1044,6 +1048,525 @@ STRATEGIES_CONFIG = {
             
             # Risk
             'risk_percent': 0.005,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    # =========================================================================
+    # SEDNA FOREX CONFIGURATIONS
+    # =========================================================================
+
+    'EURUSD_SEDNA': {
+        'active': True,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'EURUSD',
+        'data_path': 'data/EURUSD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': False,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings (disabled)
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR - Based on KOI EURUSD (shorter period)
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 6.0,  # Higher TP ratio like OGLE
+            
+            # Breakout Window - Tighter for Forex
+            'use_breakout_window': True,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            
+            # Time Filter - Disabled for now, needs optimization
+            'use_time_filter': True,
+            'allowed_hours': [7, 9, 11, 16, 19, 21, 22],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            
+            # SL Pips Filter - Disabled
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 6,
+            'sl_pips_max': 30,
+            
+            # ATR Filter - Wide range to start
+            'use_atr_filter': True,
+            'atr_min': 0.00025,
+            'atr_max': 0.00045,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.40,  # Slightly lower for more signals
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 1,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # Forex Asset config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 1.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'EURJPY_SEDNA': {
+        'active': True,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'EURJPY',
+        'data_path': 'data/EURJPY_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 10,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 5,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            'use_time_filter': True,
+            'allowed_hours': [1, 4, 5, 7, 8, 10, 14, 15, 16],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 4],  # Mon-Wed, Fri (excl. Thursday)
+            
+            # SL Pips Filter
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 12,
+            'sl_pips_max': 28,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.03,
+            'atr_max': 0.15,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.40,
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # JPY Pair config
+            'pip_value': 0.01,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'USDJPY_SEDNA': {
+        'active': True,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'USDJPY',
+        'data_path': 'data/USDJPY_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            'use_time_filter': False,
+            'allowed_hours': list(range(24)),
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 20,
+            'sl_pips_max': 80,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.03,
+            'atr_max': 0.15,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.45,
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # JPY Pair config
+            'pip_value': 0.01,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'USDCHF_SEDNA': {
+        'active': True,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'USDCHF',
+        'data_path': 'data/USDCHF_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            'use_time_filter': False,
+            'allowed_hours': list(range(24)),
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 50,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.0003,
+            'atr_max': 0.0020,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.45,
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # Standard Pair config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 1.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'USDCAD_SEDNA': {
+        'active': True,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'USDCAD',
+        'data_path': 'data/USDCAD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            'use_time_filter': False,
+            'allowed_hours': list(range(24)),
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 50,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.0003,
+            'atr_max': 0.0020,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.45,
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # Standard Pair config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 1.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'AUDUSD_SEDNA': {
+        'active': True,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'AUDUSD',
+        'data_path': 'data/AUDUSD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            'use_time_filter': False,
+            'allowed_hours': list(range(24)),
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 50,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.0003,
+            'atr_max': 0.0020,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.45,
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # Standard Pair config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 1.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
             
             # Debug & Reporting
             'print_signals': False,
