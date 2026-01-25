@@ -237,7 +237,10 @@ def main():
     
     # By ATR ranges
     print_section('ANALYSIS BY ATR')
-    atr_ranges = [(0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8)]
+    atr_ranges = [
+        (0, 0.03), (0.03, 0.05), (0.05, 0.07), (0.07, 0.09), 
+        (0.09, 0.11), (0.11, 0.13), (0.13, 0.15), (0.15, 0.20), (0.20, 0.30)
+    ]
     analyze_by_range(trades, lambda t: t['atr'], atr_ranges, 'ATR Range', decimals=2)
     
     print('\n' + '=' * 60)
