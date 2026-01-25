@@ -677,15 +677,15 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
-    # KO 
+    # ========================================================================= 
     'USDJPY_KOI': {
         'active': True,
         'strategy_name': 'KOI',
         'asset_name': 'USDJPY',
         'data_path': 'data/USDJPY_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -704,7 +704,7 @@ STRATEGIES_CONFIG = {
             # CCI
             'cci_period': 14,
             'cci_threshold': 120,
-            'cci_max_threshold': 999,
+            'cci_max_threshold': 300,
             
             # ATR
             'atr_length': 10,
@@ -719,17 +719,17 @@ STRATEGIES_CONFIG = {
             # === FILTERS ===
             
             # Time Filter
-            'use_time_filter': False,
-            'allowed_hours': [0,1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23],
+            'use_time_filter': True,
+            'allowed_hours': [0,1,2,3,4,5,6,7,10,11,13,15,16,17,18,19,20,21],
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
             'sl_pips_min': 15.0,
-            'sl_pips_max': 35.0,
+            'sl_pips_max': 30.0,
             
             # ATR Filter
-            'use_atr_filter': False,
-            'atr_min': 0.03,
+            'use_atr_filter': True,
+            'atr_min': 0.05,
             'atr_max': 0.10,
             
             # Asset config (JPY pair)
