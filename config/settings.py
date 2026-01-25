@@ -66,7 +66,7 @@ STRATEGIES_CONFIG = {
             'pip_value': 0.01,
             
             # Debug
-            'print_signals': True,
+            'print_signals': False,
         }
     },
 
@@ -132,7 +132,7 @@ STRATEGIES_CONFIG = {
             'pip_value': 0.0001,
             
             # Debug
-            'print_signals': True,
+            'print_signals': False,
         }
     },
 
@@ -198,7 +198,7 @@ STRATEGIES_CONFIG = {
             'pip_value': 0.0001,
             
             # Debug
-            'print_signals': True,
+            'print_signals': False,
         }
     },
 
@@ -264,7 +264,7 @@ STRATEGIES_CONFIG = {
             'pip_value': 0.0001,
             
             # Debug
-            'print_signals': True,
+            'print_signals': False,
         }
     },
 
@@ -403,7 +403,7 @@ STRATEGIES_CONFIG = {
     },
     # KO
     'TLT_PRO': {
-        'active': True,  # Set to False to skip this config when running
+        'active': False,  # Set to False to skip this config when running
         'strategy_name': 'SunsetOgle',
         'asset_name': 'TLT',
         'data_path': 'data/TLT_5m_5Yea.csv',
@@ -684,8 +684,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'USDJPY',
         'data_path': 'data/USDJPY_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
@@ -702,24 +702,24 @@ STRATEGIES_CONFIG = {
             'ema_5_period': 120,
             
             # CCI
-            'cci_period': 20,
-            'cci_threshold': 100,
-            'cci_max_threshold': 150,
+            'cci_period': 14,
+            'cci_threshold': 120,
+            'cci_max_threshold': 999,
             
             # ATR
             'atr_length': 10,
-            'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 12.0,
+            'atr_sl_multiplier': 3.5,
+            'atr_tp_multiplier': 10.0,
             
             # Breakout Window
             'use_breakout_window': True,
-            'breakout_window_candles': 3,
-            'breakout_level_offset_pips': 5.0,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 7.0,
             
             # === FILTERS ===
             
             # Time Filter
-            'use_time_filter': True,
+            'use_time_filter': False,
             'allowed_hours': [0,1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23],
             
             # SL Pips Filter
@@ -889,7 +889,7 @@ STRATEGIES_CONFIG = {
     },
     # KO
     'TLT_KOI': {
-        'active': True,
+        'active': False,
         'strategy_name': 'KOI',
         'asset_name': 'TLT',
         'data_path': 'data/TLT_5m_5Yea.csv',
@@ -1060,7 +1060,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
     # KO
     'EURUSD_SEDNA': {
-        'active': True,
+        'active': False,
         'strategy_name': 'SEDNA',
         'asset_name': 'EURUSD',
         'data_path': 'data/EURUSD_5m_5Yea.csv',
@@ -1318,7 +1318,7 @@ STRATEGIES_CONFIG = {
     },
 
     'USDCHF_SEDNA': {
-        'active': True,
+        'active': False,
         'strategy_name': 'SEDNA',
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
@@ -1403,7 +1403,7 @@ STRATEGIES_CONFIG = {
     },
 
     'USDCAD_SEDNA': {
-        'active': True,
+        'active': False,
         'strategy_name': 'SEDNA',
         'asset_name': 'USDCAD',
         'data_path': 'data/USDCAD_5m_5Yea.csv',
@@ -1488,7 +1488,7 @@ STRATEGIES_CONFIG = {
     },
 
     'AUDUSD_SEDNA': {
-        'active': True,
+        'active': False,
         'strategy_name': 'SEDNA',
         'asset_name': 'AUDUSD',
         'data_path': 'data/AUDUSD_5m_5Yea.csv',
