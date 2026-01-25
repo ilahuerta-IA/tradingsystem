@@ -861,10 +861,21 @@ class SEDNAStrategy(bt.Strategy):
 
             else:  # Exit order (SL/TP or KAMA exit)
                 exit_reason = "UNKNOWN"
-                if order.exectype == bt.Order.Stop:
-                    exit_reason = "STOP_LOSS"
-                elif order.exectype == bt.Order.Limit:
-                    exit_reason = "TAKE_PROFIT"
+                
+                # Determine exit reason by comparing execution price with SL/TP levels
+                # This is more reliable than checking order.exectype
+                exec_price = order.executed.price
+                
+                if self.last_entry_price is not None:
+                    # For LONG positions: SL below entry, TP above entry
+                    pnl_direction = exec_price - self.last_entry_price
+                    
+                    if pnl_direction > 0:
+                        exit_reason = "TAKE_PROFIT"
+                    elif pnl_direction < 0:
+                        exit_reason = "STOP_LOSS"
+                    else:
+                        exit_reason = "BREAKEVEN"
                 elif order.exectype == bt.Order.Market:
                     # Market order from self.close() = KAMA exit
                     exit_reason = self.last_exit_reason or "KAMA_REVERSAL"
@@ -917,8 +928,20 @@ class SEDNAStrategy(bt.Strategy):
             'is_winner': pnl > 0
         })
         
-        reason = getattr(self, 'last_exit_reason', 'UNKNOWN')
+        # Determine exit reason based on actual P&L
+        # This is more reliable than tracking order types
+        last_reason = getattr(self, 'last_exit_reason', None)
+        if last_reason and last_reason in ['KAMA_REVERSAL']:
+            reason = last_reason  # Keep manual exit reasons
+        elif pnl > 0:
+            reason = "TAKE_PROFIT"
+        else:
+            reason = "STOP_LOSS"
+        
         self._record_trade_exit(dt, pnl, reason)
+        
+        # Reset for next trade
+        self.last_exit_reason = None
 
     # =========================================================================
     # STATISTICS
