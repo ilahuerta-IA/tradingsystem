@@ -232,7 +232,7 @@ def main():
     
     # By SL Pips ranges
     print_section('ANALYSIS BY SL PIPS')
-    sl_ranges = [(0, 30), (30, 50), (50, 80), (80, 120), (120, 200)]
+    sl_ranges = [(0, 10), (10, 20), (20, 30), (30, 50), (50, 80), (80, 120), (120, 200)]
     analyze_by_range(trades, lambda t: t['sl_pips'], sl_ranges, 'SL Pips')
     
     # By ATR ranges

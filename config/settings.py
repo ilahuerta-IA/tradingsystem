@@ -330,7 +330,7 @@ STRATEGIES_CONFIG = {
             'pip_value': 0.01,
             
             # Debug
-            'print_signals': True,
+            'print_signals': False,
         }
     },
 
@@ -401,7 +401,7 @@ STRATEGIES_CONFIG = {
             'print_signals': False,
         }
     },
-
+    # KO
     'TLT_PRO': {
         'active': True,  # Set to False to skip this config when running
         'strategy_name': 'SunsetOgle',
@@ -677,7 +677,7 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
-
+    # KO 
     'USDJPY_KOI': {
         'active': True,
         'strategy_name': 'KOI',
@@ -738,7 +738,7 @@ STRATEGIES_CONFIG = {
             'jpy_rate': 150.0,
             
             # Risk
-            'risk_percent': 0.01,
+            'risk_percent': 0.005,
             
             # Debug & Reporting
             'print_signals': False,
@@ -887,7 +887,7 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
-
+    # KO
     'TLT_KOI': {
         'active': True,
         'strategy_name': 'KOI',
@@ -1003,12 +1003,12 @@ STRATEGIES_CONFIG = {
             # === FILTERS ===
             
             # Time Filter
-            'use_time_filter': True,
+            'use_time_filter': False,
             'allowed_hours': [13, 14, 15, 17, 18, 19, 20, 21, 22, 23],
             
             # Day Filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 3, 4],  # Monday-Friday
             
             # SL Pips Filter
             'use_sl_pips_filter': False,
@@ -1058,7 +1058,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
     # SEDNA FOREX CONFIGURATIONS
     # =========================================================================
-
+    # KO
     'EURUSD_SEDNA': {
         'active': True,
         'strategy_name': 'SEDNA',
@@ -1081,53 +1081,50 @@ STRATEGIES_CONFIG = {
             'kama_slow': 30,
             'hl2_ema_period': 1,
             
-            # CCI settings (disabled)
+            # CCI settings
             'use_cci_filter': False,
             'cci_period': 20,
             'cci_threshold': 100,
             'cci_max_threshold': 999,
             
-            # ATR - Based on KOI EURUSD (shorter period)
-            'atr_length': 14,
+            # ATR
+            'atr_length': 10,
             'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 6.0,  # Higher TP ratio like OGLE
+            'atr_tp_multiplier': 8.0,
             
-            # Breakout Window - Tighter for Forex
+            # Breakout Window
             'use_breakout_window': True,
-            'breakout_window_candles': 7,
+            'breakout_window_candles': 5,
             'breakout_level_offset_pips': 1.0,
             
             # === FILTERS ===
-            
-            # Time Filter - Disabled for now, needs optimization
-            'use_time_filter': True,
-            'allowed_hours': [7, 9, 11, 16, 19, 21, 22],
+            'use_time_filter': False,
+            'allowed_hours': [1, 4, 5, 7, 8, 10, 14, 15, 16],
             
             # Day Filter (0=Monday, 6=Sunday)
             'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            'allowed_days': [0, 1, 2, 4], 
             
-            # SL Pips Filter - Disabled
+            # SL Pips Filter
             'use_sl_pips_filter': False,
-            'sl_pips_min': 6,
-            'sl_pips_max': 30,
+            'sl_pips_min': 12,
+            'sl_pips_max': 28,
             
-            # ATR Filter - Wide range to start
-            'use_atr_filter': True,
-            'atr_min': 0.00025,
-            'atr_max': 0.00045,
+            'use_atr_filter': False,
+            'atr_min': 0.03,
+            'atr_max': 0.15,
             'atr_avg_period': 20,
             
             # === HTF FILTER ===
             'use_htf_filter': True,
             'htf_timeframe_minutes': 15,
             'htf_er_period': 10,
-            'htf_er_threshold': 0.40,  # Slightly lower for more signals
+            'htf_er_threshold': 0.40,
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,
             'pullback_min_bars': 1,
-            'pullback_max_bars': 1,
+            'pullback_max_bars': 4,
             
             # === EXIT CONDITIONS ===
             'use_kama_exit': False,
@@ -1192,7 +1189,7 @@ STRATEGIES_CONFIG = {
             
             # Day Filter (0=Monday, 6=Sunday)
             'use_day_filter': True,
-            'allowed_days': [0, 1, 2, 4],  # Mon-Wed, Fri (excl. Thursday)
+            'allowed_days': [0, 1, 2, 4], 
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
@@ -1263,37 +1260,38 @@ STRATEGIES_CONFIG = {
             'cci_max_threshold': 999,
             
             # ATR
-            'atr_length': 14,
+            'atr_length': 10,
             'atr_sl_multiplier': 3.0,
             'atr_tp_multiplier': 8.0,
             
             # Breakout Window
             'use_breakout_window': True,
-            'breakout_window_candles': 7,
+            'breakout_window_candles': 5,
             'breakout_level_offset_pips': 1.0,
             
             # === FILTERS ===
-            'use_time_filter': False,
-            'allowed_hours': list(range(24)),
+            'use_time_filter': True,
+            'allowed_hours': [0, 1, 2, 5, 7, 8, 9, 12, 14, 15, 16, 17, 18, 20, 21],
             
             # Day Filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],  # Monday-Friday
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 4, 5], 
             
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 20,
-            'sl_pips_max': 80,
+            # SL Pips Filter
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 15,
+            'sl_pips_max': 50,
             
-            'use_atr_filter': False,
-            'atr_min': 0.03,
-            'atr_max': 0.15,
+            'use_atr_filter': True,
+            'atr_min': 0.05,
+            'atr_max': 0.13,
             'atr_avg_period': 20,
             
             # === HTF FILTER ===
             'use_htf_filter': True,
             'htf_timeframe_minutes': 15,
             'htf_er_period': 10,
-            'htf_er_threshold': 0.45,
+            'htf_er_threshold': 0.40,
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,
@@ -1315,7 +1313,7 @@ STRATEGIES_CONFIG = {
             
             # Debug & Reporting
             'print_signals': False,
-            'export_reports': True,
+            'export_reports': True
         }
     },
 
