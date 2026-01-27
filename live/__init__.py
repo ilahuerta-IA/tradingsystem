@@ -20,7 +20,7 @@ Usage:
     python -m live.multi_monitor
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # Expose main classes for easy imports
 from .connector import MT5Connector, AccountInfo, AccountType
