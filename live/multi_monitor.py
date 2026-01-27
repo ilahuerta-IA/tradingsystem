@@ -154,6 +154,9 @@ class MultiStrategyMonitor:
         # Symbols to fetch data for
         self.active_symbols: Dict[str, List[str]] = {}  # symbol -> [config_names]
         
+        # Track open positions for close detection {ticket: {config, symbol, entry, sl, tp, open_time}}
+        self.open_positions: Dict[int, Dict[str, Any]] = {}
+        
         # Trade log file (JSON lines format)
         self.trade_log_path = self.log_dir / f"trades_multi_{datetime.now().strftime('%Y%m%d')}.jsonl"
     
@@ -307,6 +310,9 @@ class MultiStrategyMonitor:
             if not self._initialize_checkers():
                 return False
             
+            # 4. Recover existing open positions for close tracking
+            self._recover_open_positions()
+            
             self.logger.info("[OK] All components initialized")
             return True
             
@@ -314,6 +320,54 @@ class MultiStrategyMonitor:
             self.logger.error(f"Component initialization failed: {e}")
             self._log_event("ERROR", {"error": str(e), "phase": "initialization"})
             return False
+    
+    def _recover_open_positions(self):
+        """
+        Recover existing open positions from MT5 for close tracking.
+        Called on startup to track positions opened before bot restart.
+        """
+        try:
+            import MetaTrader5 as mt5
+            
+            positions = mt5.positions_get()
+            if not positions:
+                self.logger.info("No existing positions to track")
+                return
+            
+            # Build magic number to config mapping
+            magic_to_config = {}
+            for config_name, executor in self.executors.items():
+                magic_to_config[executor.magic_number] = config_name
+            
+            recovered = 0
+            for pos in positions:
+                if pos.magic in magic_to_config:
+                    config_name = magic_to_config[pos.magic]
+                    config = STRATEGIES_CONFIG.get(config_name, {})
+                    strategy_type = STRATEGY_TYPES.get(config_name, "Unknown")
+                    
+                    self.open_positions[pos.ticket] = {
+                        "config": config_name,
+                        "symbol": pos.symbol,
+                        "strategy": strategy_type,
+                        "direction": "LONG" if pos.type == mt5.ORDER_TYPE_BUY else "SHORT",
+                        "entry": pos.price_open,
+                        "volume": pos.volume,
+                        "sl": pos.sl,
+                        "tp": pos.tp,
+                        "open_time": datetime.fromtimestamp(pos.time).isoformat(),
+                    }
+                    recovered += 1
+                    self.logger.info(
+                        f"[{config_name}] Recovered position: {pos.symbol} "
+                        f"#{pos.ticket} @ {pos.price_open:.5f}"
+                    )
+            
+            if recovered > 0:
+                self.logger.info(f"Recovered {recovered} existing position(s) for tracking")
+                
+        except Exception as e:
+            self.logger.error(f"Error recovering positions: {e}")
     
     def _check_connection(self) -> bool:
         """Check and repair MT5 connection if needed."""
@@ -339,6 +393,99 @@ class MultiStrategyMonitor:
         self.logger.error("Failed to reconnect after max attempts")
         self._log_event("ERROR", {"error": "reconnection_failed"})
         return False
+    
+    def _check_closed_positions(self):
+        """
+        Check if any tracked positions have been closed (by SL/TP or manually).
+        Logs TRADE_CLOSED events for analysis.
+        """
+        if not self.connector or not self.connector.is_connected():
+            return
+        
+        if not self.open_positions:
+            return
+        
+        try:
+            import MetaTrader5 as mt5
+            
+            # Get all current open positions
+            current_positions = mt5.positions_get()
+            current_tickets = set()
+            
+            if current_positions:
+                current_tickets = {p.ticket for p in current_positions}
+            
+            # Check which tracked positions are now closed
+            closed_tickets = []
+            for ticket in self.open_positions:
+                if ticket not in current_tickets:
+                    closed_tickets.append(ticket)
+            
+            # Process closed positions
+            for ticket in closed_tickets:
+                pos_info = self.open_positions[ticket]
+                
+                # Get deal history to find close details
+                close_price = None
+                close_time = None
+                pnl = None
+                close_reason = "UNKNOWN"
+                
+                # Query deals for this position
+                # Look back 24 hours for the closing deal
+                from_time = datetime.now() - timedelta(hours=24)
+                to_time = datetime.now() + timedelta(hours=1)
+                
+                deals = mt5.history_deals_get(from_time, to_time, position=ticket)
+                
+                if deals and len(deals) > 0:
+                    # Find the closing deal (type OUT)
+                    for deal in deals:
+                        if deal.entry == mt5.DEAL_ENTRY_OUT:
+                            close_price = deal.price
+                            close_time = datetime.fromtimestamp(deal.time)
+                            pnl = deal.profit
+                            
+                            # Determine close reason by comparing to SL/TP
+                            if pos_info.get('sl') and abs(close_price - pos_info['sl']) < 0.0001:
+                                close_reason = "STOP_LOSS"
+                            elif pos_info.get('tp') and abs(close_price - pos_info['tp']) < 0.0001:
+                                close_reason = "TAKE_PROFIT"
+                            else:
+                                close_reason = "MANUAL"
+                            break
+                
+                # Log the close event
+                self.logger.info(
+                    f"[{pos_info.get('config', 'UNKNOWN')}] POSITION CLOSED: "
+                    f"{pos_info.get('symbol', '?')} | {close_reason} | "
+                    f"Entry: {pos_info.get('entry', 0):.5f} -> Close: {close_price or 0:.5f} | "
+                    f"PnL: ${pnl or 0:.2f}"
+                )
+                
+                self._log_event("TRADE_CLOSED", {
+                    "version": __version__,
+                    "config": pos_info.get('config'),
+                    "symbol": pos_info.get('symbol'),
+                    "strategy": pos_info.get('strategy'),
+                    "ticket": ticket,
+                    "direction": pos_info.get('direction', 'LONG'),
+                    "entry_price": pos_info.get('entry'),
+                    "close_price": close_price,
+                    "sl": pos_info.get('sl'),
+                    "tp": pos_info.get('tp'),
+                    "volume": pos_info.get('volume'),
+                    "pnl": pnl,
+                    "close_reason": close_reason,
+                    "open_time": pos_info.get('open_time'),
+                    "close_time": close_time.isoformat() if close_time else None,
+                })
+                
+                # Remove from tracking
+                del self.open_positions[ticket]
+                
+        except Exception as e:
+            self.logger.error(f"Error checking closed positions: {e}")
     
     def _wait_for_candle_close(self) -> bool:
         """
@@ -537,6 +684,20 @@ class MultiStrategyMonitor:
                 "tp": signal.take_profit,
                 "ticket": result.order_ticket,
             })
+            
+            # Track position for close detection
+            if result.order_ticket:
+                self.open_positions[result.order_ticket] = {
+                    "config": config_name,
+                    "symbol": symbol,
+                    "strategy": checker.strategy_name,
+                    "direction": "LONG",
+                    "entry": result.executed_price,
+                    "volume": result.executed_volume,
+                    "sl": signal.stop_loss,
+                    "tp": signal.take_profit,
+                    "open_time": datetime.now().isoformat(),
+                }
         else:
             self.logger.warning(f"[{config_name}] Execution failed: {result.message}")
             self._log_event("EXECUTION_FAILED", {
@@ -647,6 +808,9 @@ class MultiStrategyMonitor:
                     
                     # Process the closed candle
                     self._process_candle()
+                    
+                    # Check for closed positions (SL/TP hits)
+                    self._check_closed_positions()
                     
                     # Reset error counter on success
                     consecutive_errors = 0
