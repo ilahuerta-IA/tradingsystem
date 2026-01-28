@@ -20,7 +20,7 @@ Usage:
     python -m live.multi_monitor
 """
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 
 # Expose main classes for easy imports
 from .connector import MT5Connector, AccountInfo, AccountType
@@ -37,6 +37,7 @@ from .checkers import (
     SignalDirection as CheckerSignalDirection,
     SunsetOgleChecker,
     KOIChecker,
+    SEDNAChecker,
     CHECKER_REGISTRY,
 )
 
@@ -67,5 +68,6 @@ __all__ = [
     "BaseChecker",
     "SunsetOgleChecker",
     "KOIChecker",
+    "SEDNAChecker",
     "CHECKER_REGISTRY",
 ]

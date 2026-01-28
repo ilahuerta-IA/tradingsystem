@@ -27,9 +27,16 @@ ENABLED_CONFIGS = {
     "USDJPY_KOI": True,
     "EURJPY_KOI": True,
     
+    # SEDNA strategy (Forex - JPY pairs)
+    "USDJPY_SEDNA": True,
+    "EURJPY_SEDNA": True,
+    
     # KOI strategy (ETFs) - disabled until broker availability confirmed
     "DIA_KOI": False,
     "TLT_KOI": False,
+    
+    # SEDNA strategy (ETFs) - disabled until broker availability confirmed
+    "DIA_SEDNA": False,
 }
 
 # Strategy type mapping (which checker class to use)
@@ -48,6 +55,10 @@ STRATEGY_TYPES = {
     "EURJPY_KOI": "KOI",
     "DIA_KOI": "KOI",
     "TLT_KOI": "KOI",
+    # SEDNA
+    "USDJPY_SEDNA": "SEDNA",
+    "EURJPY_SEDNA": "SEDNA",
+    "DIA_SEDNA": "SEDNA",
 }
 
 

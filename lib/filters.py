@@ -400,3 +400,91 @@ def format_filter_status(name: str, enabled: bool, passed: bool, details: str = 
     if details:
         return f"{name}: ENABLED | {details} | {status}"
     return f"{name}: {status}"
+
+
+# =============================================================================
+# KAMA (Kaufman Adaptive Moving Average) - For SEDNA Strategy
+# =============================================================================
+
+def calculate_kama(
+    prices: list,
+    period: int = 10,
+    fast: int = 2,
+    slow: int = 30
+) -> list:
+    """
+    Calculate Kaufman Adaptive Moving Average (KAMA).
+    
+    KAMA adapts to market conditions using Efficiency Ratio:
+    - In trending markets (high ER): KAMA responds quickly
+    - In choppy markets (low ER): KAMA responds slowly
+    
+    Pure function for use in any context (backtest, live, analysis).
+    
+    Args:
+        prices: List of prices (most recent last)
+        period: Efficiency ratio period
+        fast: Fast smoothing constant period
+        slow: Slow smoothing constant period
+    
+    Returns:
+        List of KAMA values (same length as prices, NaN for warmup)
+    
+    Example:
+        hl2_prices = [(h + l) / 2 for h, l in zip(highs, lows)]
+        kama = calculate_kama(hl2_prices, period=10, fast=2, slow=30)
+    """
+    if len(prices) < period + 1:
+        return [float('nan')] * len(prices)
+    
+    # Smoothing constants
+    fast_sc = 2.0 / (fast + 1.0)
+    slow_sc = 2.0 / (slow + 1.0)
+    
+    kama_values = [float('nan')] * len(prices)
+    
+    # Initialize with SMA
+    kama_values[period] = sum(prices[:period + 1]) / (period + 1)
+    
+    # Calculate KAMA for remaining values
+    for i in range(period + 1, len(prices)):
+        # Efficiency Ratio
+        change = abs(prices[i] - prices[i - period])
+        volatility = sum(abs(prices[i - j] - prices[i - j - 1]) for j in range(period))
+        
+        if volatility > 0:
+            er = change / volatility
+        else:
+            er = 0.0
+        
+        # Smoothing constant based on ER
+        sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+        
+        # KAMA calculation
+        kama_values[i] = kama_values[i - 1] + sc * (prices[i] - kama_values[i - 1])
+    
+    return kama_values
+
+
+def get_kama_value(
+    prices: list,
+    period: int = 10,
+    fast: int = 2,
+    slow: int = 30
+) -> float:
+    """
+    Get current KAMA value (last value only).
+    
+    Convenience function for live trading when you only need the latest value.
+    
+    Args:
+        prices: List of prices (most recent last), needs period + 1 values minimum
+        period: Efficiency ratio period
+        fast: Fast smoothing constant period
+        slow: Slow smoothing constant period
+    
+    Returns:
+        Current KAMA value, or NaN if insufficient data
+    """
+    kama_values = calculate_kama(prices, period, fast, slow)
+    return kama_values[-1] if kama_values else float('nan')
