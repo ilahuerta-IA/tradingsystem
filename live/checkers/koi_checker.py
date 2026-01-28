@@ -236,12 +236,10 @@ class KOIChecker(BaseChecker):
                 allowed_hours = self.params.get("allowed_hours", [])
                 if not check_time_filter(current_dt_utc, allowed_hours, True):
                     reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
-                    self._log_signal_check(reason)
                     return self._create_no_signal(reason)
             
             # Check Bullish Engulfing
             if not self._check_bullish_engulfing(df):
-                self._log_signal_check("No bullish engulfing")
                 return self._create_no_signal("No bullish engulfing")
             
             # Check 5 EMAs ascending
@@ -249,13 +247,11 @@ class KOIChecker(BaseChecker):
             if not emas_valid:
                 ema_period = self.ema_periods[failed_ema - 1] if failed_ema else '?'
                 reason = f"EMAs not all ascending (EMA{failed_ema}={ema_period} failed)"
-                self._log_signal_check(reason)
                 return self._create_no_signal(reason)
             
             # Check CCI
             if not self._check_cci_condition(current_cci):
                 reason = f"CCI filter: {current_cci:.1f} not in ({self.params.get('cci_threshold', 110)}, {self.params.get('cci_max_threshold', 999)})"
-                self._log_signal_check(reason)
                 return self._create_no_signal(reason)
             
             # All conditions met - check if breakout window is enabled

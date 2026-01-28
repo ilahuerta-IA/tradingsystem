@@ -189,23 +189,19 @@ class SunsetOgleChecker(BaseChecker):
         if self.state == SunsetOgleState.SCANNING:
             
             if not self._check_crossover(emas):
-                self._log_signal_check("No crossover")
                 return self._create_no_signal("No crossover")
             
             if not check_ema_price_filter(current_close, ema_filter_value):
                 reason = f"Price filter: {current_close:.5f} <= EMA({ema_filter_value:.5f})"
-                self._log_signal_check(reason)
                 return self._create_no_signal(reason)
             
             if not check_atr_filter(current_atr, self.params["atr_min"], self.params["atr_max"]):
                 reason = f"ATR filter: {current_atr:.6f} not in [{self.params['atr_min']}-{self.params['atr_max']}]"
-                self._log_signal_check(reason)
                 return self._create_no_signal(reason)
             
             if self.params.get("use_angle_filter", False):
                 if not check_angle_filter(current_angle, self.params["angle_min"], self.params["angle_max"]):
                     reason = f"Angle filter: {current_angle:.1f} not in [{self.params['angle_min']}-{self.params['angle_max']}]"
-                    self._log_signal_check(reason)
                     return self._create_no_signal(reason)
             
             # All filters passed - transition to ARMED
