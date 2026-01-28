@@ -527,16 +527,17 @@ def calculate_adx(
             # Market is ranging - good for mean reversion
     """
     n = len(highs)
-    if n < period * 2 + 1:
+    min_required = period * 2 + 1
+    if n < min_required:
         return [float('nan')] * n
     
     # Initialize output
     adx_values = [float('nan')] * n
     
-    # Calculate True Range, +DM, -DM
-    tr_list = []
-    plus_dm_list = []
-    minus_dm_list = []
+    # Calculate True Range, +DM, -DM for each bar
+    tr_list = [0.0]  # First element placeholder
+    plus_dm_list = [0.0]
+    minus_dm_list = [0.0]
     
     for i in range(1, n):
         high = highs[i]
@@ -556,67 +557,58 @@ def calculate_adx(
         up_move = high - prev_high
         down_move = prev_low - low
         
-        if up_move > down_move and up_move > 0:
-            plus_dm = up_move
-        else:
-            plus_dm = 0.0
-        
-        if down_move > up_move and down_move > 0:
-            minus_dm = down_move
-        else:
-            minus_dm = 0.0
+        plus_dm = up_move if up_move > down_move and up_move > 0 else 0.0
+        minus_dm = down_move if down_move > up_move and down_move > 0 else 0.0
         
         plus_dm_list.append(plus_dm)
         minus_dm_list.append(minus_dm)
     
-    # Smooth TR, +DM, -DM using Wilder's smoothing
-    def wilder_smooth(values: list, period: int) -> list:
-        """Wilder's smoothing method."""
-        result = [float('nan')] * len(values)
-        if len(values) < period:
-            return result
-        
-        # First value is sum of first N periods
-        result[period - 1] = sum(values[:period])
-        
-        # Subsequent values
-        for i in range(period, len(values)):
-            result[i] = result[i - 1] - (result[i - 1] / period) + values[i]
-        
-        return result
+    # Smoothed values using Wilder's method
+    smoothed_tr = [0.0] * n
+    smoothed_plus_dm = [0.0] * n
+    smoothed_minus_dm = [0.0] * n
     
-    smoothed_tr = wilder_smooth(tr_list, period)
-    smoothed_plus_dm = wilder_smooth(plus_dm_list, period)
-    smoothed_minus_dm = wilder_smooth(minus_dm_list, period)
+    # First smoothed value is sum of first period values
+    smoothed_tr[period] = sum(tr_list[1:period + 1])
+    smoothed_plus_dm[period] = sum(plus_dm_list[1:period + 1])
+    smoothed_minus_dm[period] = sum(minus_dm_list[1:period + 1])
     
-    # Calculate +DI, -DI, DX
-    dx_list = [float('nan')] * len(tr_list)
+    # Subsequent smoothed values using Wilder's smoothing
+    for i in range(period + 1, n):
+        smoothed_tr[i] = smoothed_tr[i-1] - (smoothed_tr[i-1] / period) + tr_list[i]
+        smoothed_plus_dm[i] = smoothed_plus_dm[i-1] - (smoothed_plus_dm[i-1] / period) + plus_dm_list[i]
+        smoothed_minus_dm[i] = smoothed_minus_dm[i-1] - (smoothed_minus_dm[i-1] / period) + minus_dm_list[i]
     
-    for i in range(period - 1, len(tr_list)):
+    # Calculate DX values
+    dx_list = [float('nan')] * n
+    
+    for i in range(period, n):
         if smoothed_tr[i] > 0:
             plus_di = 100.0 * smoothed_plus_dm[i] / smoothed_tr[i]
             minus_di = 100.0 * smoothed_minus_dm[i] / smoothed_tr[i]
-            
             di_sum = plus_di + minus_di
             if di_sum > 0:
                 dx_list[i] = 100.0 * abs(plus_di - minus_di) / di_sum
     
-    # Smooth DX to get ADX
-    # Start ADX calculation after we have enough DX values
-    adx_start = period * 2 - 2
+    # Calculate ADX using Wilder's smoothing of DX
+    # First ADX value is average of first 'period' DX values
+    adx_start = period * 2 - 1
     
-    if adx_start < len(dx_list):
-        # First ADX is average of first N DX values
-        valid_dx = [dx for dx in dx_list[period - 1:adx_start + 1] if not math.isnan(dx)]
-        if valid_dx:
-            adx_values[adx_start + 1] = sum(valid_dx) / len(valid_dx)
+    if adx_start < n:
+        first_dx_values = [dx_list[i] for i in range(period, adx_start + 1) if not math.isnan(dx_list[i])]
+        if first_dx_values:
+            adx_values[adx_start] = sum(first_dx_values) / len(first_dx_values)
             
             # Subsequent ADX values use Wilder's smoothing
-            for i in range(adx_start + 2, len(dx_list)):
-                if not math.isnan(dx_list[i]) and not math.isnan(adx_values[i]):
-                    adx_values[i + 1] = (adx_values[i] * (period - 1) + dx_list[i]) / period
-                elif not math.isnan(adx_values[i]):
-                    adx_values[i + 1] = adx_values[i]
+            for i in range(adx_start + 1, n):
+                prev_adx = adx_values[i - 1]
+                curr_dx = dx_list[i]
+                
+                if not math.isnan(prev_adx):
+                    if not math.isnan(curr_dx):
+                        adx_values[i] = (prev_adx * (period - 1) + curr_dx) / period
+                    else:
+                        adx_values[i] = prev_adx
     
     return adx_values
 

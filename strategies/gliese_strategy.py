@@ -767,16 +767,22 @@ class GLIESEStrategy(bt.Strategy):
             return
         
         # Calculate position size
+        # Determine pair type
+        pair_type = 'STANDARD'
+        if self.p.is_etf:
+            pair_type = 'ETF'
+        elif self.p.pip_value == 0.01:  # JPY pairs
+            pair_type = 'JPY'
+        
         size = calculate_position_size(
-            equity=self.broker.get_value(),
-            risk_percent=self.p.risk_percent,
             entry_price=entry_price,
             stop_loss=self.stop_level,
-            pip_value=self.p.pip_value,
+            equity=self.broker.get_value(),
+            risk_percent=self.p.risk_percent,
+            pair_type=pair_type,
             lot_size=self.p.lot_size,
-            is_jpy_pair=self.p.is_jpy_pair,
             jpy_rate=self.p.jpy_rate,
-            is_etf=self.p.is_etf,
+            pip_value=self.p.pip_value,
             margin_pct=self.p.margin_pct,
         )
         
@@ -802,6 +808,73 @@ class GLIESEStrategy(bt.Strategy):
     # MAIN LOOP
     # =========================================================================
     
+    def _print_diagnostics(self, dt: datetime):
+        """Print diagnostic info every N bars for debugging."""
+        bar_num = len(self)
+        
+        # Print every 500 bars (about 1.7 days of 5m data)
+        if bar_num % 500 != 0:
+            return
+        
+        # Calculate all indicator values
+        close = float(self.data.close[0])
+        kama_val = float(self.kama[0])
+        atr_val = float(self.atr[0])
+        upper_band, lower_band = self._calculate_bands()
+        
+        # ER calculation
+        er_value = None
+        if self.p.use_htf_range_filter and len(self.data) >= self.scaled_er_period + 1:
+            close_prices = [float(self.data.close[-i]) for i in range(self.scaled_er_period + 1)]
+            close_prices.reverse()
+            er_value = calculate_efficiency_ratio(close_prices, self.scaled_er_period)
+        
+        # ADXR calculation
+        adxr_value = None
+        if self.p.use_adxr_filter:
+            required_bars = (self.p.adxr_period * 2) + self.p.adxr_lookback + 5
+            if len(self.data) >= required_bars:
+                highs = [float(self.data.high[-i]) for i in range(required_bars)]
+                lows = [float(self.data.low[-i]) for i in range(required_bars)]
+                closes = [float(self.data.close[-i]) for i in range(required_bars)]
+                highs.reverse()
+                lows.reverse()
+                closes.reverse()
+                adxr_value = calculate_adxr(
+                    highs, lows, closes,
+                    self.p.adxr_period, self.p.adxr_lookback
+                )
+        
+        # KAMA Slope calculation
+        kama_slope = None
+        slope_threshold = None
+        if self.p.use_kama_slope_filter and len(self.kama_history) >= self.p.kama_slope_lookback + 1:
+            kama_slope = calculate_kama_slope(self.kama_history, self.p.kama_slope_lookback)
+            slope_threshold = self.p.kama_slope_atr_mult * atr_val
+        
+        # Print diagnostic
+        print(f"\n{'='*80}")
+        print(f"[BAR {bar_num}] {dt:%Y-%m-%d %H:%M} | STATE: {self.state.name}")
+        print(f"{'='*80}")
+        print(f"  PRICE:  Close={close:.5f} | KAMA={kama_val:.5f} | ATR={atr_val:.6f}")
+        print(f"  BANDS:  Upper={upper_band:.5f} | Lower={lower_band:.5f}")
+        print(f"  DISTANCE: Close-Lower={(close - lower_band):.6f} | Close-KAMA={(close - kama_val):.6f}")
+        print(f"  --- RANGE FILTERS ---")
+        if er_value is not None:
+            er_pass = "PASS" if er_value < self.p.htf_er_max_threshold else "FAIL"
+            print(f"  ER:     {er_value:.4f} < {self.p.htf_er_max_threshold:.2f} ? {er_pass}")
+        if adxr_value is not None:
+            adxr_pass = "PASS" if adxr_value < self.p.adxr_max_threshold else "FAIL"
+            print(f"  ADXR:   {adxr_value:.2f} < {self.p.adxr_max_threshold:.1f} ? {adxr_pass}")
+        if kama_slope is not None:
+            slope_pass = "PASS" if kama_slope < slope_threshold else "FAIL"
+            print(f"  SLOPE:  {kama_slope:.8f} < {slope_threshold:.8f} ? {slope_pass}")
+        
+        # Check if all conditions pass
+        range_ok, details, reason = self._check_range_conditions()
+        print(f"  RANGE RESULT: {'ALL PASS' if range_ok else reason}")
+        print(f"{'='*80}\n")
+    
     def next(self):
         """Main strategy logic executed on each bar."""
         # Track portfolio value
@@ -821,6 +894,10 @@ class GLIESEStrategy(bt.Strategy):
         )
         if len(self) < min_bars:
             return
+        
+        # Print diagnostics if enabled
+        if self.p.print_signals:
+            self._print_diagnostics(dt)
         
         # Update plot lines if in position
         if self.position and self.entry_exit_lines:
