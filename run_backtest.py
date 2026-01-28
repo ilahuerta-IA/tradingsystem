@@ -17,6 +17,7 @@ from config.settings import STRATEGIES_CONFIG, BROKER_CONFIG
 from strategies.sunset_ogle import SunsetOgleStrategy
 from strategies.koi_strategy import KOIStrategy
 from strategies.sedna_strategy import SEDNAStrategy
+from strategies.gliese_strategy import GLIESEStrategy
 from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
@@ -28,6 +29,7 @@ STRATEGY_REGISTRY = {
     'SunsetOgle': SunsetOgleStrategy,
     'KOI': KOIStrategy,
     'SEDNA': SEDNAStrategy,
+    'GLIESE': GLIESEStrategy,
 }
 
 

@@ -13,6 +13,7 @@ Usage:
         return False
 """
 
+import math
 from datetime import datetime
 from typing import List, Optional
 
@@ -488,3 +489,392 @@ def get_kama_value(
     """
     kama_values = calculate_kama(prices, period, fast, slow)
     return kama_values[-1] if kama_values else float('nan')
+
+
+# =============================================================================
+# ADX / ADXR (Average Directional Index) - For GLIESE Strategy
+# =============================================================================
+
+def calculate_adx(
+    highs: list,
+    lows: list,
+    closes: list,
+    period: int = 14
+) -> list:
+    """
+    Calculate Average Directional Index (ADX).
+    
+    ADX measures trend strength regardless of direction:
+    - ADX < 20: No trend (ranging market)
+    - ADX 20-25: Weak trend / transition
+    - ADX 25-50: Strong trend
+    - ADX > 50: Very strong trend
+    
+    Pure function for use in any context (backtest, live, analysis).
+    
+    Args:
+        highs: List of high prices (most recent last)
+        lows: List of low prices (most recent last)
+        closes: List of close prices (most recent last)
+        period: Smoothing period for ADX calculation
+    
+    Returns:
+        List of ADX values (same length as input, NaN for warmup)
+    
+    Example:
+        adx = calculate_adx(highs, lows, closes, period=14)
+        if adx[-1] < 25:
+            # Market is ranging - good for mean reversion
+    """
+    n = len(highs)
+    if n < period * 2 + 1:
+        return [float('nan')] * n
+    
+    # Initialize output
+    adx_values = [float('nan')] * n
+    
+    # Calculate True Range, +DM, -DM
+    tr_list = []
+    plus_dm_list = []
+    minus_dm_list = []
+    
+    for i in range(1, n):
+        high = highs[i]
+        low = lows[i]
+        prev_high = highs[i - 1]
+        prev_low = lows[i - 1]
+        prev_close = closes[i - 1]
+        
+        # True Range
+        tr1 = high - low
+        tr2 = abs(high - prev_close)
+        tr3 = abs(low - prev_close)
+        tr = max(tr1, tr2, tr3)
+        tr_list.append(tr)
+        
+        # Directional Movement
+        up_move = high - prev_high
+        down_move = prev_low - low
+        
+        if up_move > down_move and up_move > 0:
+            plus_dm = up_move
+        else:
+            plus_dm = 0.0
+        
+        if down_move > up_move and down_move > 0:
+            minus_dm = down_move
+        else:
+            minus_dm = 0.0
+        
+        plus_dm_list.append(plus_dm)
+        minus_dm_list.append(minus_dm)
+    
+    # Smooth TR, +DM, -DM using Wilder's smoothing
+    def wilder_smooth(values: list, period: int) -> list:
+        """Wilder's smoothing method."""
+        result = [float('nan')] * len(values)
+        if len(values) < period:
+            return result
+        
+        # First value is sum of first N periods
+        result[period - 1] = sum(values[:period])
+        
+        # Subsequent values
+        for i in range(period, len(values)):
+            result[i] = result[i - 1] - (result[i - 1] / period) + values[i]
+        
+        return result
+    
+    smoothed_tr = wilder_smooth(tr_list, period)
+    smoothed_plus_dm = wilder_smooth(plus_dm_list, period)
+    smoothed_minus_dm = wilder_smooth(minus_dm_list, period)
+    
+    # Calculate +DI, -DI, DX
+    dx_list = [float('nan')] * len(tr_list)
+    
+    for i in range(period - 1, len(tr_list)):
+        if smoothed_tr[i] > 0:
+            plus_di = 100.0 * smoothed_plus_dm[i] / smoothed_tr[i]
+            minus_di = 100.0 * smoothed_minus_dm[i] / smoothed_tr[i]
+            
+            di_sum = plus_di + minus_di
+            if di_sum > 0:
+                dx_list[i] = 100.0 * abs(plus_di - minus_di) / di_sum
+    
+    # Smooth DX to get ADX
+    # Start ADX calculation after we have enough DX values
+    adx_start = period * 2 - 2
+    
+    if adx_start < len(dx_list):
+        # First ADX is average of first N DX values
+        valid_dx = [dx for dx in dx_list[period - 1:adx_start + 1] if not math.isnan(dx)]
+        if valid_dx:
+            adx_values[adx_start + 1] = sum(valid_dx) / len(valid_dx)
+            
+            # Subsequent ADX values use Wilder's smoothing
+            for i in range(adx_start + 2, len(dx_list)):
+                if not math.isnan(dx_list[i]) and not math.isnan(adx_values[i]):
+                    adx_values[i + 1] = (adx_values[i] * (period - 1) + dx_list[i]) / period
+                elif not math.isnan(adx_values[i]):
+                    adx_values[i + 1] = adx_values[i]
+    
+    return adx_values
+
+
+def calculate_adxr(
+    highs: list,
+    lows: list,
+    closes: list,
+    period: int = 14,
+    lookback: int = 14
+) -> float:
+    """
+    Calculate Average Directional Index Rating (ADXR).
+    
+    ADXR = (ADX[0] + ADX[lookback]) / 2
+    
+    Smoother version of ADX, reduces whipsaws and provides more stable
+    trend strength measurement.
+    
+    Args:
+        highs: List of high prices (most recent last)
+        lows: List of low prices (most recent last)
+        closes: List of close prices (most recent last)
+        period: ADX smoothing period
+        lookback: Periods back to average with current ADX
+    
+    Returns:
+        Current ADXR value, or NaN if insufficient data
+    
+    Example:
+        adxr = calculate_adxr(highs, lows, closes, period=14, lookback=14)
+        if adxr < 25:
+            # Market is ranging - suitable for mean reversion
+    """
+    adx_values = calculate_adx(highs, lows, closes, period)
+    
+    if len(adx_values) < lookback + 1:
+        return float('nan')
+    
+    current_adx = adx_values[-1]
+    past_adx = adx_values[-lookback - 1]
+    
+    if math.isnan(current_adx) or math.isnan(past_adx):
+        return float('nan')
+    
+    return (current_adx + past_adx) / 2.0
+
+
+def check_adxr_filter(
+    adxr_value: float,
+    max_threshold: float,
+    enabled: bool = True
+) -> bool:
+    """
+    Check if market is ranging using ADXR (for mean reversion).
+    
+    ADXR < threshold indicates ranging/non-trending market,
+    suitable for mean reversion strategies.
+    
+    Note: This is INVERTED from typical ADX usage.
+    - SEDNA: ADX HIGH = good (trending)
+    - GLIESE: ADXR LOW = good (ranging)
+    
+    Args:
+        adxr_value: Current ADXR value
+        max_threshold: Maximum ADXR to allow entry (e.g., 25)
+        enabled: If False, always returns True
+    
+    Returns:
+        True if ADXR < threshold or filter disabled
+    
+    Example:
+        check_adxr_filter(18.5, 25.0)  # True - ranging market
+        check_adxr_filter(32.0, 25.0)  # False - trending market
+    """
+    if not enabled:
+        return True
+    if math.isnan(adxr_value):
+        return False
+    return adxr_value < max_threshold
+
+
+# =============================================================================
+# KAMA SLOPE (For range detection) - For GLIESE Strategy
+# =============================================================================
+
+def calculate_kama_slope(
+    kama_values: list,
+    lookback: int = 5
+) -> float:
+    """
+    Calculate KAMA slope over lookback period.
+    
+    Measures how much KAMA has moved, useful for detecting flat/ranging periods.
+    
+    Args:
+        kama_values: List of KAMA values (most recent last)
+        lookback: Number of bars to measure slope
+    
+    Returns:
+        Absolute slope value (always positive), or NaN if insufficient data
+    
+    Example:
+        slope = calculate_kama_slope(kama_values, lookback=5)
+    """
+    if len(kama_values) < lookback + 1:
+        return float('nan')
+    
+    current_kama = kama_values[-1]
+    past_kama = kama_values[-lookback - 1]
+    
+    if math.isnan(current_kama) or math.isnan(past_kama):
+        return float('nan')
+    
+    return abs(current_kama - past_kama)
+
+
+def check_kama_slope_filter(
+    kama_slope: float,
+    atr_value: float,
+    max_atr_mult: float,
+    enabled: bool = True
+) -> bool:
+    """
+    Check if KAMA slope is flat (for range detection).
+    
+    Slope is considered flat if: slope < max_atr_mult * ATR
+    This normalizes the threshold across different assets.
+    
+    Args:
+        kama_slope: Absolute KAMA slope value
+        atr_value: Current ATR for normalization
+        max_atr_mult: Maximum slope as multiple of ATR (e.g., 0.3)
+        enabled: If False, always returns True
+    
+    Returns:
+        True if slope is flat (ranging) or filter disabled
+    
+    Example:
+        check_kama_slope_filter(0.0002, 0.0010, 0.3)  # True: 0.0002 < 0.3*0.001
+        check_kama_slope_filter(0.0005, 0.0010, 0.3)  # False: 0.0005 > 0.0003
+    """
+    if not enabled:
+        return True
+    if math.isnan(kama_slope) or math.isnan(atr_value) or atr_value <= 0:
+        return False
+    
+    threshold = max_atr_mult * atr_value
+    return kama_slope < threshold
+
+
+# =============================================================================
+# EFFICIENCY RATIO RANGE FILTER (Inverted for GLIESE)
+# =============================================================================
+
+def check_efficiency_ratio_range_filter(
+    er_value: float,
+    max_threshold: float,
+    enabled: bool = True
+) -> bool:
+    """
+    Check if market is ranging using Efficiency Ratio (for mean reversion).
+    
+    ER < threshold indicates choppy/ranging market,
+    suitable for mean reversion strategies.
+    
+    Note: This is INVERTED from SEDNA's ER filter.
+    - SEDNA: ER >= threshold (trending)
+    - GLIESE: ER < threshold (ranging)
+    
+    Args:
+        er_value: Current Efficiency Ratio value (0.0 to 1.0)
+        max_threshold: Maximum ER to allow entry (e.g., 0.30)
+        enabled: If False, always returns True
+    
+    Returns:
+        True if ER < threshold or filter disabled
+    
+    Example:
+        check_efficiency_ratio_range_filter(0.20, 0.30)  # True - ranging
+        check_efficiency_ratio_range_filter(0.45, 0.30)  # False - trending
+    """
+    if not enabled:
+        return True
+    return er_value < max_threshold
+
+
+# =============================================================================
+# BAND CALCULATIONS (For GLIESE Mean Reversion)
+# =============================================================================
+
+def calculate_bands(
+    center_value: float,
+    atr_value: float,
+    band_mult: float = 1.5
+) -> tuple:
+    """
+    Calculate upper and lower bands around center value.
+    
+    Bands = Center +/- (band_mult * ATR)
+    
+    Args:
+        center_value: Center line value (e.g., KAMA)
+        atr_value: Current ATR for band width
+        band_mult: Multiplier for band distance (e.g., 1.5)
+    
+    Returns:
+        Tuple of (upper_band, lower_band)
+    
+    Example:
+        upper, lower = calculate_bands(1.0850, 0.0010, 1.5)
+        # upper = 1.0865, lower = 1.0835
+    """
+    band_distance = band_mult * atr_value
+    upper_band = center_value + band_distance
+    lower_band = center_value - band_distance
+    return upper_band, lower_band
+
+
+def check_extension_below_band(
+    current_close: float,
+    lower_band: float
+) -> bool:
+    """
+    Check if price has extended below lower band.
+    
+    Args:
+        current_close: Current close price
+        lower_band: Lower band value
+    
+    Returns:
+        True if close < lower_band (extended below)
+    
+    Example:
+        if check_extension_below_band(1.0830, 1.0835):
+            # Price is below lower band - potential mean reversion setup
+    """
+    return current_close < lower_band
+
+
+def check_reversal_above_band(
+    current_close: float,
+    lower_band: float
+) -> bool:
+    """
+    Check if price has reversed back above lower band.
+    
+    Used after extension detection to confirm reversal.
+    
+    Args:
+        current_close: Current close price
+        lower_band: Lower band value
+    
+    Returns:
+        True if close >= lower_band (reversed above)
+    
+    Example:
+        if check_reversal_above_band(1.0840, 1.0835):
+            # Price reversed back above band - reversal confirmed
+    """
+    return current_close >= lower_band

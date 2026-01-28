@@ -9,12 +9,14 @@ from .base_checker import BaseChecker, Signal, SignalDirection
 from .sunset_ogle_checker import SunsetOgleChecker
 from .koi_checker import KOIChecker
 from .sedna_checker import SEDNAChecker
+from .gliese_checker import GLIESEChecker
 
 # Registry for dynamic instantiation
 CHECKER_REGISTRY = {
     "SunsetOgle": SunsetOgleChecker,
     "KOI": KOIChecker,
     "SEDNA": SEDNAChecker,
+    "GLIESE": GLIESEChecker,
 }
 
 
@@ -28,7 +30,7 @@ def get_checker(
     Factory function to get a checker instance.
     
     Args:
-        strategy_name: Name of strategy ("SunsetOgle", "KOI", "SEDNA")
+        strategy_name: Name of strategy ("SunsetOgle", "KOI", "SEDNA", "GLIESE")
         config_name: Configuration name (e.g., "EURUSD_H1")
         params: Strategy parameters dict
         logger: Optional logger instance
@@ -55,6 +57,7 @@ __all__ = [
     "SunsetOgleChecker",
     "KOIChecker",
     "SEDNAChecker",
+    "GLIESEChecker",
     "CHECKER_REGISTRY",
     "get_checker",
 ]
