@@ -790,19 +790,23 @@ class GLIESEStrategy(bt.Strategy):
             self._reset_state()
             return
         
-        # Execute entry
-        self.order = self.buy(size=size, exectype=bt.Order.Stop, price=entry_price)
+        # Execute entry - use MARKET order (breakout already confirmed)
+        self.order = self.buy(size=size)
         
-        self.last_entry_price = entry_price
+        # Use actual close price as entry (will be updated in notify_order)
+        self.last_entry_price = float(self.data.close[0])
         self.last_entry_bar = len(self)
         self.pattern_atr = atr_avg
         
         # Record trade entry
-        self._record_trade_entry(dt, entry_price, size, atr_avg, sl_pips)
+        self._record_trade_entry(dt, self.last_entry_price, size, atr_avg, sl_pips)
         
         if self.p.print_signals:
-            print(f">>> GLIESE ENTRY {dt:%Y-%m-%d %H:%M} | Entry={entry_price:.5f} | "
+            print(f">>> GLIESE ENTRY {dt:%Y-%m-%d %H:%M} | Entry={self.last_entry_price:.5f} | "
                   f"SL={self.stop_level:.5f} | TP={self.take_level:.5f} | Size={size}")
+        
+        # Reset state after placing order
+        self._reset_state()
 
     # =========================================================================
     # MAIN LOOP
@@ -931,16 +935,26 @@ class GLIESEStrategy(bt.Strategy):
         
         if order.status == order.Completed:
             if order.isbuy():
-                # Entry filled - place SL/TP
+                # Update entry price with actual execution price
+                self.last_entry_price = order.executed.price
+                
+                # Recalculate SL/TP based on actual entry price
+                atr_avg = self.pattern_atr if self.pattern_atr else self._get_average_atr()
+                self.stop_level = self.last_entry_price - (atr_avg * self.p.atr_sl_multiplier)
+                self.take_level = self.last_entry_price + (atr_avg * self.p.atr_tp_multiplier)
+                
+                # Entry filled - place SL/TP with OCA (One-Cancels-All)
                 self.stop_order = self.sell(
                     size=order.executed.size,
                     exectype=bt.Order.Stop,
-                    price=self.stop_level
+                    price=self.stop_level,
+                    oco=self.limit_order
                 )
                 self.limit_order = self.sell(
                     size=order.executed.size,
                     exectype=bt.Order.Limit,
-                    price=self.take_level
+                    price=self.take_level,
+                    oco=self.stop_order
                 )
                 
                 # Update plot lines
@@ -951,16 +965,22 @@ class GLIESEStrategy(bt.Strategy):
                         self.take_level
                     )
                 
-                self._reset_state()
+                if self.p.print_signals:
+                    print(f"[OK] GLIESE BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
+                
+                self.order = None
             
             elif order.issell():
-                # Exit - cancel other order
-                if order == self.stop_order and self.limit_order:
-                    self.cancel(self.limit_order)
+                # Exit completed - determine reason
+                if order == self.stop_order:
                     self.last_exit_reason = "STOP_LOSS"
-                elif order == self.limit_order and self.stop_order:
-                    self.cancel(self.stop_order)
+                elif order == self.limit_order:
                     self.last_exit_reason = "TAKE_PROFIT"
+                else:
+                    self.last_exit_reason = "UNKNOWN"
+                
+                if self.p.print_signals:
+                    print(f"[EXIT] at {order.executed.price:.5f} reason={self.last_exit_reason}")
                 
                 # Clear plot lines
                 if self.entry_exit_lines:
@@ -968,13 +988,22 @@ class GLIESEStrategy(bt.Strategy):
                 
                 self.stop_order = None
                 self.limit_order = None
+                self.order = None
+                self.stop_level = None
+                self.take_level = None
         
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            if order == self.order:
-                self._reset_state()
-        
-        if order == self.order:
-            self.order = None
+            # Handle expected OCA cancellations silently
+            is_expected_cancel = (self.stop_order and self.limit_order)
+            if not is_expected_cancel and self.p.print_signals:
+                print(f"Order {order.getstatusname()}: {order.ref}")
+            
+            if self.order and order.ref == self.order.ref:
+                self.order = None
+            if self.stop_order and order.ref == self.stop_order.ref:
+                self.stop_order = None
+            if self.limit_order and order.ref == self.limit_order.ref:
+                self.limit_order = None
     
     def notify_trade(self, trade):
         """Handle trade notifications."""
