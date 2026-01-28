@@ -266,7 +266,7 @@ class GLIESEStrategy(bt.Strategy):
         Process state machine for pattern detection.
         Returns True if entry signal generated.
         """
-        hl2_ema_val = float(self.hl2_ema[0])
+        current_close = float(self.data.close[0])
         lower_band = self._get_lower_band()
         current_low = float(self.data.low[0])
         current_high = float(self.data.high[0])
@@ -275,7 +275,7 @@ class GLIESEStrategy(bt.Strategy):
         # STATE: IDLE - Looking for extension below band
         # =====================================================================
         if self.state == GLIESEState.IDLE:
-            if hl2_ema_val < lower_band:
+            if current_close < lower_band:
                 # Start extension
                 self.state = GLIESEState.IN_EXTENSION
                 self.extension_bar_count = 1
@@ -284,7 +284,7 @@ class GLIESEStrategy(bt.Strategy):
                 
                 if self.p.print_signals:
                     print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: EXTENSION START | "
-                          f"HL2_EMA={hl2_ema_val:.5f} < Band={lower_band:.5f}")
+                          f"Close={current_close:.5f} < Band={lower_band:.5f}")
             
             return False
         
@@ -295,7 +295,7 @@ class GLIESEStrategy(bt.Strategy):
             # Update extension low
             self.extension_low = min(self.extension_low, current_low)
             
-            if hl2_ema_val < lower_band:
+            if current_close < lower_band:
                 # Still in extension
                 self.extension_bar_count += 1
                 
@@ -306,86 +306,22 @@ class GLIESEStrategy(bt.Strategy):
                     self._reset_state()
                     return False
             else:
-                # HL2_EMA returned above band - check if extension was long enough
+                # Close returned above band - check if extension was long enough
                 if self.extension_bar_count >= self.p.extension_min_bars:
-                    # Valid reversal (B)
-                    self.state = GLIESEState.REVERSAL_DETECTED
-                    self.pullback_high = current_high
-                    self.pullback_bar_count = 0
+                    # Valid reversal - ENTRY SIGNAL IMMEDIATELY
                     self.pattern_atr = self._get_avg_atr()
                     
                     if self.p.print_signals:
-                        print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: REVERSAL | "
+                        print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: REVERSAL - ENTRY | "
                               f"ExtBars={self.extension_bar_count}, ExtLow={self.extension_low:.5f}")
+                    
+                    # Signal entry and reset
+                    return True
                 else:
                     # Extension too short
                     if self.p.print_signals:
                         print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: Extension too short ({self.extension_bar_count} bars)")
                     self._reset_state()
-            
-            return False
-        
-        # =====================================================================
-        # STATE: REVERSAL_DETECTED - Waiting for pullback to form
-        # =====================================================================
-        elif self.state == GLIESEState.REVERSAL_DETECTED:
-            self.pullback_bar_count += 1
-            
-            # Check if price broke extension low (pattern failed)
-            if current_low < self.extension_low:
-                if self.p.print_signals:
-                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: Pattern failed - broke extension low")
-                self._reset_state()
-                return False
-            
-            # Track pullback high for breakout level
-            self.pullback_high = max(self.pullback_high, current_high)
-            
-            # After 1 bar, transition to waiting for breakout
-            # (pullback is the natural retracement after reversal)
-            if self.pullback_bar_count >= 1:
-                self.state = GLIESEState.WAITING_BREAKOUT
-                buffer = self.p.breakout_buffer_pips * self.p.pip_value
-                self.breakout_level = self.pullback_high + buffer
-                
-                if self.p.print_signals:
-                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: PULLBACK | "
-                          f"BreakoutLevel={self.breakout_level:.5f}")
-            
-            return False
-        
-        # =====================================================================
-        # STATE: WAITING_BREAKOUT - Monitoring for breakout entry
-        # =====================================================================
-        elif self.state == GLIESEState.WAITING_BREAKOUT:
-            self.pullback_bar_count += 1
-            
-            # Check if price broke extension low (pattern failed)
-            if current_low < self.extension_low:
-                if self.p.print_signals:
-                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: Pattern failed - broke extension low")
-                self._reset_state()
-                return False
-            
-            # Check for timeout
-            if self.pullback_bar_count > self.p.pullback_max_bars:
-                if self.p.print_signals:
-                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: Pullback timeout")
-                self._reset_state()
-                return False
-            
-            # Update pullback high (in case it makes new high during pullback)
-            if current_high > self.pullback_high:
-                self.pullback_high = current_high
-                buffer = self.p.breakout_buffer_pips * self.p.pip_value
-                self.breakout_level = self.pullback_high + buffer
-            
-            # Check for breakout
-            if current_high > self.breakout_level:
-                if self.p.print_signals:
-                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: BREAKOUT - ENTRY SIGNAL | "
-                          f"High={current_high:.5f} > Level={self.breakout_level:.5f}")
-                return True
             
             return False
         

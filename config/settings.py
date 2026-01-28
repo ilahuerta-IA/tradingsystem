@@ -1261,20 +1261,21 @@ STRATEGIES_CONFIG = {
             
             # Band settings
             'band_atr_period': 14,
-            'band_atr_mult': 2.0,  # LowerBand = KAMA - 2.0 * ATR
+            'band_atr_mult': 1.0,  # LowerBand = KAMA - 1.0 * ATR (más cercana)
             
             # Extension Detection (A phase)
-            'extension_min_bars': 3,
-            'extension_max_bars': 15,
+            'extension_min_bars': 8,  # Extensión significativa
+            'extension_max_bars': 25,
             
             # Pullback Settings (C phase)
-            'pullback_max_bars': 5,
-            'breakout_buffer_pips': 2.0,
+            'pullback_max_bars': 15,  # Más tiempo para breakout
+            'breakout_buffer_pips': 1.0,  # Buffer más pequeño
             
             # SL/TP
             'sl_buffer_pips': 5.0,
-            'use_kama_tp': True,  # TP at KAMA (center)
-            'atr_tp_multiplier': 3.0,  # Alternative if use_kama_tp=False
+            'use_kama_tp': False,  # No usar KAMA (muy cerca)
+            'atr_sl_multiplier': 2.0,  # SL = ext_low - 2*ATR
+            'atr_tp_multiplier': 2.0,  # TP = entry + 2*ATR (R:R ~1:1)
             
             # === FILTERS (same as SEDNA) ===
             'use_time_filter': False,
