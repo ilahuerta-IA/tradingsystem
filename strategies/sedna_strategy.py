@@ -35,56 +35,8 @@ from lib.filters import (
     detect_pullback,
     check_pullback_breakout,
 )
-from lib.indicators import EfficiencyRatio
+from lib.indicators import EfficiencyRatio, KAMA
 from lib.position_sizing import calculate_position_size
-
-
-class KAMA(bt.Indicator):
-    """
-    Kaufman's Adaptive Moving Average (KAMA).
-    
-    Uses efficiency ratio to adapt between fast and slow smoothing constants.
-    """
-    lines = ('kama',)
-    params = (
-        ('period', 12),      # Efficiency ratio period
-        ('fast', 2),         # Fast smoothing constant period
-        ('slow', 30),        # Slow smoothing constant period
-    )
-    
-    # Plot on main chart with price (not separate panel)
-    plotinfo = dict(
-        subplot=False,       # Same panel as price
-        plotlinelabels=True,
-    )
-    plotlines = dict(
-        kama=dict(color='purple', linewidth=1.5),
-    )
-    
-    def __init__(self):
-        # Calculate smoothing constants
-        self.fast_sc = 2.0 / (self.p.fast + 1.0)
-        self.slow_sc = 2.0 / (self.p.slow + 1.0)
-    
-    def nextstart(self):
-        # Initialize with SMA
-        self.lines.kama[0] = sum(self.data.get(size=self.p.period)) / self.p.period
-    
-    def next(self):
-        # Efficiency Ratio = Change / Volatility
-        change = abs(self.data[0] - self.data[-self.p.period])
-        volatility = sum(abs(self.data[-i] - self.data[-i-1]) for i in range(self.p.period))
-        
-        if volatility != 0:
-            er = change / volatility
-        else:
-            er = 0
-        
-        # Smoothing constant
-        sc = (er * (self.fast_sc - self.slow_sc) + self.slow_sc) ** 2
-        
-        # KAMA
-        self.lines.kama[0] = self.lines.kama[-1] + sc * (self.data[0] - self.lines.kama[-1])
 
 
 class EntryExitLines(bt.Indicator):

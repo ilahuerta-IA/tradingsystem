@@ -1232,7 +1232,7 @@ STRATEGIES_CONFIG = {
     },
 
     # =========================================================================
-    # GLIESE STRATEGY CONFIGURATIONS (Mean Reversion)
+    # GLIESE v2 STRATEGY CONFIGURATIONS (Simplified Mean Reversion)
     # =========================================================================
     
     'USDCHF_GLIESE': {
@@ -1246,7 +1246,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -1256,54 +1256,27 @@ STRATEGIES_CONFIG = {
             'kama_fast': 2,
             'kama_slow': 30,
             
+            # HL2 EMA for stability
+            'hl2_ema_period': 10,
+            
             # Band settings
             'band_atr_period': 14,
-            'band_atr_mult': 1.5,
+            'band_atr_mult': 2.0,  # LowerBand = KAMA - 2.0 * ATR
             
-            # ATR for SL/TP
-            'atr_length': 14,
-            'atr_sl_multiplier': 2.0,
-            'atr_tp_multiplier': 3.0,
+            # Extension Detection (A phase)
+            'extension_min_bars': 3,
+            'extension_max_bars': 15,
             
-            # Breakout Window
-            'use_breakout_window': True,
-            'breakout_window_candles': 5,
-            'breakout_level_offset_pips': 2.0,
+            # Pullback Settings (C phase)
+            'pullback_max_bars': 5,
+            'breakout_buffer_pips': 2.0,
             
-            # === RANGE DETECTION (HTF 15m) ===
-            'use_htf_range_filter': True,
-            'htf_timeframe_minutes': 15,
-            'htf_er_period': 10,
-            'htf_er_max_threshold': 0.45,
+            # SL/TP
+            'sl_buffer_pips': 5.0,
+            'use_kama_tp': True,  # TP at KAMA (center)
+            'atr_tp_multiplier': 3.0,  # Alternative if use_kama_tp=False
             
-            # ADXR Filter
-            'use_adxr_filter': True,
-            'adxr_period': 14,
-            'adxr_lookback': 14,
-            'adxr_max_threshold': 30.0,
-            
-            # KAMA Slope Filter
-            'use_kama_slope_filter': True,
-            'kama_slope_lookback': 5,
-            'kama_slope_atr_mult': 0.5,
-            
-            # Extension Detection
-            'extension_min_bars': 2,
-            'extension_max_bars': 20,
-            
-            # Z-Score Filter (optional)
-            'use_zscore_filter': False,
-            'zscore_min_depth': -2.0,
-            
-            # Pullback Detection
-            'use_pullback_filter': True,
-            'pullback_min_bars': 1,
-            'pullback_max_bars': 4,
-            
-            # Cancellation
-            'er_cancel_threshold': 0.50,
-            
-            # === STANDARD FILTERS ===
+            # === FILTERS (same as SEDNA) ===
             'use_time_filter': False,
             'allowed_hours': [],
             
@@ -1312,7 +1285,7 @@ STRATEGIES_CONFIG = {
             
             'use_sl_pips_filter': False,
             'sl_pips_min': 5.0,
-            'sl_pips_max': 15.0,
+            'sl_pips_max': 30.0,
             
             'use_atr_filter': False,
             'atr_min': 0.0003,
@@ -1330,11 +1303,10 @@ STRATEGIES_CONFIG = {
             'risk_percent': 0.01,
             
             # Debug & Reporting
-            'print_signals': True,
+            'print_signals': False,
             'export_reports': True,
             
             # Plot options
-            'plot_entry_exit_lines': True,
             'plot_bands': True,
         }
     },

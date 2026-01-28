@@ -61,3 +61,54 @@ class EfficiencyRatio(bt.Indicator):
             self.lines.er[0] = change / volatility
         else:
             self.lines.er[0] = 0.0
+
+
+class KAMA(bt.Indicator):
+    """
+    Kaufman's Adaptive Moving Average (KAMA).
+    
+    Adapts smoothing based on market efficiency:
+    - High efficiency (trending) → faster response
+    - Low efficiency (choppy) → slower response
+    
+    Formula:
+        ER = |Change| / Volatility
+        SC = (ER * (fast_sc - slow_sc) + slow_sc)^2
+        KAMA = KAMA[-1] + SC * (Price - KAMA[-1])
+    
+    Usage:
+        kama = KAMA(data.close, period=10, fast=2, slow=30)
+    """
+    lines = ('kama',)
+    params = (
+        ('period', 10),      # Efficiency ratio period
+        ('fast', 2),         # Fast smoothing constant period
+        ('slow', 30),        # Slow smoothing constant period
+    )
+    
+    plotinfo = dict(
+        subplot=False,
+        plotlinelabels=True,
+    )
+    plotlines = dict(
+        kama=dict(color='purple', linewidth=1.5),
+    )
+    
+    def __init__(self):
+        self.fast_sc = 2.0 / (self.p.fast + 1.0)
+        self.slow_sc = 2.0 / (self.p.slow + 1.0)
+    
+    def nextstart(self):
+        self.lines.kama[0] = sum(self.data.get(size=self.p.period)) / self.p.period
+    
+    def next(self):
+        change = abs(self.data[0] - self.data[-self.p.period])
+        volatility = sum(abs(self.data[-i] - self.data[-i-1]) for i in range(self.p.period))
+        
+        if volatility != 0:
+            er = change / volatility
+        else:
+            er = 0
+        
+        sc = (er * (self.fast_sc - self.slow_sc) + self.slow_sc) ** 2
+        self.lines.kama[0] = self.lines.kama[-1] + sc * (self.data[0] - self.lines.kama[-1])

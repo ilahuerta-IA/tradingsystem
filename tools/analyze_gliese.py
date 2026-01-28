@@ -80,7 +80,7 @@ def parse_gliese_log(filepath: str) -> List[Dict]:
         Take Profit: X.XXXXX
         SL Pips: XX.X
         ATR (avg): X.XXXXXX
-        State: STATE_NAME
+        State: Extension=X bars
         
         EXIT #N
         Time: YYYY-MM-DD HH:MM:SS
@@ -90,7 +90,7 @@ def parse_gliese_log(filepath: str) -> List[Dict]:
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # Parse entries
+    # Parse entries - updated pattern for actual log format
     entries = re.findall(
         r'ENTRY #(\d+)\s*\n'
         r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -98,7 +98,8 @@ def parse_gliese_log(filepath: str) -> List[Dict]:
         r'Stop Loss: ([\d.]+)\s*\n'
         r'Take Profit: ([\d.]+)\s*\n'
         r'SL Pips: ([\d.]+)\s*\n'
-        r'ATR \(avg\): ([\d.]+)',
+        r'ATR \(avg\): ([\d.]+)\s*\n'
+        r'State: Extension=(\d+) bars',
         content,
         re.IGNORECASE
     )
@@ -127,6 +128,7 @@ def parse_gliese_log(filepath: str) -> List[Dict]:
             'tp': float(entry[4]),
             'sl_pips': float(entry[5]),
             'atr': float(entry[6]),
+            'extension_bars': int(entry[7]),
         }
         
         # Match with exit if exists
@@ -386,6 +388,44 @@ def analyze_trade_duration(trades: List[Dict]):
             if stats:
                 print(f'{label:>10} | {stats["total"]:>6} | {stats["win_rate"]:>4.0f}% | '
                       f'${stats["net_pnl"]:>10,.0f}')
+
+
+def analyze_by_extension_bars(trades: List[Dict]):
+    """Analyze trades by extension bars (GLIESE specific)."""
+    print_section('ANALYSIS BY EXTENSION BARS')
+    
+    # Filter trades with extension_bars data
+    filtered = [t for t in trades if 'extension_bars' in t and 'pnl' in t]
+    if not filtered:
+        print('No extension bars data available.')
+        return
+    
+    groups = defaultdict(list)
+    for t in filtered:
+        groups[t['extension_bars']].append(t)
+    
+    print(f'{"Ext Bars":>10} | {"Trades":>6} | {"Win%":>5} | {"PF":>5} | {"Net P&L":>12}')
+    print('-' * 50)
+    
+    for ext_bars in sorted(groups.keys()):
+        stats = calculate_stats(groups[ext_bars])
+        if stats:
+            print(f'{ext_bars:>10} | {stats["total"]:>6} | {stats["win_rate"]:>4.0f}% | '
+                  f'{format_pf(stats["profit_factor"]):>5} | ${stats["net_pnl"]:>10,.0f}')
+    
+    # Also show ranges
+    print('\nGrouped by Extension Range:')
+    ranges = [(2, 4), (4, 6), (6, 10), (10, 20)]
+    print(f'{"Range":>10} | {"Trades":>6} | {"Win%":>5} | {"PF":>5} | {"Net P&L":>12}')
+    print('-' * 50)
+    
+    for low, high in ranges:
+        range_trades = [t for t in filtered if low <= t['extension_bars'] < high]
+        if range_trades:
+            stats = calculate_stats(range_trades)
+            label = f'{low}-{high-1}'
+            print(f'{label:>10} | {stats["total"]:>6} | {stats["win_rate"]:>4.0f}% | '
+                  f'{format_pf(stats["profit_factor"]):>5} | ${stats["net_pnl"]:>10,.0f}')
 
 
 # =============================================================================
@@ -698,6 +738,7 @@ Examples:
     analyze_by_day(trades)
     analyze_by_sl_pips(trades)
     analyze_by_atr(trades)
+    analyze_by_extension_bars(trades)
     analyze_by_exit_reason(trades)
     analyze_trade_duration(trades)
     
