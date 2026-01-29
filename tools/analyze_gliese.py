@@ -99,7 +99,7 @@ def parse_gliese_log(filepath: str) -> List[Dict]:
         r'Take Profit: ([\d.]+)\s*\n'
         r'SL Pips: ([\d.]+)\s*\n'
         r'ATR \(avg\): ([\d.]+)\s*\n'
-        r'State: Extension=(\d+) bars',
+        r'Extension Bars: (\d+)',
         content,
         re.IGNORECASE
     )

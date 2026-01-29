@@ -1,20 +1,31 @@
 """
-GLIESE Strategy v2 - Simplified Mean Reversion
+GLIESE Strategy v2 - Mean Reversion for Ranging Markets
 
-Mean reversion strategy for ranging markets.
-Designed to complement trend-following strategies (SEDNA, KOI, SunsetOgle).
+Trades oversold bounces when market is NOT trending (ADXR < threshold).
+Complement to trend-following strategies (SEDNA, KOI, SunsetOgle).
 
-Pattern: A-B-C Reversal
-  A: Extension below band (HL2_EMA < LowerBand for min_bars)
-  B: Return above band (HL2_EMA >= LowerBand)
-  C: Pullback (retrace without breaking extension low)
-  D: Breakout above pullback high → ENTRY
+CURRENT LOGIC (v2 Simplified):
+  1. Wait for ADXR < threshold (ranging market)
+  2. Price (close) goes BELOW lower band (KAMA - ATR*mult) for min_bars
+  3. Price (close) returns ABOVE lower band → IMMEDIATE ENTRY
+  4. SL: Extension low - buffer
+  5. TP: Entry + ATR * multiplier
 
-Target: KAMA (center of range)
-Stop: Extension low - buffer
+Key Parameters:
+  - extension_min_bars: Minimum bars below band (8-10 optimal)
+  - band_atr_mult: Band distance from KAMA (1.0 = tight)
+  - adxr_max_threshold: Max ADXR to allow entry (20-25 = ranging)
+  - atr_tp_multiplier: TP distance in ATR units
+
+Analysis Findings (USDCHF 5 years):
+  - Extension 10+ bars: PF 2.30+
+  - Wednesday/Friday best days
+  - Hours 7-8am (UTC) best entry
+  - SL 15-20 pips optimal
+  - Duration <1h = 71% WR
 
 Author: Ivan
-Version: 2.0.0 (Simplified)
+Version: 2.1.0
 """
 import backtrader as bt
 import numpy as np
@@ -25,6 +36,7 @@ from typing import Optional, Tuple, Dict, List
 import os
 
 from lib.indicators import KAMA
+from lib.filters import calculate_adxr, check_adxr_filter
 
 
 class GLIESEState(Enum):
@@ -34,6 +46,28 @@ class GLIESEState(Enum):
     REVERSAL_DETECTED = auto()   # B: Returned above band
     WAITING_BREAKOUT = auto()    # C: In pullback, waiting for breakout
     IN_POSITION = auto()
+
+
+class EntryExitLines(bt.Indicator):
+    """
+    Indicator to plot entry/exit price levels as horizontal dashed lines.
+    Shows Entry (green), Stop Loss (red), Take Profit (blue).
+    """
+    lines = ('entry', 'stop_loss', 'take_profit', 'lower_band')
+    
+    plotinfo = dict(subplot=False, plotlinelabels=True)
+    plotlines = dict(
+        entry=dict(color='green', linestyle='--', linewidth=1.0),
+        stop_loss=dict(color='red', linestyle='--', linewidth=1.0),
+        take_profit=dict(color='blue', linestyle='--', linewidth=1.0),
+        lower_band=dict(color='orange', linestyle='-', linewidth=0.8),
+    )
+    
+    def __init__(self):
+        pass
+    
+    def next(self):
+        pass
 
 
 class GLIESEStrategy(bt.Strategy):
@@ -94,6 +128,12 @@ class GLIESEStrategy(bt.Strategy):
         atr_max=0.0010,
         atr_avg_period=20,
         
+        # === ADXR Filter (ranging market) ===
+        use_adxr_filter=False,
+        adxr_period=14,
+        adxr_lookback=14,
+        adxr_max_threshold=25.0,  # ADXR < 25 = ranging (good for mean reversion)
+        
         # === Asset Config ===
         pip_value=0.0001,
         lot_size=100000,
@@ -111,6 +151,7 @@ class GLIESEStrategy(bt.Strategy):
         
         # === Plot ===
         plot_bands=True,
+        plot_entry_exit_lines=True,  # Show entry/SL/TP on chart
     )
     
     def __init__(self):
@@ -133,6 +174,12 @@ class GLIESEStrategy(bt.Strategy):
         
         # ATR for bands
         self.atr = bt.ind.ATR(d, period=self.p.band_atr_period)
+        
+        # Entry/Exit lines for plotting
+        if self.p.plot_entry_exit_lines:
+            self.entry_exit_lines = EntryExitLines(d)
+        else:
+            self.entry_exit_lines = None
         
         # State
         self.state = GLIESEState.IDLE
@@ -207,6 +254,9 @@ class GLIESEStrategy(bt.Strategy):
             if len(self.atr_history) > self.p.atr_avg_period:
                 self.atr_history.pop(0)
         
+        # Update plot lines
+        self._update_plot_lines()
+        
         # Skip if order pending
         if self.order:
             return
@@ -247,7 +297,47 @@ class GLIESEStrategy(bt.Strategy):
             if not (self.p.atr_min <= avg_atr <= self.p.atr_max):
                 return False
         
+        # ADXR filter - ranging market (ADXR < threshold)
+        if self.p.use_adxr_filter:
+            required_bars = (self.p.adxr_period * 2) + self.p.adxr_lookback + 5
+            if len(self.data) >= required_bars:
+                highs = [float(self.data.high[-i]) for i in range(required_bars)]
+                lows = [float(self.data.low[-i]) for i in range(required_bars)]
+                closes = [float(self.data.close[-i]) for i in range(required_bars)]
+                highs.reverse()
+                lows.reverse()
+                closes.reverse()
+                
+                adxr_value = calculate_adxr(
+                    highs, lows, closes,
+                    self.p.adxr_period, self.p.adxr_lookback
+                )
+                
+                if not check_adxr_filter(adxr_value, self.p.adxr_max_threshold, True):
+                    return False
+        
         return True
+    
+    def _update_plot_lines(self):
+        """Update the entry/exit lines indicator for visualization."""
+        if not self.entry_exit_lines:
+            return
+        
+        # Always show lower band
+        lower_band = self._get_lower_band()
+        self.entry_exit_lines.lines.lower_band[0] = lower_band
+        
+        # Show entry/SL/TP only when in position
+        if self.position and self.stop_level and self.take_level:
+            entry_price = self.position.price
+            self.entry_exit_lines.lines.entry[0] = entry_price
+            self.entry_exit_lines.lines.stop_loss[0] = self.stop_level
+            self.entry_exit_lines.lines.take_profit[0] = self.take_level
+        else:
+            # Clear lines when not in position
+            self.entry_exit_lines.lines.entry[0] = float('nan')
+            self.entry_exit_lines.lines.stop_loss[0] = float('nan')
+            self.entry_exit_lines.lines.take_profit[0] = float('nan')
     
     def _get_lower_band(self) -> float:
         """Calculate lower band: KAMA - mult * ATR."""
