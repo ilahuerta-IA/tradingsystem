@@ -1241,12 +1241,12 @@ STRATEGIES_CONFIG = {
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -1264,8 +1264,8 @@ STRATEGIES_CONFIG = {
             'band_atr_mult': 1.0,  # LowerBand = KAMA - 1.0 * ATR (más cercana)
             
             # Extension Detection (A phase)
-            'extension_min_bars': 8,  # Extensión significativa
-            'extension_max_bars': 25,
+            'extension_min_bars': 8,  
+            'extension_max_bars': 9,
             
             # Pullback Settings (C phase)
             'pullback_max_bars': 15,  # Más tiempo para breakout
@@ -1274,23 +1274,23 @@ STRATEGIES_CONFIG = {
             # SL/TP
             'sl_buffer_pips': 5.0,
             'use_kama_tp': False,  # No usar KAMA (muy cerca)
-            'atr_sl_multiplier': 2.0,  # SL = ext_low - 2*ATR
-            'atr_tp_multiplier': 2.0,  # TP = entry + 2*ATR (R:R ~1:1)
+            'atr_sl_multiplier': 1.5,  # SL = ext_low - 2*ATR
+            'atr_tp_multiplier': 10.0,  # TP = entry + 2*ATR
             
             # === FILTERS (same as SEDNA) ===
-            'use_time_filter': False,
-            'allowed_hours': [],
+            'use_time_filter': True,
+            'allowed_hours': [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
             
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 2, 3, 4],
             
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 5.0,
-            'sl_pips_max': 30.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 0.0,
+            'sl_pips_max': 20.0,
             
-            'use_atr_filter': False,
-            'atr_min': 0.0003,
-            'atr_max': 0.0010,
+            'use_atr_filter': True,
+            'atr_min': 0.00025,
+            'atr_max': 0.00060,
             'atr_avg_period': 20,
             
             # ADXR Filter (ranging market)
@@ -1298,6 +1298,10 @@ STRATEGIES_CONFIG = {
             'adxr_period': 14,
             'adxr_lookback': 14,
             'adxr_max_threshold': 25.0,  # ADXR < 25 = más trades
+            
+            # Time-Based Exit
+            'use_time_exit': True,  # ENABLED - close if no TP/SL hit
+            'time_exit_bars': 12,   # 12 bars = 1 hour on 5min TF
             
             # Asset config
             'pip_value': 0.0001,
@@ -1307,7 +1311,7 @@ STRATEGIES_CONFIG = {
             'margin_pct': 3.33,
             
             # Risk
-            'risk_percent': 0.01,
+            'risk_percent': 0.005,
             
             # Debug & Reporting
             'print_signals': False,

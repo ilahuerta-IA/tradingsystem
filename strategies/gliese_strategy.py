@@ -134,6 +134,10 @@ class GLIESEStrategy(bt.Strategy):
         adxr_lookback=14,
         adxr_max_threshold=25.0,  # ADXR < 25 = ranging (good for mean reversion)
         
+        # === Time-Based Exit ===
+        use_time_exit=False,
+        time_exit_bars=12,  # Exit if no TP/SL hit after X bars (12 bars = 1h on 5min TF)
+        
         # === Asset Config ===
         pip_value=0.0001,
         lot_size=100000,
@@ -218,6 +222,9 @@ class GLIESEStrategy(bt.Strategy):
         # ATR history for averaging
         self.atr_history = []
         
+        # Time-based exit tracking
+        self.entry_bar = None
+        
         # Trade report
         self.trade_report_file = None
         
@@ -261,8 +268,9 @@ class GLIESEStrategy(bt.Strategy):
         if self.order:
             return
         
-        # Skip if in position
+        # Check time-based exit if in position
         if self.position:
+            self._check_time_exit()
             return
         
         # Get current values
@@ -338,6 +346,30 @@ class GLIESEStrategy(bt.Strategy):
             self.entry_exit_lines.lines.entry[0] = float('nan')
             self.entry_exit_lines.lines.stop_loss[0] = float('nan')
             self.entry_exit_lines.lines.take_profit[0] = float('nan')
+    
+    def _check_time_exit(self):
+        """Check if trade should be closed due to time limit."""
+        if not self.p.use_time_exit or self.entry_bar is None:
+            return
+        
+        current_bar = len(self)
+        bars_in_trade = current_bar - self.entry_bar
+        
+        if bars_in_trade >= self.p.time_exit_bars:
+            # Time limit reached - close position at market
+            if self.p.print_signals:
+                dt = self.data.datetime.datetime(0)
+                print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: TIME EXIT after {bars_in_trade} bars")
+            
+            # Cancel pending SL/TP orders
+            if self.stop_order:
+                self.cancel(self.stop_order)
+            if self.limit_order:
+                self.cancel(self.limit_order)
+            
+            # Close position at market
+            self.order = self.close()
+            self.last_exit_reason = "TIME_EXIT"
     
     def _get_lower_band(self) -> float:
         """Calculate lower band: KAMA - mult * ATR."""
@@ -473,6 +505,9 @@ class GLIESEStrategy(bt.Strategy):
         # Execute market order
         self.order = self.buy(size=size)
         
+        # Track entry bar for time-based exit
+        self.entry_bar = len(self)
+        
         # Log entry
         if self.trade_report_file:
             self.trade_report_file.write(f"ENTRY #{self.trades + 1}\n")
@@ -530,6 +565,7 @@ class GLIESEStrategy(bt.Strategy):
                 self.order = None
                 self.stop_level = None
                 self.take_level = None
+                self.entry_bar = None  # Reset entry bar tracking
         
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             # Handle OCA cancellations silently
@@ -550,7 +586,8 @@ class GLIESEStrategy(bt.Strategy):
             return
         
         self.trades += 1
-        pnl = trade.pnl
+        # Use pnlcomm to include commission in P&L calculation
+        pnl = trade.pnlcomm  # Net P&L after commission
         
         if pnl > 0:
             self.wins += 1

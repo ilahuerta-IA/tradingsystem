@@ -599,6 +599,169 @@ def analyze_mean_reversion_patterns(filepath: str, symbol: str = 'SYMBOL'):
 
 
 # =============================================================================
+# DETAILED YEARLY ANALYSIS
+# =============================================================================
+
+def analyze_detailed_by_year(trades: List[Dict]):
+    """Analyze all metrics broken down by year."""
+    
+    # Group trades by year
+    years = defaultdict(list)
+    for t in trades:
+        if 'pnl' in t:
+            year = t['entry_time'].year
+            years[year].append(t)
+    
+    for year in sorted(years.keys()):
+        year_trades = years[year]
+        
+        print_section(f'DETAILED ANALYSIS - YEAR {year}', char='#', width=70)
+        
+        # Overall stats for this year
+        stats = calculate_stats(year_trades)
+        if not stats:
+            continue
+        
+        exp = calculate_expectancy(stats)
+        print(f"\nYear {year} Summary:")
+        print(f"  Trades: {stats['total']} | WR: {stats['win_rate']:.1f}% | PF: {format_pf(stats['profit_factor'])} | Net: ${stats['net_pnl']:,.0f}")
+        print(f"  Avg Win: ${stats['avg_win']:.0f} | Avg Loss: ${stats['avg_loss']:.0f} | Expectancy: ${exp:.2f}/trade")
+        
+        # Hour analysis for this year
+        print(f'\n  BY HOUR:')
+        print(f'    {"Hour":>4} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
+        print(f'    ' + '-' * 38)
+        
+        hour_groups = defaultdict(list)
+        for t in year_trades:
+            hour_groups[t['entry_time'].hour].append(t)
+        
+        for hour in range(24):
+            if hour in hour_groups and len(hour_groups[hour]) >= 3:
+                h_stats = calculate_stats(hour_groups[hour])
+                if h_stats:
+                    print(f'    {hour:>4} | {h_stats["total"]:>3} | {h_stats["win_rate"]:>3.0f}% | '
+                          f'{format_pf(h_stats["profit_factor"]):>5} | ${h_stats["net_pnl"]:>9,.0f}')
+        
+        # Day analysis for this year
+        print(f'\n  BY DAY:')
+        day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        print(f'    {"Day":>4} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
+        print(f'    ' + '-' * 38)
+        
+        day_groups = defaultdict(list)
+        for t in year_trades:
+            day_groups[t['entry_time'].weekday()].append(t)
+        
+        for dow in range(7):
+            if dow in day_groups:
+                d_stats = calculate_stats(day_groups[dow])
+                if d_stats:
+                    print(f'    {day_names[dow]:>4} | {d_stats["total"]:>3} | {d_stats["win_rate"]:>3.0f}% | '
+                          f'{format_pf(d_stats["profit_factor"]):>5} | ${d_stats["net_pnl"]:>9,.0f}')
+        
+        # SL Pips analysis for this year
+        print(f'\n  BY SL PIPS:')
+        print(f'    {"SL":>6} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
+        print(f'    ' + '-' * 38)
+        
+        sl_ranges = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, 50)]
+        for low, high in sl_ranges:
+            sl_filtered = [t for t in year_trades if 'sl_pips' in t and low <= t['sl_pips'] < high]
+            if sl_filtered:
+                sl_stats = calculate_stats(sl_filtered)
+                if sl_stats:
+                    label = f'{low}-{high}'
+                    print(f'    {label:>6} | {sl_stats["total"]:>3} | {sl_stats["win_rate"]:>3.0f}% | '
+                          f'{format_pf(sl_stats["profit_factor"]):>5} | ${sl_stats["net_pnl"]:>9,.0f}')
+        
+        # Extension Bars analysis for this year
+        print(f'\n  BY EXTENSION BARS:')
+        print(f'    {"Ext":>4} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
+        print(f'    ' + '-' * 38)
+        
+        ext_groups = defaultdict(list)
+        for t in year_trades:
+            if 'extension_bars' in t:
+                ext_groups[t['extension_bars']].append(t)
+        
+        for ext in sorted(ext_groups.keys()):
+            if len(ext_groups[ext]) >= 2:
+                e_stats = calculate_stats(ext_groups[ext])
+                if e_stats:
+                    print(f'    {ext:>4} | {e_stats["total"]:>3} | {e_stats["win_rate"]:>3.0f}% | '
+                          f'{format_pf(e_stats["profit_factor"]):>5} | ${e_stats["net_pnl"]:>9,.0f}')
+        
+        # Extension ranges
+        print(f'\n    Extension Ranges:')
+        ext_ranges = [(8, 10), (10, 12), (12, 15), (15, 20), (20, 30)]
+        for low, high in ext_ranges:
+            ext_filtered = [t for t in year_trades if 'extension_bars' in t and low <= t['extension_bars'] < high]
+            if ext_filtered:
+                ext_stats = calculate_stats(ext_filtered)
+                if ext_stats:
+                    label = f'{low}-{high-1}'
+                    print(f'    {label:>6} | {ext_stats["total"]:>3} | {ext_stats["win_rate"]:>3.0f}% | '
+                          f'{format_pf(ext_stats["profit_factor"]):>5} | ${ext_stats["net_pnl"]:>9,.0f}')
+        
+        # ATR analysis for this year
+        print(f'\n  BY ATR:')
+        atrs = [t['atr'] for t in year_trades if 'atr' in t]
+        if atrs:
+            min_atr = min(atrs)
+            max_atr = max(atrs)
+            step = (max_atr - min_atr) / 4 if max_atr > min_atr else 0.0001
+            
+            print(f'    {"ATR Range":>16} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
+            print(f'    ' + '-' * 46)
+            
+            for i in range(4):
+                low = min_atr + i * step
+                high = min_atr + (i + 1) * step
+                atr_filtered = [t for t in year_trades if 'atr' in t and low <= t['atr'] < high]
+                if atr_filtered:
+                    atr_stats = calculate_stats(atr_filtered)
+                    if atr_stats:
+                        label = f'{low:.5f}-{high:.5f}'
+                        print(f'    {label:>16} | {atr_stats["total"]:>3} | {atr_stats["win_rate"]:>3.0f}% | '
+                              f'{format_pf(atr_stats["profit_factor"]):>5} | ${atr_stats["net_pnl"]:>9,.0f}')
+        
+        # Duration analysis for this year
+        print(f'\n  BY DURATION:')
+        print(f'    {"Dur":>6} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
+        print(f'    ' + '-' * 38)
+        
+        dur_ranges = [(0, 30), (30, 60), (60, 120), (120, 240), (240, 480), (480, float('inf'))]
+        dur_labels = ['<30m', '30-60m', '1-2h', '2-4h', '4-8h', '>8h']
+        
+        for (low, high), label in zip(dur_ranges, dur_labels):
+            dur_filtered = [t for t in year_trades if 'duration_min' in t and low <= t['duration_min'] < high]
+            if dur_filtered:
+                dur_stats = calculate_stats(dur_filtered)
+                if dur_stats:
+                    print(f'    {label:>6} | {dur_stats["total"]:>3} | {dur_stats["win_rate"]:>3.0f}% | '
+                          f'{format_pf(dur_stats["profit_factor"]):>5} | ${dur_stats["net_pnl"]:>9,.0f}')
+        
+        # Exit reason for this year
+        print(f'\n  BY EXIT REASON:')
+        print(f'    {"Reason":>12} | {"Tr":>3} | {"WR%":>4} | {"Avg P&L":>10}')
+        print(f'    ' + '-' * 38)
+        
+        exit_groups = defaultdict(list)
+        for t in year_trades:
+            if 'exit_reason' in t:
+                exit_groups[t['exit_reason']].append(t)
+        
+        for reason in sorted(exit_groups.keys()):
+            trades_list = exit_groups[reason]
+            total = len(trades_list)
+            wins = sum(1 for t in trades_list if t.get('pnl', 0) > 0)
+            avg_pnl = sum(t.get('pnl', 0) for t in trades_list) / total
+            win_rate = wins / total * 100 if total > 0 else 0
+            print(f'    {reason:>12} | {total:>3} | {win_rate:>3.0f}% | ${avg_pnl:>9,.2f}')
+
+
+# =============================================================================
 # RECOMMENDATIONS
 # =============================================================================
 
@@ -741,6 +904,9 @@ Examples:
     analyze_by_extension_bars(trades)
     analyze_by_exit_reason(trades)
     analyze_trade_duration(trades)
+    
+    # Detailed yearly breakdown
+    analyze_detailed_by_year(trades)
     
     if args.optimize:
         generate_recommendations(trades)
