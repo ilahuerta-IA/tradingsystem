@@ -134,6 +134,7 @@ class GLIESEStrategy(bt.Strategy):
         adxr_period=14,
         adxr_lookback=14,
         adxr_max_threshold=25.0,  # ADXR < 25 = ranging (good for mean reversion)
+        adxr_timeframe_mult=1,    # 1=same TF, 3=15m on 5m data, 6=30m on 5m data
         
         # === Time-Based Exit ===
         use_time_exit=False,
@@ -322,14 +323,23 @@ class GLIESEStrategy(bt.Strategy):
         
         # ADXR filter - ranging market (ADXR < threshold)
         if self.p.use_adxr_filter:
-            required_bars = (self.p.adxr_period * 2) + self.p.adxr_lookback + 5
+            tf_mult = self.p.adxr_timeframe_mult
+            required_bars = ((self.p.adxr_period * 2) + self.p.adxr_lookback + 5) * tf_mult
+            
             if len(self.data) >= required_bars:
-                highs = [float(self.data.high[-i]) for i in range(required_bars)]
-                lows = [float(self.data.low[-i]) for i in range(required_bars)]
-                closes = [float(self.data.close[-i]) for i in range(required_bars)]
-                highs.reverse()
-                lows.reverse()
-                closes.reverse()
+                # Get raw data
+                raw_highs = [float(self.data.high[-i]) for i in range(required_bars)]
+                raw_lows = [float(self.data.low[-i]) for i in range(required_bars)]
+                raw_closes = [float(self.data.close[-i]) for i in range(required_bars)]
+                raw_highs.reverse()
+                raw_lows.reverse()
+                raw_closes.reverse()
+                
+                # Aggregate to higher timeframe if needed
+                if tf_mult > 1:
+                    highs, lows, closes = self._aggregate_ohlc(raw_highs, raw_lows, raw_closes, tf_mult)
+                else:
+                    highs, lows, closes = raw_highs, raw_lows, raw_closes
                 
                 adxr_value = calculate_adxr(
                     highs, lows, closes,
@@ -385,6 +395,35 @@ class GLIESEStrategy(bt.Strategy):
             # Close position at market
             self.order = self.close()
             self.last_exit_reason = "TIME_EXIT"
+    
+    def _aggregate_ohlc(self, highs: list, lows: list, closes: list, mult: int) -> tuple:
+        """
+        Aggregate OHLC data to higher timeframe.
+        
+        Args:
+            highs: List of high prices (oldest first)
+            lows: List of low prices (oldest first)
+            closes: List of close prices (oldest first)
+            mult: Multiplier (3 = 15m from 5m, 6 = 30m from 5m)
+        
+        Returns:
+            Tuple of (aggregated_highs, aggregated_lows, aggregated_closes)
+        """
+        agg_highs = []
+        agg_lows = []
+        agg_closes = []
+        
+        # Process in chunks of 'mult' bars
+        for i in range(0, len(highs) - mult + 1, mult):
+            chunk_highs = highs[i:i + mult]
+            chunk_lows = lows[i:i + mult]
+            chunk_closes = closes[i:i + mult]
+            
+            agg_highs.append(max(chunk_highs))
+            agg_lows.append(min(chunk_lows))
+            agg_closes.append(chunk_closes[-1])  # Last close of chunk
+        
+        return agg_highs, agg_lows, agg_closes
     
     def _get_lower_band(self) -> float:
         """Calculate lower band: KAMA - mult * ATR."""

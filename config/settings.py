@@ -1265,7 +1265,7 @@ STRATEGIES_CONFIG = {
             
             # Extension Detection (A phase)
             'extension_min_bars': 8,  
-            'extension_max_bars': 9,
+            'extension_max_bars': 15,
             
             # Pullback Settings (C phase)
             'pullback_max_bars': 15,  # Más tiempo para breakout
@@ -1297,7 +1297,8 @@ STRATEGIES_CONFIG = {
             'use_adxr_filter': True,  # ENABLED
             'adxr_period': 14,
             'adxr_lookback': 14,
-            'adxr_max_threshold': 25.0,  # ADXR < 25 = más trades
+            'adxr_max_threshold': 25.0,  # ADXR < 25 = ranging
+            'adxr_timeframe_mult': 6,    # 1=5m, 3=15m, 6=30m (on 5m data)
             
             # Time-Based Exit
             'use_time_exit': False,  # DISABLED - close if no TP/SL hit
@@ -1309,7 +1310,7 @@ STRATEGIES_CONFIG = {
             'confirmation_offset_pips': 2.0,  # Offset below extension_low (flexibility)
             
             # HTF Filter (Higher Timeframe for trend/range context)
-            'use_htf_filter': True,          # DISABLED by default
+            'use_htf_filter': False,          # DISABLED by default
             'htf_timeframe_minutes': 15,      # 15m or 30m
             'htf_er_period': 10,              # ER period on HTF
             'htf_er_max_threshold': 0.30,     # ER < 0.30 = ranging (for mean reversion)
