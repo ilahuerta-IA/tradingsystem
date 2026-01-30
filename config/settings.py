@@ -1264,7 +1264,7 @@ STRATEGIES_CONFIG = {
             'band_atr_mult': 1.0,  # LowerBand = KAMA - 1.0 * ATR (más cercana)
             
             # Extension Detection (A phase)
-            'extension_min_bars': 8,  
+            'extension_min_bars': 10,  
             'extension_max_bars': 15,
             
             # Pullback Settings (C phase)
@@ -1299,15 +1299,16 @@ STRATEGIES_CONFIG = {
             'adxr_lookback': 14,
             'adxr_max_threshold': 25.0,  # ADXR < 25 = ranging
             'adxr_timeframe_mult': 6,    # 1=5m, 3=15m, 6=30m (on 5m data)
+            'adxr_require_sync': False,  # True = must pass ADXR on BOTH 5m AND HTF
             
             # Time-Based Exit
             'use_time_exit': False,  # DISABLED - close if no TP/SL hit
             'time_exit_bars': 12,   # 12 bars = 1 hour on 5min TF
             
             # Confirmation Hold (wait N bars, cancel if low breaks extension_low - offset)
-            'use_confirmation_delay': False,   # DISABLED - filter fakeouts
-            'confirmation_bars': 3,           # 3 bars = 15min on 5min TF
-            'confirmation_offset_pips': 2.0,  # Offset below extension_low (flexibility)
+            'use_confirmation_delay': True,   # ENABLED - filter fakeouts
+            'confirmation_bars': 24,           # 3 bars = 15min on 5min TF
+            'confirmation_offset_pips': 1.0,  # Offset below extension_low (flexibility)
             
             # HTF Filter (Higher Timeframe for trend/range context)
             'use_htf_filter': False,          # DISABLED by default

@@ -135,6 +135,7 @@ class GLIESEStrategy(bt.Strategy):
         adxr_lookback=14,
         adxr_max_threshold=25.0,  # ADXR < 25 = ranging (good for mean reversion)
         adxr_timeframe_mult=1,    # 1=same TF, 3=15m on 5m data, 6=30m on 5m data
+        adxr_require_sync=False,  # If True, ADXR must pass on BOTH base TF AND HTF
         
         # === Time-Based Exit ===
         use_time_exit=False,
@@ -324,7 +325,7 @@ class GLIESEStrategy(bt.Strategy):
         # ADXR filter - ranging market (ADXR < threshold)
         if self.p.use_adxr_filter:
             tf_mult = self.p.adxr_timeframe_mult
-            required_bars = ((self.p.adxr_period * 2) + self.p.adxr_lookback + 5) * tf_mult
+            required_bars = ((self.p.adxr_period * 2) + self.p.adxr_lookback + 5) * max(tf_mult, 1)
             
             if len(self.data) >= required_bars:
                 # Get raw data
@@ -335,19 +336,24 @@ class GLIESEStrategy(bt.Strategy):
                 raw_lows.reverse()
                 raw_closes.reverse()
                 
-                # Aggregate to higher timeframe if needed
+                # Check HTF ADXR (or base TF if mult=1)
                 if tf_mult > 1:
-                    highs, lows, closes = self._aggregate_ohlc(raw_highs, raw_lows, raw_closes, tf_mult)
+                    htf_highs, htf_lows, htf_closes = self._aggregate_ohlc(raw_highs, raw_lows, raw_closes, tf_mult)
+                    htf_adxr = calculate_adxr(htf_highs, htf_lows, htf_closes, self.p.adxr_period, self.p.adxr_lookback)
+                    
+                    if not check_adxr_filter(htf_adxr, self.p.adxr_max_threshold, True):
+                        return False
+                    
+                    # If sync required, also check base TF
+                    if self.p.adxr_require_sync:
+                        base_adxr = calculate_adxr(raw_highs, raw_lows, raw_closes, self.p.adxr_period, self.p.adxr_lookback)
+                        if not check_adxr_filter(base_adxr, self.p.adxr_max_threshold, True):
+                            return False
                 else:
-                    highs, lows, closes = raw_highs, raw_lows, raw_closes
-                
-                adxr_value = calculate_adxr(
-                    highs, lows, closes,
-                    self.p.adxr_period, self.p.adxr_lookback
-                )
-                
-                if not check_adxr_filter(adxr_value, self.p.adxr_max_threshold, True):
-                    return False
+                    # Only base TF
+                    base_adxr = calculate_adxr(raw_highs, raw_lows, raw_closes, self.p.adxr_period, self.p.adxr_lookback)
+                    if not check_adxr_filter(base_adxr, self.p.adxr_max_threshold, True):
+                        return False
         
         return True
     
