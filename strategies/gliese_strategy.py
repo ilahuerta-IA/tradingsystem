@@ -43,8 +43,9 @@ class GLIESEState(Enum):
     """Simplified state machine for GLIESE v2."""
     IDLE = auto()
     IN_EXTENSION = auto()        # A: Below lower band
-    REVERSAL_DETECTED = auto()   # B: Returned above band
-    WAITING_BREAKOUT = auto()    # C: In pullback, waiting for breakout
+    CONFIRMING = auto()          # B: Confirming reversal (delay before entry)
+    REVERSAL_DETECTED = auto()   # C: Returned above band (legacy, not used with confirmation)
+    WAITING_BREAKOUT = auto()    # D: In pullback, waiting for breakout
     IN_POSITION = auto()
 
 
@@ -138,6 +139,10 @@ class GLIESEStrategy(bt.Strategy):
         use_time_exit=False,
         time_exit_bars=12,  # Exit if no TP/SL hit after X bars (12 bars = 1h on 5min TF)
         
+        # === Confirmation Delay (filter fakeouts) ===
+        use_confirmation_delay=False,
+        confirmation_bars=3,  # Wait X bars above band before entry (3 bars = 15min on 5min TF)
+        
         # === Asset Config ===
         pip_value=0.0001,
         lot_size=100000,
@@ -224,6 +229,9 @@ class GLIESEStrategy(bt.Strategy):
         
         # Time-based exit tracking
         self.entry_bar = None
+        
+        # Confirmation delay tracking
+        self.confirmation_bar_count = 0
         
         # Trade report
         self.trade_report_file = None
@@ -430,20 +438,45 @@ class GLIESEStrategy(bt.Strategy):
             else:
                 # Close returned above band - check if extension was long enough
                 if self.extension_bar_count >= self.p.extension_min_bars:
-                    # Valid reversal - ENTRY SIGNAL IMMEDIATELY
                     self.pattern_atr = self._get_avg_atr()
                     
-                    if self.p.print_signals:
-                        print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: REVERSAL - ENTRY | "
-                              f"ExtBars={self.extension_bar_count}, ExtLow={self.extension_low:.5f}")
-                    
-                    # Signal entry and reset
-                    return True
+                    # Check if confirmation delay is enabled
+                    if self.p.use_confirmation_delay:
+                        # Enter CONFIRMING state
+                        self.state = GLIESEState.CONFIRMING
+                        self.confirmation_bar_count = 1
+                        
+                        if self.p.print_signals:
+                            print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: CONFIRMING START | "
+                                  f"ExtBars={self.extension_bar_count}, waiting {self.p.confirmation_bars} bars")
+                        return False
+                    else:
+                        # No confirmation - ENTRY SIGNAL IMMEDIATELY
+                        if self.p.print_signals:
+                            print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: REVERSAL - ENTRY | "
+                                  f"ExtBars={self.extension_bar_count}, ExtLow={self.extension_low:.5f}")
+                        return True
                 else:
                     # Extension too short
                     if self.p.print_signals:
                         print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: Extension too short ({self.extension_bar_count} bars)")
                     self._reset_state()
+            
+            return False
+        
+        # =====================================================================
+        # STATE: CONFIRMING - Pure delay (wait X bars then entry, no conditions)
+        # =====================================================================
+        elif self.state == GLIESEState.CONFIRMING:
+            # Pure delay - just count bars, no conditions checked
+            self.confirmation_bar_count += 1
+            
+            if self.confirmation_bar_count >= self.p.confirmation_bars:
+                # Delay complete - ENTRY SIGNAL (no matter what)
+                if self.p.print_signals:
+                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: DELAY COMPLETE - ENTRY | "
+                          f"DelayBars={self.confirmation_bar_count}")
+                return True
             
             return False
         
@@ -459,6 +492,7 @@ class GLIESEStrategy(bt.Strategy):
         self.pullback_bar_count = 0
         self.breakout_level = None
         self.pattern_atr = None
+        self.confirmation_bar_count = 0  # Reset confirmation counter
     
     def _execute_entry(self, dt: datetime):
         """Execute entry order."""

@@ -1241,8 +1241,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
@@ -1278,10 +1278,10 @@ STRATEGIES_CONFIG = {
             'atr_tp_multiplier': 10.0,  # TP = entry + 2*ATR
             
             # === FILTERS (same as SEDNA) ===
-            'use_time_filter': True,
+            'use_time_filter': False,
             'allowed_hours': [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
             
-            'use_day_filter': True,
+            'use_day_filter': False,
             'allowed_days': [0, 2, 3, 4],
             
             'use_sl_pips_filter': True,
@@ -1302,6 +1302,10 @@ STRATEGIES_CONFIG = {
             # Time-Based Exit
             'use_time_exit': True,  # ENABLED - close if no TP/SL hit
             'time_exit_bars': 12,   # 12 bars = 1 hour on 5min TF
+            
+            # Pure Delay (wait X bars after reversal, then entry no matter what)
+            'use_confirmation_delay': False,  # DISABLED - test baseline
+            'confirmation_bars': 3,           # 3 bars = 15min on 5min TF
             
             # Asset config
             'pip_value': 0.0001,
