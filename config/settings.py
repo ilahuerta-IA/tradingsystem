@@ -1284,11 +1284,11 @@ STRATEGIES_CONFIG = {
             'use_day_filter': False,
             'allowed_days': [0, 2, 3, 4],
             
-            'use_sl_pips_filter': True,
+            'use_sl_pips_filter': False,
             'sl_pips_min': 0.0,
             'sl_pips_max': 20.0,
             
-            'use_atr_filter': True,
+            'use_atr_filter': False,
             'atr_min': 0.00025,
             'atr_max': 0.00060,
             'atr_avg_period': 20,
@@ -1300,12 +1300,19 @@ STRATEGIES_CONFIG = {
             'adxr_max_threshold': 25.0,  # ADXR < 25 = más trades
             
             # Time-Based Exit
-            'use_time_exit': True,  # ENABLED - close if no TP/SL hit
+            'use_time_exit': False,  # DISABLED - close if no TP/SL hit
             'time_exit_bars': 12,   # 12 bars = 1 hour on 5min TF
             
-            # Pure Delay (wait X bars after reversal, then entry no matter what)
-            'use_confirmation_delay': False,  # DISABLED - test baseline
+            # Confirmation Hold (wait N bars, cancel if low breaks extension_low - offset)
+            'use_confirmation_delay': False,   # DISABLED - filter fakeouts
             'confirmation_bars': 3,           # 3 bars = 15min on 5min TF
+            'confirmation_offset_pips': 2.0,  # Offset below extension_low (flexibility)
+            
+            # HTF Filter (Higher Timeframe for trend/range context)
+            'use_htf_filter': True,          # DISABLED by default
+            'htf_timeframe_minutes': 15,      # 15m or 30m
+            'htf_er_period': 10,              # ER period on HTF
+            'htf_er_max_threshold': 0.30,     # ER < 0.30 = ranging (for mean reversion)
             
             # Asset config
             'pip_value': 0.0001,

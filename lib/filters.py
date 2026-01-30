@@ -345,6 +345,98 @@ def check_pullback_breakout(
 
 
 # =============================================================================
+# CONFIRMATION HOLD (Reusable for mean reversion strategies)
+# =============================================================================
+
+def check_confirmation_hold(
+    current_low: float,
+    invalidation_level: float,
+    bars_waiting: int,
+    required_bars: int,
+    offset_pips: float = 0.0,
+    pip_value: float = 0.0001,
+    enabled: bool = True
+) -> dict:
+    """
+    Check if price holds above invalidation level during confirmation period.
+    
+    Used for mean reversion strategies to filter fakeouts:
+    - After reversal signal, wait N bars before entry
+    - Cancel if price breaks below invalidation level - offset (fakeout detected)
+    
+    This is a REUSABLE function for any strategy needing confirmation delay.
+    
+    Args:
+        current_low: Current bar low price
+        invalidation_level: Price level that would cancel the signal (e.g., extension low)
+        bars_waiting: How many bars have passed since confirmation started
+        required_bars: Total bars needed to confirm
+        offset_pips: Buffer below invalidation level (flexibility for noise)
+        pip_value: Value of 1 pip for this asset
+        enabled: If False, returns immediate confirmation
+    
+    Returns:
+        dict with:
+            'status': str - 'WAITING', 'CONFIRMED', 'CANCELLED'
+            'bars_remaining': int - Bars left to confirm
+            'invalidated': bool - True if price broke invalidation level
+            'effective_level': float - Actual invalidation level used (with offset)
+    
+    Example:
+        # In strategy loop after reversal detected:
+        result = check_confirmation_hold(
+            current_low=current_bar_low,
+            invalidation_level=extension_low,
+            bars_waiting=3,
+            required_bars=5,
+            offset_pips=3.0,
+            pip_value=0.0001
+        )
+        if result['status'] == 'CONFIRMED':
+            execute_entry()
+        elif result['status'] == 'CANCELLED':
+            reset_state()
+    """
+    if not enabled:
+        return {
+            'status': 'CONFIRMED',
+            'bars_remaining': 0,
+            'invalidated': False,
+            'effective_level': invalidation_level
+        }
+    
+    # Calculate effective invalidation level (with offset for flexibility)
+    offset = offset_pips * pip_value
+    effective_level = invalidation_level - offset
+    
+    # Check for invalidation (price broke below effective level)
+    if current_low < effective_level:
+        return {
+            'status': 'CANCELLED',
+            'bars_remaining': required_bars - bars_waiting,
+            'invalidated': True,
+            'effective_level': effective_level
+        }
+    
+    # Check if enough bars have passed
+    if bars_waiting >= required_bars:
+        return {
+            'status': 'CONFIRMED',
+            'bars_remaining': 0,
+            'invalidated': False,
+            'effective_level': effective_level
+        }
+    
+    # Still waiting
+    return {
+        'status': 'WAITING',
+        'bars_remaining': required_bars - bars_waiting,
+        'invalidated': False,
+        'effective_level': effective_level
+    }
+
+
+# =============================================================================
 # EMA PRICE FILTERS
 # =============================================================================
 

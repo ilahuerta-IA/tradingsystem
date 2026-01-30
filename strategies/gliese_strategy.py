@@ -36,7 +36,7 @@ from typing import Optional, Tuple, Dict, List
 import os
 
 from lib.indicators import KAMA
-from lib.filters import calculate_adxr, check_adxr_filter
+from lib.filters import calculate_adxr, check_adxr_filter, check_confirmation_hold
 
 
 class GLIESEState(Enum):
@@ -139,9 +139,16 @@ class GLIESEStrategy(bt.Strategy):
         use_time_exit=False,
         time_exit_bars=12,  # Exit if no TP/SL hit after X bars (12 bars = 1h on 5min TF)
         
-        # === Confirmation Delay (filter fakeouts) ===
+        # === Confirmation Hold (filter fakeouts) ===
         use_confirmation_delay=False,
-        confirmation_bars=3,  # Wait X bars above band before entry (3 bars = 15min on 5min TF)
+        confirmation_bars=3,  # Wait X bars above band before entry
+        confirmation_offset_pips=0.0,  # Buffer below extension_low (flexibility)
+        
+        # === HTF Filter (Higher Timeframe context) ===
+        use_htf_filter=False,
+        htf_timeframe_minutes=15,  # 15m or 30m
+        htf_er_period=10,
+        htf_er_max_threshold=0.30,  # ER < 0.30 = ranging (for mean reversion)
         
         # === Asset Config ===
         pip_value=0.0001,
@@ -465,19 +472,36 @@ class GLIESEStrategy(bt.Strategy):
             return False
         
         # =====================================================================
-        # STATE: CONFIRMING - Pure delay (wait X bars then entry, no conditions)
+        # STATE: CONFIRMING - Wait N bars, cancel if low breaks extension_low - offset
         # =====================================================================
         elif self.state == GLIESEState.CONFIRMING:
-            # Pure delay - just count bars, no conditions checked
             self.confirmation_bar_count += 1
             
-            if self.confirmation_bar_count >= self.p.confirmation_bars:
-                # Delay complete - ENTRY SIGNAL (no matter what)
+            # Use standardized confirmation check from lib/filters
+            result = check_confirmation_hold(
+                current_low=current_low,
+                invalidation_level=self.extension_low,
+                bars_waiting=self.confirmation_bar_count,
+                required_bars=self.p.confirmation_bars,
+                offset_pips=self.p.confirmation_offset_pips,
+                pip_value=self.p.pip_value,
+                enabled=self.p.use_confirmation_delay
+            )
+            
+            if result['status'] == 'CONFIRMED':
+                # Confirmation complete - ENTRY SIGNAL
                 if self.p.print_signals:
-                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: DELAY COMPLETE - ENTRY | "
-                          f"DelayBars={self.confirmation_bar_count}")
+                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: CONFIRMED - ENTRY | "
+                          f"Bars={self.confirmation_bar_count}, ExtLow held")
                 return True
             
+            elif result['status'] == 'CANCELLED':
+                # Fakeout - price broke extension low - offset
+                if self.p.print_signals:
+                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: CANCELLED - Low={current_low:.5f} < Level={result['effective_level']:.5f}")
+                self._reset_state()
+            
+            # else: WAITING - continue
             return False
         
         return False
