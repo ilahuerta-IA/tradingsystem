@@ -12,7 +12,7 @@ CURRENT LOGIC (v2 Simplified):
   5. TP: Entry + ATR * multiplier
 
 Key Parameters:
-  - extension_min_bars: Minimum bars below band (8-10 optimal)
+  - allowed_extension_bars: List of allowed extension bar counts (empty=all)
   - band_atr_mult: Band distance from KAMA (1.0 = tight)
   - adxr_max_threshold: Max ADXR to allow entry (20-25 = ranging)
   - atr_tp_multiplier: TP distance in ATR units
@@ -100,8 +100,8 @@ class GLIESEStrategy(bt.Strategy):
         band_atr_mult=2.0,  # LowerBand = KAMA - mult * ATR
         
         # === Extension Detection ===
-        extension_min_bars=3,
-        extension_max_bars=15,
+        extension_max_bars=15,  # Timeout: reset if extension exceeds this
+        allowed_extension_bars=[],  # Empty = all allowed, e.g. [3,4,5,6] = only those bars
         
         # === Pullback Settings ===
         pullback_max_bars=5,
@@ -260,7 +260,8 @@ class GLIESEStrategy(bt.Strategy):
             self.trade_report_file.write(f"Generated: {datetime.now()}\n")
             self.trade_report_file.write(f"KAMA: period={self.p.kama_period}, fast={self.p.kama_fast}, slow={self.p.kama_slow}\n")
             self.trade_report_file.write(f"Band: KAMA - {self.p.band_atr_mult} x ATR\n")
-            self.trade_report_file.write(f"Extension: {self.p.extension_min_bars}-{self.p.extension_max_bars} bars\n")
+            ext_filter = self.p.allowed_extension_bars if self.p.allowed_extension_bars else 'all'
+            self.trade_report_file.write(f"Extension: max={self.p.extension_max_bars}, allowed={ext_filter}\n")
             self.trade_report_file.write(f"HL2_EMA period: {self.p.hl2_ema_period}\n\n")
     
     def prenext(self):
@@ -488,8 +489,10 @@ class GLIESEStrategy(bt.Strategy):
                     self._reset_state()
                     return False
             else:
-                # Close returned above band - check if extension was long enough
-                if self.extension_bar_count >= self.p.extension_min_bars:
+                # Close returned above band - check if extension bars is allowed
+                ext_allowed = (not self.p.allowed_extension_bars or 
+                              self.extension_bar_count in self.p.allowed_extension_bars)
+                if ext_allowed:
                     self.pattern_atr = self._get_avg_atr()
                     
                     # Check if confirmation delay is enabled
@@ -509,9 +512,9 @@ class GLIESEStrategy(bt.Strategy):
                                   f"ExtBars={self.extension_bar_count}, ExtLow={self.extension_low:.5f}")
                         return True
                 else:
-                    # Extension too short
+                    # Extension bars not in allowed list
                     if self.p.print_signals:
-                        print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: Extension too short ({self.extension_bar_count} bars)")
+                        print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: Extension bars {self.extension_bar_count} not allowed")
                     self._reset_state()
             
             return False
@@ -883,7 +886,8 @@ class GLIESEStrategy(bt.Strategy):
         print(f"  KAMA: period={self.p.kama_period}, fast={self.p.kama_fast}, slow={self.p.kama_slow}")
         print(f"  Band: KAMA - {self.p.band_atr_mult} x ATR")
         print(f"  HL2_EMA period: {self.p.hl2_ema_period}")
-        print(f"  Extension: {self.p.extension_min_bars}-{self.p.extension_max_bars} bars")
+        ext_filter = self.p.allowed_extension_bars if self.p.allowed_extension_bars else 'all'
+        print(f"  Extension: max={self.p.extension_max_bars}, allowed={ext_filter}")
         print(f"  Pullback max: {self.p.pullback_max_bars} bars")
         print(f"  TP: {'KAMA' if self.p.use_kama_tp else f'{self.p.atr_tp_multiplier}x ATR'}")
         print(f"  SL buffer: {self.p.sl_buffer_pips} pips")

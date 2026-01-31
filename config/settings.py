@@ -1257,61 +1257,61 @@ STRATEGIES_CONFIG = {
             'kama_slow': 30,
             
             # HL2 EMA for stability
-            'hl2_ema_period': 10,
+            'hl2_ema_period': 14,
             
             # Band settings
             'band_atr_period': 14,
-            'band_atr_mult': 1.0,  # LowerBand = KAMA - 1.0 * ATR (más cercana)
+            'band_atr_mult': 1.0,  # LowerBand = KAMA - 2.0 * ATR
             
             # Extension Detection (A phase)
-            'extension_min_bars': 10,  
-            'extension_max_bars': 15,
+            'extension_max_bars': 12,  # Timeout
+            'allowed_extension_bars': [6, 9, 10, 11, 12],  # Empty = all, e.g. [3,4,5,6]
             
             # Pullback Settings (C phase)
-            'pullback_max_bars': 15,  # Más tiempo para breakout
-            'breakout_buffer_pips': 1.0,  # Buffer más pequeño
+            'pullback_max_bars': 10,  # Max bars to wait for pullback
+            'breakout_buffer_pips': 1.0,  # buffer above extension high to trigger entry
             
             # SL/TP
             'sl_buffer_pips': 5.0,
             'use_kama_tp': False,  # No usar KAMA (muy cerca)
-            'atr_sl_multiplier': 1.5,  # SL = ext_low - 2*ATR
+            'atr_sl_multiplier': 4.5,  # SL = ext_low - 2*ATR
             'atr_tp_multiplier': 10.0,  # TP = entry + 2*ATR
             
             # === FILTERS (same as SEDNA) ===
             'use_time_filter': False,
-            'allowed_hours': [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+            'allowed_hours': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             
-            'use_day_filter': False,
-            'allowed_days': [0, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 3, 4],
             
             'use_sl_pips_filter': False,
-            'sl_pips_min': 0.0,
-            'sl_pips_max': 20.0,
+            'sl_pips_min': 5.0,
+            'sl_pips_max': 10.0,
             
-            'use_atr_filter': False,
-            'atr_min': 0.00025,
-            'atr_max': 0.00060,
+            'use_atr_filter': True,
+            'atr_min': 0.000260,
+            'atr_max': 0.000600,
             'atr_avg_period': 20,
             
             # ADXR Filter (ranging market)
             'use_adxr_filter': True,  # ENABLED
             'adxr_period': 14,
-            'adxr_lookback': 14,
-            'adxr_max_threshold': 25.0,  # ADXR < 25 = ranging
-            'adxr_timeframe_mult': 6,    # 1=5m, 3=15m, 6=30m (on 5m data)
+            'adxr_lookback': 10,
+            'adxr_max_threshold': 20.0,  # ADXR < 25 = ranging
+            'adxr_timeframe_mult': 15,    # 1=5m, 3=15m, 6=30m (on 5m data)
             'adxr_require_sync': False,  # True = must pass ADXR on BOTH 5m AND HTF
             
             # Time-Based Exit
-            'use_time_exit': False,  # DISABLED - close if no TP/SL hit
+            'use_time_exit': False,  # ENABLED - close if no TP/SL hit
             'time_exit_bars': 12,   # 12 bars = 1 hour on 5min TF
             
             # Confirmation Hold (wait N bars, cancel if low breaks extension_low - offset)
-            'use_confirmation_delay': True,   # ENABLED - filter fakeouts
-            'confirmation_bars': 24,           # 3 bars = 15min on 5min TF
+            'use_confirmation_delay': False,   # DISABLED - filter fakeouts
+            'confirmation_bars': 5,           # 3 bars = 15min on 5min TF
             'confirmation_offset_pips': 1.0,  # Offset below extension_low (flexibility)
             
             # HTF Filter (Higher Timeframe for trend/range context)
-            'use_htf_filter': False,          # DISABLED by default
+            'use_htf_filter': False,          # ENABLED by default
             'htf_timeframe_minutes': 15,      # 15m or 30m
             'htf_er_period': 10,              # ER period on HTF
             'htf_er_max_threshold': 0.30,     # ER < 0.30 = ranging (for mean reversion)
@@ -1389,7 +1389,7 @@ STRATEGIES_CONFIG = {
             'kama_slope_atr_mult': 0.3,
             
             # Extension Detection
-            'extension_min_bars': 2,
+            'allowed_extension_bars': [],  # Empty = all
             'extension_max_bars': 20,
             
             # Z-Score Filter
@@ -1493,7 +1493,7 @@ STRATEGIES_CONFIG = {
             'kama_slope_atr_mult': 0.3,
             
             # Extension Detection
-            'extension_min_bars': 2,
+            'allowed_extension_bars': [],  # Empty = all
             'extension_max_bars': 20,
             
             # Z-Score Filter

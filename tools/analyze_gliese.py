@@ -665,7 +665,7 @@ def analyze_detailed_by_year(trades: List[Dict]):
         print(f'    {"SL":>6} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
         print(f'    ' + '-' * 38)
         
-        sl_ranges = [(0, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, 50)]
+        sl_ranges = [(0, 2), (2, 4), (4, 5), (5, 10), (10, 15), (15, 20), (20, 30), (30, 50)]
         for low, high in sl_ranges:
             sl_filtered = [t for t in year_trades if 'sl_pips' in t and low <= t['sl_pips'] < high]
             if sl_filtered:
@@ -855,6 +855,29 @@ def analyze_detailed_by_year(trades: List[Dict]):
                     label = f'{low}-{high}'
                     print(f'    {label:>6} | {sl_stats["total"]:>3} | {sl_stats["win_rate"]:>3.0f}% | '
                           f'{format_pf(sl_stats["profit_factor"]):>5} | ${sl_stats["net_pnl"]:>9,.0f}')
+        
+        # Global ATR analysis (dynamic ranges like analyze_by_atr)
+        print(f'\n  GLOBAL BY ATR RANGE:')
+        
+        atrs = [t['atr'] for t in all_trades if 'atr' in t]
+        if atrs:
+            min_atr = min(atrs)
+            max_atr = max(atrs)
+            step = (max_atr - min_atr) / 5
+            
+            print(f'    {"ATR Range":>18} | {"Tr":>3} | {"WR%":>4} | {"PF":>5} | {"P&L":>10}')
+            print(f'    ' + '-' * 50)
+            
+            for i in range(5):
+                low = min_atr + i * step
+                high = min_atr + (i + 1) * step
+                atr_filtered = [t for t in all_trades if 'atr' in t and low <= t['atr'] < high]
+                if atr_filtered:
+                    atr_stats = calculate_stats(atr_filtered)
+                    if atr_stats:
+                        label = f'{low:.6f}-{high:.6f}'
+                        print(f'    {label:>18} | {atr_stats["total"]:>3} | {atr_stats["win_rate"]:>3.0f}% | '
+                              f'{format_pf(atr_stats["profit_factor"]):>5} | ${atr_stats["net_pnl"]:>9,.0f}')
 
 
 # =============================================================================
