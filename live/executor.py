@@ -154,9 +154,16 @@ class OrderExecutor:
         self.logger.info(f"OrderExecutor initialized for {config_name}, magic: {self.magic_number}")
     
     def _generate_magic_number(self, config_name: str) -> int:
-        """Generate unique magic number for strategy identification."""
-        # Simple hash of config name added to base
-        name_hash = sum(ord(c) for c in config_name) % 10000
+        """
+        Generate unique magic number for strategy identification.
+        
+        Uses Python's hash with better collision resistance than simple ASCII sum.
+        """
+        # Use full hash to avoid collisions between similar names
+        # e.g., EURJPY_PRO vs USDJPY_PRO had same ASCII sum
+        import hashlib
+        hash_bytes = hashlib.md5(config_name.encode()).hexdigest()[:8]
+        name_hash = int(hash_bytes, 16) % 100000  # 5 digits for more uniqueness
         return self.MAGIC_NUMBER_BASE + name_hash
     
     def _get_filling_mode(self, symbol: str) -> int:
