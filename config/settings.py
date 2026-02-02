@@ -1234,9 +1234,9 @@ STRATEGIES_CONFIG = {
     # =========================================================================
     # GLIESE v2 STRATEGY CONFIGURATIONS (Simplified Mean Reversion)
     # =========================================================================
-    
+    #ko
     'USDCHF_GLIESE': {
-        'active': True,
+        'active': False,
         'strategy_name': 'GLIESE',
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
@@ -1265,9 +1265,11 @@ STRATEGIES_CONFIG = {
             
             # Extension Detection (A phase)
             'extension_max_bars': 12,  # Timeout
-            'allowed_extension_bars': [6, 9, 10, 11, 12],  # Empty = all, e.g. [3,4,5,6]
+            'allowed_extension_bars': [2, 10, 11, 12],  # Empty = all, e.g. [3,4,5,6]
             
-            # Pullback Settings (C phase)
+            # Pullback Settings (C phase) - SEDNA-like
+            'use_pullback_filter': True,  # Wait for pullback for larger SL
+            'pullback_min_bars': 2,
             'pullback_max_bars': 10,  # Max bars to wait for pullback
             'breakout_buffer_pips': 1.0,  # buffer above extension high to trigger entry
             
@@ -1281,14 +1283,14 @@ STRATEGIES_CONFIG = {
             'use_time_filter': False,
             'allowed_hours': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             
-            'use_day_filter': True,
+            'use_day_filter': False,
             'allowed_days': [0, 1, 3, 4],
             
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 5.0,
-            'sl_pips_max': 10.0,
+            'use_sl_pips_filter': True,  # Disabled - pullback makes SL larger
+            'sl_pips_min': 15.0,
+            'sl_pips_max': 30.0,  # Increased for pullback
             
-            'use_atr_filter': True,
+            'use_atr_filter': False,
             'atr_min': 0.000260,
             'atr_max': 0.000600,
             'atr_avg_period': 20,
@@ -1333,214 +1335,6 @@ STRATEGIES_CONFIG = {
             # Plot options
             'plot_bands': True,
             'plot_entry_exit_lines': True,  # Show entry/SL/TP lines on plot
-        }
-    },
-
-    'USDCAD_GLIESE': {
-        'active': True,
-        'strategy_name': 'GLIESE',
-        'asset_name': 'USDCAD',
-        'data_path': 'data/USDCAD_5m_5Yea.csv',
-        
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
-        
-        'starting_cash': 100000.0,
-        
-        'run_plot': True,
-        'generate_report': True,
-        'save_log': True,
-        
-        'params': {
-            # KAMA settings
-            'kama_period': 10,
-            'kama_fast': 2,
-            'kama_slow': 30,
-            
-            # Band settings
-            'band_atr_period': 14,
-            'band_atr_mult': 1.5,
-            
-            # ATR for SL/TP
-            'atr_length': 14,
-            'atr_sl_multiplier': 2.0,
-            'atr_tp_multiplier': 3.0,
-            
-            # Breakout Window
-            'use_breakout_window': True,
-            'breakout_window_candles': 5,
-            'breakout_level_offset_pips': 2.0,
-            
-            # === RANGE DETECTION (HTF 15m) ===
-            'use_htf_range_filter': True,
-            'htf_timeframe_minutes': 15,
-            'htf_er_period': 10,
-            'htf_er_max_threshold': 0.30,
-            
-            # ADXR Filter
-            'use_adxr_filter': True,
-            'adxr_period': 14,
-            'adxr_lookback': 14,
-            'adxr_max_threshold': 25.0,
-            
-            # KAMA Slope Filter
-            'use_kama_slope_filter': True,
-            'kama_slope_lookback': 5,
-            'kama_slope_atr_mult': 0.3,
-            
-            # Extension Detection
-            'allowed_extension_bars': [],  # Empty = all
-            'extension_max_bars': 20,
-            
-            # Z-Score Filter
-            'use_zscore_filter': False,
-            'zscore_min_depth': -2.0,
-            
-            # Pullback Detection
-            'use_pullback_filter': True,
-            'pullback_min_bars': 1,
-            'pullback_max_bars': 4,
-            
-            # Cancellation
-            'er_cancel_threshold': 0.50,
-            
-            # === STANDARD FILTERS ===
-            'use_time_filter': False,
-            'allowed_hours': [],
-            
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
-            
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 5.0,
-            'sl_pips_max': 15.0,
-            
-            'use_atr_filter': False,
-            'atr_min': 0.0003,
-            'atr_max': 0.0010,
-            'atr_avg_period': 20,
-            
-            # Asset config
-            'pip_value': 0.0001,
-            'lot_size': 100000,
-            'jpy_rate': 1.0,
-            'is_etf': False,
-            'margin_pct': 3.33,
-            
-            # Risk
-            'risk_percent': 0.01,
-            
-            # Debug & Reporting
-            'print_signals': False,
-            'export_reports': True,
-            
-            # Plot options
-            'plot_entry_exit_lines': True,
-            'plot_bands': True,
-        }
-    },
-
-    'EURUSD_GLIESE': {
-        'active': True,
-        'strategy_name': 'GLIESE',
-        'asset_name': 'EURUSD',
-        'data_path': 'data/EURUSD_5m_5Yea.csv',
-        
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
-        
-        'starting_cash': 100000.0,
-        
-        'run_plot': True,
-        'generate_report': True,
-        'save_log': True,
-        
-        'params': {
-            # KAMA settings
-            'kama_period': 10,
-            'kama_fast': 2,
-            'kama_slow': 30,
-            
-            # Band settings
-            'band_atr_period': 14,
-            'band_atr_mult': 1.5,
-            
-            # ATR for SL/TP
-            'atr_length': 14,
-            'atr_sl_multiplier': 2.0,
-            'atr_tp_multiplier': 3.0,
-            
-            # Breakout Window
-            'use_breakout_window': True,
-            'breakout_window_candles': 5,
-            'breakout_level_offset_pips': 2.0,
-            
-            # === RANGE DETECTION (HTF 15m) ===
-            'use_htf_range_filter': True,
-            'htf_timeframe_minutes': 15,
-            'htf_er_period': 10,
-            'htf_er_max_threshold': 0.30,
-            
-            # ADXR Filter
-            'use_adxr_filter': True,
-            'adxr_period': 14,
-            'adxr_lookback': 14,
-            'adxr_max_threshold': 25.0,
-            
-            # KAMA Slope Filter
-            'use_kama_slope_filter': True,
-            'kama_slope_lookback': 5,
-            'kama_slope_atr_mult': 0.3,
-            
-            # Extension Detection
-            'allowed_extension_bars': [],  # Empty = all
-            'extension_max_bars': 20,
-            
-            # Z-Score Filter
-            'use_zscore_filter': False,
-            'zscore_min_depth': -2.0,
-            
-            # Pullback Detection
-            'use_pullback_filter': True,
-            'pullback_min_bars': 1,
-            'pullback_max_bars': 4,
-            
-            # Cancellation
-            'er_cancel_threshold': 0.50,
-            
-            # === STANDARD FILTERS ===
-            'use_time_filter': False,
-            'allowed_hours': [],
-            
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
-            
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 5.0,
-            'sl_pips_max': 15.0,
-            
-            'use_atr_filter': False,
-            'atr_min': 0.00020,
-            'atr_max': 0.00050,
-            'atr_avg_period': 20,
-            
-            # Asset config
-            'pip_value': 0.0001,
-            'lot_size': 100000,
-            'jpy_rate': 1.0,
-            'is_etf': False,
-            'margin_pct': 3.33,
-            
-            # Risk
-            'risk_percent': 0.01,
-            
-            # Debug & Reporting
-            'print_signals': False,
-            'export_reports': True,
-            
-            # Plot options
-            'plot_entry_exit_lines': True,
-            'plot_bands': True,
         }
     },
 }

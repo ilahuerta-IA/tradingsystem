@@ -104,6 +104,8 @@ class GLIESEStrategy(bt.Strategy):
         allowed_extension_bars=[],  # Empty = all allowed, e.g. [3,4,5,6] = only those bars
         
         # === Pullback Settings ===
+        use_pullback_filter=True,  # Wait for pullback before entry (larger SL)
+        pullback_min_bars=2,
         pullback_max_bars=5,
         breakout_buffer_pips=2.0,
         
@@ -262,6 +264,8 @@ class GLIESEStrategy(bt.Strategy):
             self.trade_report_file.write(f"Band: KAMA - {self.p.band_atr_mult} x ATR\n")
             ext_filter = self.p.allowed_extension_bars if self.p.allowed_extension_bars else 'all'
             self.trade_report_file.write(f"Extension: max={self.p.extension_max_bars}, allowed={ext_filter}\n")
+            if self.p.use_pullback_filter:
+                self.trade_report_file.write(f"Pullback: min={self.p.pullback_min_bars}, max={self.p.pullback_max_bars}, buffer={self.p.breakout_buffer_pips}pips\n")
             self.trade_report_file.write(f"HL2_EMA period: {self.p.hl2_ema_period}\n\n")
     
     def prenext(self):
@@ -495,9 +499,21 @@ class GLIESEStrategy(bt.Strategy):
                 if ext_allowed:
                     self.pattern_atr = self._get_avg_atr()
                     
-                    # Check if confirmation delay is enabled
-                    if self.p.use_confirmation_delay:
-                        # Enter CONFIRMING state
+                    # Check if pullback filter is enabled (recommended for larger SL)
+                    if self.p.use_pullback_filter:
+                        # Enter WAITING_BREAKOUT state - track pullback
+                        self.state = GLIESEState.WAITING_BREAKOUT
+                        self.pullback_bar_count = 1
+                        self.pullback_high = current_high  # Track highest high during pullback
+                        self.breakout_level = current_high + self.p.breakout_buffer_pips * self.p.pip_value
+                        
+                        if self.p.print_signals:
+                            print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: PULLBACK START | "
+                                  f"ExtBars={self.extension_bar_count}, ExtLow={self.extension_low:.5f}, "
+                                  f"BreakoutLevel={self.breakout_level:.5f}")
+                        return False
+                    elif self.p.use_confirmation_delay:
+                        # Confirmation delay (legacy) - Enter CONFIRMING state
                         self.state = GLIESEState.CONFIRMING
                         self.confirmation_bar_count = 1
                         
@@ -506,7 +522,7 @@ class GLIESEStrategy(bt.Strategy):
                                   f"ExtBars={self.extension_bar_count}, waiting {self.p.confirmation_bars} bars")
                         return False
                     else:
-                        # No confirmation - ENTRY SIGNAL IMMEDIATELY
+                        # No pullback, no confirmation - ENTRY SIGNAL IMMEDIATELY
                         if self.p.print_signals:
                             print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: REVERSAL - ENTRY | "
                                   f"ExtBars={self.extension_bar_count}, ExtLow={self.extension_low:.5f}")
@@ -550,6 +566,36 @@ class GLIESEStrategy(bt.Strategy):
                 self._reset_state()
             
             # else: WAITING - continue
+            return False
+        
+        # =====================================================================
+        # STATE: WAITING_BREAKOUT - Pullback phase, wait for breakout
+        # =====================================================================
+        elif self.state == GLIESEState.WAITING_BREAKOUT:
+            self.pullback_bar_count += 1
+            
+            # breakout_level is FIXED at pullback start - DO NOT UPDATE
+            # (updating it makes it impossible to reach)
+            
+            # Invalidation disabled - let pullback breathe
+            # (In mean reversion, small new lows are normal before reversal)
+            
+            # Check for timeout
+            if self.pullback_bar_count > self.p.pullback_max_bars:
+                if self.p.print_signals:
+                    print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: PULLBACK TIMEOUT ({self.pullback_bar_count} bars)")
+                self._reset_state()
+                return False
+            
+            # Check for breakout: high > breakout_level AND enough bars in pullback
+            if self.pullback_bar_count >= self.p.pullback_min_bars:
+                if current_high > self.breakout_level:
+                    if self.p.print_signals:
+                        print(f"[{dt:%Y-%m-%d %H:%M}] GLIESE: BREAKOUT - ENTRY | "
+                              f"High={current_high:.5f} > Level={self.breakout_level:.5f}, "
+                              f"PullbackBars={self.pullback_bar_count}")
+                    return True
+            
             return False
         
         return False
@@ -888,7 +934,8 @@ class GLIESEStrategy(bt.Strategy):
         print(f"  HL2_EMA period: {self.p.hl2_ema_period}")
         ext_filter = self.p.allowed_extension_bars if self.p.allowed_extension_bars else 'all'
         print(f"  Extension: max={self.p.extension_max_bars}, allowed={ext_filter}")
-        print(f"  Pullback max: {self.p.pullback_max_bars} bars")
+        if self.p.use_pullback_filter:
+            print(f"  Pullback: min={self.p.pullback_min_bars}, max={self.p.pullback_max_bars} bars, buffer={self.p.breakout_buffer_pips} pips")
         print(f"  TP: {'KAMA' if self.p.use_kama_tp else f'{self.p.atr_tp_multiplier}x ATR'}")
         print(f"  SL buffer: {self.p.sl_buffer_pips} pips")
         if self.p.use_time_filter:
