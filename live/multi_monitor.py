@@ -424,6 +424,7 @@ class MultiStrategyMonitor:
             # Process closed positions
             for ticket in closed_tickets:
                 pos_info = self.open_positions[ticket]
+                expected_symbol = pos_info.get('symbol', '')
                 
                 # Get deal history to find close details
                 close_price = None
@@ -438,22 +439,43 @@ class MultiStrategyMonitor:
                 
                 deals = mt5.history_deals_get(from_time, to_time, position=ticket)
                 
+                # Debug: log all deals found for this position
+                if deals:
+                    self.logger.debug(
+                        f"[{pos_info.get('config')}] Found {len(deals)} deals for ticket {ticket}, "
+                        f"expected symbol: {expected_symbol}"
+                    )
+                    for d in deals:
+                        self.logger.debug(
+                            f"  Deal #{d.ticket}: symbol={d.symbol}, entry={d.entry}, "
+                            f"price={d.price:.5f}, profit={d.profit:.2f}"
+                        )
+                
                 if deals and len(deals) > 0:
-                    # Find the closing deal (type OUT)
+                    # Find the closing deal (type OUT) - MUST match symbol!
                     for deal in deals:
-                        if deal.entry == mt5.DEAL_ENTRY_OUT:
+                        if deal.entry == mt5.DEAL_ENTRY_OUT and deal.symbol == expected_symbol:
                             close_price = deal.price
                             close_time = datetime.fromtimestamp(deal.time)
                             pnl = deal.profit
                             
                             # Determine close reason by comparing to SL/TP
-                            if pos_info.get('sl') and abs(close_price - pos_info['sl']) < 0.0001:
+                            # Use tolerance based on pip value (larger for JPY pairs)
+                            pip_tolerance = 0.01 if 'JPY' in expected_symbol else 0.0001
+                            if pos_info.get('sl') and abs(close_price - pos_info['sl']) < pip_tolerance:
                                 close_reason = "STOP_LOSS"
-                            elif pos_info.get('tp') and abs(close_price - pos_info['tp']) < 0.0001:
+                            elif pos_info.get('tp') and abs(close_price - pos_info['tp']) < pip_tolerance:
                                 close_reason = "TAKE_PROFIT"
                             else:
                                 close_reason = "MANUAL"
                             break
+                    
+                    # Warn if no matching deal found (symbol mismatch)
+                    if close_price is None and len(deals) > 0:
+                        self.logger.warning(
+                            f"[{pos_info.get('config')}] No matching deal found for {expected_symbol}! "
+                            f"Deals returned: {[d.symbol for d in deals]}"
+                        )
                 
                 # Log the close event
                 self.logger.info(
