@@ -544,17 +544,28 @@ class MultiStrategyMonitor:
         
         self.state = MonitorState.WAITING_CANDLE
         
-        # Wait in chunks for responsiveness
+        # Wait in small chunks for responsive shutdown
         try:
             while seconds_to_wait > 0 and self.running:
-                sleep_time = min(seconds_to_wait, 10)  # Check every 10s
+                # Use 1-second sleeps for faster Ctrl+C response
+                sleep_time = min(seconds_to_wait, 1)
                 time.sleep(sleep_time)
                 seconds_to_wait -= sleep_time
                 
-                # Periodic connection check
-                if not self._check_connection():
-                    self.logger.warning("Connection lost during wait")
+                # Check running flag frequently
+                if not self.running:
+                    self.logger.info("Wait interrupted by shutdown signal")
                     return False
+                
+                # Periodic connection check (every ~10 seconds)
+                if int(seconds_to_wait) % 10 == 0 and seconds_to_wait > 1:
+                    if not self._check_connection():
+                        self.logger.warning("Connection lost during wait")
+                        return False
+        except KeyboardInterrupt:
+            self.logger.info("KeyboardInterrupt during wait")
+            self.running = False
+            return False
         except Exception as e:
             self.logger.error(f"Error during candle wait: {e}")
             return False
@@ -886,10 +897,20 @@ class MultiStrategyMonitor:
 
 def setup_signal_handlers(monitor: MultiStrategyMonitor):
     """Setup graceful shutdown handlers."""
+    shutdown_count = 0
+    
     def signal_handler(sig, frame):
-        print("\n\n[STOP] Shutdown signal received...")
-        monitor.stop()
-        sys.exit(0)
+        nonlocal shutdown_count
+        shutdown_count += 1
+        
+        if shutdown_count == 1:
+            print("\n\n[STOP] Shutdown signal received, stopping gracefully...")
+            print("[STOP] Press Ctrl+C again to force exit")
+            monitor.running = False  # Set flag first
+            monitor.stop()
+        else:
+            print("\n[FORCE] Forcing exit...")
+            sys.exit(1)
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
