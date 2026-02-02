@@ -690,8 +690,13 @@ class MultiStrategyMonitor:
                 self.stats.trades_by_strategy.get(config_name, 0) + 1
             )
             
+            # Calculate slippage
+            pip_value = config.get('params', {}).get('pip_value', 0.0001)
+            slippage_pips = (result.executed_price - signal.entry_price) / pip_value
+            
             self.logger.info(
-                f"[{config_name}] EXECUTED: {symbol} @ {result.executed_price:.5f}"
+                f"[{config_name}] EXECUTED: {symbol} @ {result.executed_price:.5f} "
+                f"(signal: {signal.entry_price:.5f}, slippage: {slippage_pips:+.1f} pips)"
             )
             
             self._log_event("TRADE", {
@@ -701,6 +706,8 @@ class MultiStrategyMonitor:
                 "strategy": checker.strategy_name,
                 "direction": "LONG",
                 "entry": result.executed_price,
+                "signal_entry": signal.entry_price,
+                "slippage_pips": round(slippage_pips, 1),
                 "volume": result.executed_volume,
                 "sl": signal.stop_loss,
                 "tp": signal.take_profit,
