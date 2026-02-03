@@ -16,13 +16,13 @@ ENABLED_CONFIGS = {
     # Sunset Ogle strategy (Forex)
     "EURUSD_PRO": True,
     "EURJPY_PRO": True,
-    "USDCAD_PRO": True,
+    "USDCAD_PRO": False,  # Disabled: high spread/slippage destroys edge
     "USDCHF_PRO": True,
     "USDJPY_PRO": True,
     
     # KOI strategy (Forex)
     "EURUSD_KOI": True,
-    "USDCAD_KOI": True,
+    "USDCAD_KOI": False,  # Disabled: high spread/slippage destroys edge
     "USDCHF_KOI": True,
     "USDJPY_KOI": True,
     "EURJPY_KOI": True,
