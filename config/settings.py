@@ -1349,7 +1349,7 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURUSD',
         'data_path': 'data/EURUSD_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
+        'from_date': datetime.datetime(2025, 1, 1),
         'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
@@ -1398,11 +1398,14 @@ STRATEGIES_CONFIG = {
             'atr_avg_period': 20,
             
             # === HTF FILTER (Spectral Entropy - KEY DIFFERENCE) ===
-            # SE LOW = structured market (inverted from ER HIGH = trending)
+            # SE RANGE filter: avoid noise (high SE) AND anomalies (low SE)
+            # Observation (EURUSD 60m equiv): SE typically 0.84-0.96
+            # SE 0.84-0.88 = structure detected, SE 0.90+ = noise
             'use_htf_filter': True,
-            'htf_timeframe_minutes': 15,
+            'htf_timeframe_minutes': 30,
             'htf_se_period': 20,
-            'htf_se_threshold': 0.7,  # SE <= 0.7 means structured
+            'htf_se_min': 0.84,  # Min SE (avoid anomalies)
+            'htf_se_max': 0.90,  # Max SE (avoid noise)
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,
@@ -1483,10 +1486,12 @@ STRATEGIES_CONFIG = {
             'atr_avg_period': 20,
             
             # === HTF FILTER (Spectral Entropy) ===
+            # SE RANGE filter (same observation as EURUSD)
             'use_htf_filter': True,
-            'htf_timeframe_minutes': 15,
+            'htf_timeframe_minutes': 60,
             'htf_se_period': 20,
-            'htf_se_threshold': 0.7,
+            'htf_se_min': 0.84,
+            'htf_se_max': 0.90,
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,

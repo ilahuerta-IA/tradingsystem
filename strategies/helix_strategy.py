@@ -122,12 +122,14 @@ class HELIXStrategy(bt.Strategy):
         atr_avg_period=20,
         
         # === HTF FILTER (Spectral Entropy - KEY DIFFERENCE FROM SEDNA) ===
-        # Uses SE to filter noisy markets (inverted logic from ER)
-        # SE close to 0.0 = structured, SE close to 1.0 = noisy
+        # Uses SE RANGE to filter noisy markets
+        # Observation: EURUSD SE typically 0.84-0.96 on 60m equiv
+        # SE 0.84-0.88 = structure detected, SE 0.90+ = noise
         use_htf_filter=True,
-        htf_timeframe_minutes=15,
+        htf_timeframe_minutes=60,  # 60m for smoother SE
         htf_se_period=20,  # SE period on HTF equivalent
-        htf_se_threshold=0.7,  # Max SE to allow entry (SE <= threshold)
+        htf_se_min=0.84,  # Min SE (avoid anomalies)
+        htf_se_max=0.90,  # Max SE (avoid noise)
         
         # === PULLBACK DETECTION ===
         use_pullback_filter=True,
@@ -184,13 +186,27 @@ class HELIXStrategy(bt.Strategy):
         self.atr = bt.ind.ATR(d, period=self.p.atr_length)
         
         # HTF Spectral Entropy (KEY DIFFERENCE: SE instead of ER)
+        # Uses internal aggregation for TRUE HTF calculation
         self.htf_se = None
         if self.p.use_htf_filter:
-            base_tf_minutes = 5
-            htf_multiplier = self.p.htf_timeframe_minutes // base_tf_minutes
-            scaled_se_period = self.p.htf_se_period * htf_multiplier
-            self.htf_se = SpectralEntropy(d.close, period=scaled_se_period)
-            self.htf_se.plotinfo.plotname = f'SE({self.p.htf_timeframe_minutes}m equiv)'
+            # Calculate HTF multiplier (30m from 5m = 6, 60m from 5m = 12)
+            base_tf_minutes = 5  # Base timeframe
+            htf_mult = self.p.htf_timeframe_minutes // base_tf_minutes
+            
+            if htf_mult > 1:
+                # Use internal HTF aggregation (TRUE HTF calculation)
+                self.htf_se = SpectralEntropy(
+                    d, 
+                    period=self.p.htf_se_period,
+                    htf_mult=htf_mult
+                )
+                self.htf_se.plotinfo.plotname = f'SE({self.p.htf_timeframe_minutes}m)'
+                self.htf_se.plotinfo.subplot = True
+                print(f'[HELIX] Using internal HTF aggregation: {base_tf_minutes}m x {htf_mult} = {self.p.htf_timeframe_minutes}m')
+            else:
+                # Same timeframe
+                self.htf_se = SpectralEntropy(d.close, period=self.p.htf_se_period)
+                self.htf_se.plotinfo.plotname = f'SE({base_tf_minutes}m)'
         
         # Entry/Exit plot lines
         if self.p.plot_entry_exit_lines:
@@ -307,7 +323,7 @@ class HELIXStrategy(bt.Strategy):
             if self.p.use_time_filter:
                 self.trade_report_file.write(f"Time Filter: {list(self.p.allowed_hours)}\n")
             if self.p.use_htf_filter:
-                self.trade_report_file.write(f"HTF Filter: SE(period={self.p.htf_se_period}, TF={self.p.htf_timeframe_minutes}m) <= {self.p.htf_se_threshold}\n")
+                self.trade_report_file.write(f"HTF Filter: SE(period={self.p.htf_se_period}, TF={self.p.htf_timeframe_minutes}m) in [{self.p.htf_se_min}, {self.p.htf_se_max}]\n")
             self.trade_report_file.write("\n")
             print(f"Trade report: {report_path}")
         except Exception as e:
@@ -436,7 +452,7 @@ class HELIXStrategy(bt.Strategy):
         
         INVERTED LOGIC from SEDNA:
         - SEDNA: ER >= threshold (high = trending)
-        - HELIX: SE <= threshold (low = structured)
+        - HELIX: se_min <= SE <= se_max (range = structured, not anomalous)
         
         Returns: (passed: bool, se_value: float)
         """
@@ -444,13 +460,14 @@ class HELIXStrategy(bt.Strategy):
             return True, 1.0
         
         try:
-            # Condition 1: SE <= threshold (structured market)
+            # Condition 1: SE in range [se_min, se_max] (structured market)
             se_value = 1.0
             if self.htf_se is not None:
                 se_value = float(self.htf_se[0])
                 if not check_spectral_entropy_filter(
                     se_value=se_value,
-                    threshold=self.p.htf_se_threshold,
+                    se_min=self.p.htf_se_min,
+                    se_max=self.p.htf_se_max,
                     enabled=True
                 ):
                     return False, se_value
@@ -757,25 +774,251 @@ class HELIXStrategy(bt.Strategy):
         self.last_exit_reason = None
 
     # =========================================================================
-    # STOP
+    # STOP - COMPLETE METRICS REPORT
     # =========================================================================
     
     def stop(self):
+        """Strategy end - print comprehensive summary with advanced metrics."""
+        import numpy as np
+        from collections import defaultdict
+        
+        # Calculate basic metrics
+        total_trades = self.wins + self.losses
+        win_rate = (self.wins / total_trades * 100) if total_trades > 0 else 0
+        profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
+        
+        final_value = self.broker.get_value()
+        initial_cash = self._starting_cash if self._starting_cash else 100000.0
+        total_pnl = final_value - initial_cash
+        
+        # =================================================================
+        # ADVANCED METRICS: Drawdown, Sharpe Ratio
+        # =================================================================
+        max_drawdown_pct = 0.0
+        sharpe_ratio = 0.0
+        
+        if len(self._portfolio_values) > 1:
+            peak = self._portfolio_values[0]
+            for value in self._portfolio_values:
+                if value > peak:
+                    peak = value
+                drawdown = (peak - value) / peak * 100.0
+                if drawdown > max_drawdown_pct:
+                    max_drawdown_pct = drawdown
+        
+        if len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                std_return = np.std(returns_array)
+                periods_per_year = 252 * 24 * 12  # 5-minute periods per year
+                if std_return > 0:
+                    sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
+        
+        # =================================================================
+        # ADVANCED METRICS: CAGR, Sortino, Calmar, Monte Carlo
+        # =================================================================
+        cagr = 0.0
+        sortino_ratio = 0.0
+        calmar_ratio = 0.0
+        monte_carlo_dd_95 = 0.0
+        monte_carlo_dd_99 = 0.0
+        
+        # Calculate CAGR
+        if len(self._portfolio_values) > 1 and initial_cash > 0:
+            total_return = final_value / initial_cash
+            # Estimate years from data length
+            years = len(self._portfolio_values) / (252 * 24 * 12)
+            years = max(years, 0.1)
+            
+            if total_return > 0:
+                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
+        
+        # Calculate Sortino Ratio
+        if len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                negative_returns = returns_array[returns_array < 0]
+                if len(negative_returns) > 0:
+                    downside_dev = np.std(negative_returns)
+                    periods_per_year = 252 * 24 * 12
+                    if downside_dev > 0:
+                        sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
+        
+        # Calculate Calmar Ratio
+        if max_drawdown_pct > 0:
+            calmar_ratio = cagr / max_drawdown_pct
+        
+        # Monte Carlo Simulation
+        if len(self._trade_pnls) >= 20:
+            n_simulations = 10000
+            pnl_list = self._trade_pnls.copy()
+            mc_max_drawdowns = []
+            
+            for _ in range(n_simulations):
+                shuffled_pnl = np.random.permutation(pnl_list)
+                equity = initial_cash
+                peak = equity
+                max_dd = 0.0
+                
+                for pnl in shuffled_pnl:
+                    equity += pnl
+                    if equity > peak:
+                        peak = equity
+                    dd = (peak - equity) / peak * 100.0 if peak > 0 else 0.0
+                    if dd > max_dd:
+                        max_dd = dd
+                
+                mc_max_drawdowns.append(max_dd)
+            
+            mc_max_drawdowns = np.array(mc_max_drawdowns)
+            monte_carlo_dd_95 = np.percentile(mc_max_drawdowns, 95)
+            monte_carlo_dd_99 = np.percentile(mc_max_drawdowns, 99)
+        
+        # =================================================================
+        # YEARLY STATISTICS
+        # =================================================================
+        yearly_stats = defaultdict(lambda: {
+            'trades': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0,
+            'gross_profit': 0.0, 'gross_loss': 0.0, 'pnls': []
+        })
+        
+        # Build yearly stats from trade reports
+        for report in self.trade_reports:
+            if 'entry_time' in report and 'pnl' in report:
+                dt = report['entry_time']
+                year = dt.year if hasattr(dt, 'year') else 2024
+                pnl = report.get('pnl', 0.0)
+                
+                yearly_stats[year]['trades'] += 1
+                yearly_stats[year]['pnl'] += pnl
+                yearly_stats[year]['pnls'].append(pnl)
+                
+                if pnl > 0:
+                    yearly_stats[year]['wins'] += 1
+                    yearly_stats[year]['gross_profit'] += pnl
+                else:
+                    yearly_stats[year]['losses'] += 1
+                    yearly_stats[year]['gross_loss'] += abs(pnl)
+        
+        # Calculate yearly Sharpe and Sortino
+        for year in yearly_stats:
+            pnls = yearly_stats[year]['pnls']
+            if len(pnls) > 1:
+                pnl_array = np.array(pnls)
+                mean_pnl = np.mean(pnl_array)
+                std_pnl = np.std(pnl_array)
+                
+                if std_pnl > 0:
+                    yearly_stats[year]['sharpe'] = (mean_pnl / std_pnl) * np.sqrt(len(pnls))
+                else:
+                    yearly_stats[year]['sharpe'] = 0.0
+                
+                neg_pnls = pnl_array[pnl_array < 0]
+                if len(neg_pnls) > 0:
+                    downside_std = np.std(neg_pnls)
+                    if downside_std > 0:
+                        yearly_stats[year]['sortino'] = (mean_pnl / downside_std) * np.sqrt(len(pnls))
+                    else:
+                        yearly_stats[year]['sortino'] = 0.0
+                else:
+                    yearly_stats[year]['sortino'] = float('inf') if mean_pnl > 0 else 0.0
+            else:
+                yearly_stats[year]['sharpe'] = 0.0
+                yearly_stats[year]['sortino'] = 0.0
+        
+        # =================================================================
+        # PRINT SUMMARY
+        # =================================================================
+        print('\n' + '=' * 70)
+        print('=== HELIX STRATEGY SUMMARY ===')
+        print('=' * 70)
+        
+        print(f'Total Trades: {total_trades}')
+        print(f'Wins: {self.wins} | Losses: {self.losses}')
+        print(f'Win Rate: {win_rate:.1f}%')
+        print(f'Profit Factor: {profit_factor:.2f}')
+        print(f'Gross Profit: ${self.gross_profit:,.2f}')
+        print(f'Gross Loss: ${self.gross_loss:,.2f}')
+        print(f'Net P&L: ${total_pnl:,.2f}')
+        print(f'Final Value: ${final_value:,.2f}')
+        
+        # Advanced Metrics with quality indicators
+        print(f"\n{'='*70}")
+        print('ADVANCED RISK METRICS')
+        print(f"{'='*70}")
+        
+        sharpe_status = "Poor" if sharpe_ratio < 0.5 else "Marginal" if sharpe_ratio < 1.0 else "Good" if sharpe_ratio < 2.0 else "Excellent"
+        print(f'Sharpe Ratio:    {sharpe_ratio:>8.2f}  [{sharpe_status}]')
+        
+        sortino_status = "Poor" if sortino_ratio < 0.5 else "Marginal" if sortino_ratio < 1.0 else "Good" if sortino_ratio < 2.0 else "Excellent"
+        print(f'Sortino Ratio:   {sortino_ratio:>8.2f}  [{sortino_status}]')
+        
+        cagr_status = "Below Market" if cagr < 8 else "Market-level" if cagr < 12 else "Good" if cagr < 20 else "Exceptional"
+        print(f'CAGR:            {cagr:>7.2f}%  [{cagr_status}]')
+        
+        dd_status = "Excellent" if max_drawdown_pct < 10 else "Acceptable" if max_drawdown_pct < 20 else "High" if max_drawdown_pct < 30 else "Dangerous"
+        print(f'Max Drawdown:    {max_drawdown_pct:>7.2f}%  [{dd_status}]')
+        
+        calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
+        print(f'Calmar Ratio:    {calmar_ratio:>8.2f}  [{calmar_status}]')
+        
+        if monte_carlo_dd_95 > 0:
+            mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
+            mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"
+            print(f'\nMonte Carlo Analysis (10,000 simulations):')
+            print(f'  95th Percentile DD: {monte_carlo_dd_95:>6.2f}%  [{mc_status}]')
+            print(f'  99th Percentile DD: {monte_carlo_dd_99:>6.2f}%')
+            print(f'  Historical vs MC95: {mc_ratio:.2f}x')
+        
+        print(f"{'='*70}")
+        
+        # Yearly Statistics
+        if yearly_stats:
+            print(f"\n{'='*70}")
+            print('YEARLY STATISTICS')
+            print(f"{'='*70}")
+            print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12} {'Sharpe':>8} {'Sortino':>8}")
+            print(f"{'-'*70}")
+            
+            for year in sorted(yearly_stats.keys()):
+                stats = yearly_stats[year]
+                wr = (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
+                year_pf = (stats['gross_profit'] / stats['gross_loss']) if stats['gross_loss'] > 0 else float('inf')
+                year_sharpe = stats.get('sharpe', 0.0)
+                year_sortino = stats.get('sortino', 0.0)
+                
+                pf_str = f"{year_pf:>7.2f}" if year_pf != float('inf') else "    inf"
+                sortino_str = f"{year_sortino:>7.2f}" if year_sortino != float('inf') else "    inf"
+                
+                print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {pf_str} ${stats['pnl']:>10,.0f} {year_sharpe:>8.2f} {sortino_str}")
+            
+            print(f"{'='*70}")
+        
+        # Close trade report file
         if self.trade_report_file:
             try:
                 self.trade_report_file.write("\n=== SUMMARY ===\n")
-                self.trade_report_file.write(f"Total Trades: {self.trades}\n")
-                self.trade_report_file.write(f"Wins: {self.wins}\n")
-                self.trade_report_file.write(f"Losses: {self.losses}\n")
-                
-                if self.trades > 0:
-                    win_rate = self.wins / self.trades * 100
-                    self.trade_report_file.write(f"Win Rate: {win_rate:.1f}%\n")
-                
-                if self.gross_loss > 0:
-                    pf = self.gross_profit / self.gross_loss
-                    self.trade_report_file.write(f"Profit Factor: {pf:.2f}\n")
-                
+                self.trade_report_file.write(f"Total Trades: {total_trades}\n")
+                self.trade_report_file.write(f"Wins: {self.wins} | Losses: {self.losses}\n")
+                self.trade_report_file.write(f"Win Rate: {win_rate:.1f}%\n")
+                self.trade_report_file.write(f"Profit Factor: {profit_factor:.2f}\n")
+                self.trade_report_file.write(f"Sharpe Ratio: {sharpe_ratio:.2f}\n")
+                self.trade_report_file.write(f"Sortino Ratio: {sortino_ratio:.2f}\n")
+                self.trade_report_file.write(f"Max Drawdown: {max_drawdown_pct:.2f}%\n")
+                self.trade_report_file.write(f"CAGR: {cagr:.2f}%\n")
+                self.trade_report_file.write(f"Net P&L: ${total_pnl:,.2f}\n")
                 self.trade_report_file.close()
             except:
                 pass

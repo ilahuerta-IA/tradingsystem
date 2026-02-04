@@ -94,6 +94,7 @@ def run_backtest(config_name):
         feed_kwargs['compression'] = 5
         data = bt.feeds.GenericCSVData(**feed_kwargs)
     
+    # Add data to cerebro
     cerebro.adddata(data, name=asset_name)
     
     print(f'Loaded data from {data_path}')

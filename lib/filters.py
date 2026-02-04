@@ -295,34 +295,45 @@ def calculate_spectral_entropy(prices: list, period: int = 20) -> float:
 
 def check_spectral_entropy_filter(
     se_value: float,
-    threshold: float,
+    se_min: float = 0.0,
+    se_max: float = 1.0,
     enabled: bool = True
 ) -> bool:
     """
-    Check if market has structure using Spectral Entropy.
+    Check if market has structure using Spectral Entropy RANGE filter.
     
     Spectral Entropy (SE) measures market randomness:
     - SE close to 0.0 = Structured/trending (dominant frequency)
     - SE close to 1.0 = Random/noisy (no clear pattern)
     
-    For trend-following (HELIX), we want LOWER entropy = more structure.
-    This is OPPOSITE to ER: ER high = trending, SE low = trending.
+    OBSERVATION (EURUSD 5m, 60m equiv):
+    - SE typically ranges 0.84-0.96
+    - SE ~0.84-0.88 = structure detected (good for entry)
+    - SE ~0.90+ = noise dominant (avoid)
+    - SE < 0.84 = rare, possibly anomalous
+    
+    Using RANGE filter because:
+    1. SE too low is anomalous (market closed, flash crash)
+    2. SE moderate-low indicates detectable structure
+    3. SE high indicates pure noise - avoid
     
     Args:
         se_value: Current Spectral Entropy value (0.0 to 1.0)
-        threshold: Maximum SE allowed for entry (e.g., 0.7)
+        se_min: Minimum SE for entry (avoid anomalies)
+        se_max: Maximum SE for entry (avoid noise)
         enabled: If False, always returns True
     
     Returns:
-        True if SE <= threshold or filter disabled
+        True if se_min <= SE <= se_max or filter disabled
     
     Example:
-        check_spectral_entropy_filter(0.45, 0.7)  # True - structured
-        check_spectral_entropy_filter(0.85, 0.7)  # False - too noisy
+        check_spectral_entropy_filter(0.86, 0.84, 0.90)  # True - in range
+        check_spectral_entropy_filter(0.92, 0.84, 0.90)  # False - too noisy
+        check_spectral_entropy_filter(0.80, 0.84, 0.90)  # False - too low (anomaly)
     """
     if not enabled:
         return True
-    return se_value <= threshold
+    return se_min <= se_value <= se_max
 
 
 # =============================================================================
