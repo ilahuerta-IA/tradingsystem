@@ -214,6 +214,118 @@ def calculate_efficiency_ratio(prices: list, period: int = 10) -> float:
 
 
 # =============================================================================
+# SPECTRAL ENTROPY (HTF) FILTERS - HELIX STRATEGY
+# =============================================================================
+
+def calculate_spectral_entropy(prices: list, period: int = 20) -> float:
+    """
+    Calculate Spectral Entropy from price returns.
+    
+    Spectral Entropy measures the "randomness" or "structure" of price movements
+    using FFT (Fast Fourier Transform) to analyze frequency components.
+    
+    Theory:
+    - Low SE (~0.0-0.5): Dominant frequency = structured trend/cycle
+    - High SE (~0.7-1.0): Spread across frequencies = random/noisy
+    
+    For HELIX strategy (LONG only):
+    - SE < threshold indicates structured movement → potential trend
+    - Combined with KAMA bullish bias for direction confirmation
+    
+    Args:
+        prices: List of prices (most recent last), needs period + 1 values
+        period: Lookback period for FFT calculation (power of 2 recommended but not required)
+    
+    Returns:
+        Spectral Entropy value (0.0 to 1.0, normalized)
+    
+    Example:
+        prices = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110]
+        se = calculate_spectral_entropy(prices, period=10)
+    """
+    import numpy as np
+    
+    if len(prices) < period + 1:
+        return 1.0  # Return max entropy (uncertain) if insufficient data
+    
+    # Calculate returns over period
+    recent_prices = prices[-(period + 1):]
+    returns = np.diff(recent_prices) / np.array(recent_prices[:-1])
+    
+    # Remove any NaN/Inf
+    returns = returns[np.isfinite(returns)]
+    if len(returns) < 4:  # Need at least 4 samples for meaningful FFT
+        return 1.0
+    
+    # Apply FFT
+    fft_result = np.fft.fft(returns)
+    power_spectrum = np.abs(fft_result) ** 2
+    
+    # Only use positive frequencies (first half, excluding DC component)
+    n_freqs = len(power_spectrum) // 2
+    if n_freqs < 2:
+        return 1.0
+    
+    power_spectrum = power_spectrum[1:n_freqs + 1]
+    
+    # Normalize to get probability distribution
+    total_power = np.sum(power_spectrum)
+    if total_power <= 0:
+        return 1.0
+    
+    prob = power_spectrum / total_power
+    
+    # Remove zeros for log calculation
+    prob = prob[prob > 0]
+    if len(prob) == 0:
+        return 1.0
+    
+    # Calculate Shannon entropy
+    entropy = -np.sum(prob * np.log2(prob))
+    
+    # Normalize by maximum possible entropy (log2 of number of frequencies)
+    max_entropy = np.log2(len(prob))
+    if max_entropy <= 0:
+        return 1.0
+    
+    normalized_entropy = entropy / max_entropy
+    
+    return float(min(max(normalized_entropy, 0.0), 1.0))
+
+
+def check_spectral_entropy_filter(
+    se_value: float,
+    threshold: float,
+    enabled: bool = True
+) -> bool:
+    """
+    Check if market has structure using Spectral Entropy.
+    
+    Spectral Entropy (SE) measures market randomness:
+    - SE close to 0.0 = Structured/trending (dominant frequency)
+    - SE close to 1.0 = Random/noisy (no clear pattern)
+    
+    For trend-following (HELIX), we want LOWER entropy = more structure.
+    This is OPPOSITE to ER: ER high = trending, SE low = trending.
+    
+    Args:
+        se_value: Current Spectral Entropy value (0.0 to 1.0)
+        threshold: Maximum SE allowed for entry (e.g., 0.7)
+        enabled: If False, always returns True
+    
+    Returns:
+        True if SE <= threshold or filter disabled
+    
+    Example:
+        check_spectral_entropy_filter(0.45, 0.7)  # True - structured
+        check_spectral_entropy_filter(0.85, 0.7)  # False - too noisy
+    """
+    if not enabled:
+        return True
+    return se_value <= threshold
+
+
+# =============================================================================
 # PULLBACK DETECTION (Reusable for any strategy)
 # =============================================================================
 

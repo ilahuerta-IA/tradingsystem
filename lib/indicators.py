@@ -112,3 +112,97 @@ class KAMA(bt.Indicator):
         
         sc = (er * (self.fast_sc - self.slow_sc) + self.slow_sc) ** 2
         self.lines.kama[0] = self.lines.kama[-1] + sc * (self.data[0] - self.lines.kama[-1])
+
+
+class SpectralEntropy(bt.Indicator):
+    """
+    Spectral Entropy (SE) indicator.
+    
+    Measures the "randomness" or "structure" of price movements using FFT
+    (Fast Fourier Transform) to analyze frequency components of returns.
+    
+    Spectral Entropy Theory:
+    - Low SE (~0.0-0.5): Dominant frequency exists = structured trend/cycle
+    - High SE (~0.7-1.0): Energy spread across frequencies = random/noisy
+    
+    Key difference from Efficiency Ratio (ER):
+    - ER measures directional efficiency (trending vs choppy)
+    - SE measures frequency structure (dominant pattern vs noise)
+    
+    For HELIX strategy:
+    - SE < threshold indicates structured movement → potential trend
+    - Works on pairs where ER fails to detect structure fast enough
+    
+    Usage:
+        se = SpectralEntropy(data.close, period=20)
+        if se[0] < 0.7:  # Structured market
+            allow_entry = True
+    """
+    lines = ('se',)
+    params = (
+        ('period', 20),  # FFT window period
+    )
+    
+    plotinfo = dict(
+        subplot=True,
+        plotname='Spectral Entropy',
+        plotlinelabels=True,
+    )
+    plotlines = dict(
+        se=dict(color='cyan', linewidth=1.2),
+    )
+    
+    def __init__(self):
+        import numpy as np
+        self.np = np
+    
+    def next(self):
+        if len(self.data) < self.p.period + 1:
+            self.lines.se[0] = 1.0  # Max entropy when insufficient data
+            return
+        
+        # Gather price data
+        prices = [self.data[-i] for i in range(self.p.period, -1, -1)]
+        
+        # Calculate returns
+        returns = self.np.diff(prices) / self.np.array(prices[:-1])
+        returns = returns[self.np.isfinite(returns)]
+        
+        if len(returns) < 4:
+            self.lines.se[0] = 1.0
+            return
+        
+        # FFT and power spectrum
+        fft_result = self.np.fft.fft(returns)
+        power_spectrum = self.np.abs(fft_result) ** 2
+        
+        # Positive frequencies only
+        n_freqs = len(power_spectrum) // 2
+        if n_freqs < 2:
+            self.lines.se[0] = 1.0
+            return
+        
+        power_spectrum = power_spectrum[1:n_freqs + 1]
+        
+        # Normalize to probability
+        total_power = self.np.sum(power_spectrum)
+        if total_power <= 0:
+            self.lines.se[0] = 1.0
+            return
+        
+        prob = power_spectrum / total_power
+        prob = prob[prob > 0]
+        
+        if len(prob) == 0:
+            self.lines.se[0] = 1.0
+            return
+        
+        # Shannon entropy (normalized)
+        entropy = -self.np.sum(prob * self.np.log2(prob))
+        max_entropy = self.np.log2(len(prob))
+        
+        if max_entropy <= 0:
+            self.lines.se[0] = 1.0
+            return
+        
+        self.lines.se[0] = float(min(max(entropy / max_entropy, 0.0), 1.0))

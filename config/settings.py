@@ -1337,6 +1337,180 @@ STRATEGIES_CONFIG = {
             'plot_entry_exit_lines': True,  # Show entry/SL/TP lines on plot
         }
     },
+
+    # =========================================================================
+    # HELIX STRATEGY CONFIGURATIONS (SE-based variant of SEDNA)
+    # Target: EURUSD, USDCHF (where SEDNA doesn't work well)
+    # =========================================================================
+    
+    'EURUSD_HELIX': {
+        'active': True,
+        'strategy_name': 'HELIX',
+        'asset_name': 'EURUSD',
+        'data_path': 'data/EURUSD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings (same as SEDNA)
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings (disabled - not part of core logic)
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 5,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            'use_time_filter': False,
+            'allowed_hours': [],
+            
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 30,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.0002,
+            'atr_max': 0.0006,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER (Spectral Entropy - KEY DIFFERENCE) ===
+            # SE LOW = structured market (inverted from ER HIGH = trending)
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_se_period': 20,
+            'htf_se_threshold': 0.7,  # SE <= 0.7 means structured
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # Asset config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'USDCHF_HELIX': {
+        'active': True,
+        'strategy_name': 'HELIX',
+        'asset_name': 'USDCHF',
+        'data_path': 'data/USDCHF_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,
+            
+            # CCI settings
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 5,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            'use_time_filter': False,
+            'allowed_hours': [],
+            
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 30,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.0002,
+            'atr_max': 0.0006,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER (Spectral Entropy) ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_se_period': 20,
+            'htf_se_threshold': 0.7,
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # Asset config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
 }
 
 # Broker settings for commission calculation
