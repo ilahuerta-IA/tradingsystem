@@ -702,7 +702,7 @@ class MultiStrategyMonitor:
             )
             
             # Calculate slippage
-            config_data = self.configs.get(config_name, {})
+            config_data = STRATEGIES_CONFIG.get(config_name, {})
             pip_value = config_data.get('params', {}).get('pip_value', 0.0001)
             slippage_pips = (result.executed_price - signal.entry_price) / pip_value
             
