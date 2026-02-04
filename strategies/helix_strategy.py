@@ -576,34 +576,38 @@ class HELIXStrategy(bt.Strategy):
                 self.state = "SCANNING"
                 return
         
-        # Position sizing
-        cash = self.broker.get_cash()
-        
+        # Position sizing (same as SEDNA)
         if self.p.is_etf:
-            max_shares = int((cash * (self.p.margin_pct / 100)) / entry_price)
-            size = max(1, max_shares // 2)
+            pair_type = 'ETF'
+        elif self.p.is_jpy_pair:
+            pair_type = 'JPY'
         else:
-            size = calculate_position_size(
-                account_balance=cash,
-                risk_percent=self.p.risk_percent,
-                stop_loss_pips=sl_pips,
-                pip_value=self.p.pip_value,
-                jpy_rate=self.p.jpy_rate,
-                lot_size=self.p.lot_size,
-            )
+            pair_type = 'STANDARD'
         
-        if size <= 0:
+        bt_size = calculate_position_size(
+            entry_price=entry_price,
+            stop_loss=self.stop_level,
+            equity=self.broker.get_value(),
+            risk_percent=self.p.risk_percent,
+            pair_type=pair_type,
+            lot_size=self.p.lot_size,
+            jpy_rate=self.p.jpy_rate,
+            pip_value=self.p.pip_value,
+            margin_pct=self.p.margin_pct,
+        )
+        
+        if bt_size <= 0:
             self.state = "SCANNING"
             return
         
         # Execute order
-        self.order = self.buy(size=size, exectype=bt.Order.Market)
+        self.order = self.buy(size=bt_size, exectype=bt.Order.Market)
         self.last_entry_price = entry_price
         self.last_entry_bar = len(self.data)
         
         # Record entry
         cci_val = self._calculate_cci_hl2() if self.p.use_cci_filter else 0
-        self._record_trade_entry(dt, entry_price, size, avg_atr, cci_val, sl_pips, se_value)
+        self._record_trade_entry(dt, entry_price, bt_size, avg_atr, cci_val, sl_pips, se_value)
         
         if self.p.print_signals:
             print(f"[HELIX] {dt} ENTRY | Price: {entry_price:.5f} | SL: {self.stop_level:.5f} | TP: {self.take_level:.5f} | SE: {se_value:.3f}")
