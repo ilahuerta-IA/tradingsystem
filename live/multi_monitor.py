@@ -433,8 +433,8 @@ class MultiStrategyMonitor:
                 close_reason = "UNKNOWN"
                 
                 # Query deals for this position
-                # Look back 24 hours for the closing deal
-                from_time = datetime.now() - timedelta(hours=24)
+                # Look back 7 days (for recovered positions that may have been open longer)
+                from_time = datetime.now() - timedelta(days=7)
                 to_time = datetime.now() + timedelta(hours=1)
                 
                 deals = mt5.history_deals_get(from_time, to_time, position=ticket)
@@ -476,6 +476,40 @@ class MultiStrategyMonitor:
                             f"[{pos_info.get('config')}] No matching deal found for {expected_symbol}! "
                             f"Deals returned: {[d.symbol for d in deals]}"
                         )
+                
+                # Fallback: if we couldn't get deal info, try history_orders_get
+                if close_price is None:
+                    orders = mt5.history_orders_get(from_time, to_time, position=ticket)
+                    if orders:
+                        for order in orders:
+                            if order.symbol == expected_symbol and order.state == mt5.ORDER_STATE_FILLED:
+                                # Use order info as fallback
+                                close_price = order.price_current if order.price_current > 0 else None
+                                close_time = datetime.fromtimestamp(order.time_done) if order.time_done else None
+                                self.logger.debug(
+                                    f"[{pos_info.get('config')}] Using order fallback: price={close_price}"
+                                )
+                                break
+                
+                # Final fallback: calculate PnL from entry if we have close_price
+                if pnl is None and close_price is not None and pos_info.get('entry'):
+                    entry = pos_info['entry']
+                    volume = pos_info.get('volume', 0)
+                    direction = pos_info.get('direction', 'LONG')
+                    
+                    # Estimate PnL (won't include commissions/swaps but better than null)
+                    pip_value = 0.01 if 'JPY' in expected_symbol else 0.0001
+                    if direction == 'LONG':
+                        pips = (close_price - entry) / pip_value
+                    else:
+                        pips = (entry - close_price) / pip_value
+                    
+                    # Rough estimate: $10 per pip per lot for major pairs
+                    pnl = pips * volume * 10
+                    close_reason = close_reason if close_reason != "UNKNOWN" else "ESTIMATED"
+                    self.logger.debug(
+                        f"[{pos_info.get('config')}] Estimated PnL: {pnl:.2f} ({pips:.1f} pips)"
+                    )
                 
                 # Log the close event
                 self.logger.info(
