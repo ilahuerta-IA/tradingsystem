@@ -1349,12 +1349,12 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURUSD',
         'data_path': 'data/EURUSD_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2025, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
         
@@ -1398,14 +1398,23 @@ STRATEGIES_CONFIG = {
             'atr_avg_period': 20,
             
             # === HTF FILTER (Spectral Entropy - KEY DIFFERENCE) ===
-            # SE RANGE filter: avoid noise (high SE) AND anomalies (low SE)
-            # Observation (EURUSD 60m equiv): SE typically 0.84-0.96
-            # SE 0.84-0.88 = structure detected, SE 0.90+ = noise
+            # NEW: SE STABILITY filter (StdDev of SE)
+            # Stable SE = consistent market regime = predictable
+            # Volatile SE = market changing regime = avoid
             'use_htf_filter': True,
-            'htf_timeframe_minutes': 30,
+            'htf_timeframe_minutes': 60,
             'htf_se_period': 20,
-            'htf_se_min': 0.84,  # Min SE (avoid anomalies)
-            'htf_se_max': 0.90,  # Max SE (avoid noise)
+            
+            # SE Stability filter (NEW - preferred)
+            # Insight: StdDev(SE) 0.01-0.02 tiene PF 1.11 (sweet spot)
+            'use_se_stability': True,
+            'se_stability_period': 5,  # Lookback bars for StdDev
+            'se_stability_min': 0.005,  # Min StdDev (too stable = dead market)
+            'se_stability_max': 0.03,  # Max StdDev (too volatile = regime change)
+            
+            # SE Range filter (DEPRECATED - set to 0/1 to disable)
+            'htf_se_min': 0.0,  # Disabled
+            'htf_se_max': 1.0,  # Disabled
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,
@@ -1486,12 +1495,20 @@ STRATEGIES_CONFIG = {
             'atr_avg_period': 20,
             
             # === HTF FILTER (Spectral Entropy) ===
-            # SE RANGE filter (same observation as EURUSD)
+            # SE Stability filter (same as EURUSD)
             'use_htf_filter': True,
             'htf_timeframe_minutes': 60,
             'htf_se_period': 20,
-            'htf_se_min': 0.84,
-            'htf_se_max': 0.90,
+            
+            # SE Stability filter (NEW)
+            'use_se_stability': True,
+            'se_stability_period': 5,
+            'se_stability_min': 0.005,  # Min StdDev (too stable = dead market)
+            'se_stability_max': 0.03,   # Max StdDev (too volatile = regime change)
+            
+            # SE Range filter (DEPRECATED)
+            'htf_se_min': 0.0,
+            'htf_se_max': 1.0,
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,

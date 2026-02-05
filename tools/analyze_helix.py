@@ -91,6 +91,7 @@ def parse_helix_log(filepath: str) -> List[Dict]:
         SL Pips: XX.X
         ATR (avg): X.XXXXXX
         SE: X.XXX
+        SE StdDev: X.XXXX  (NEW)
         
         EXIT #N
         Time: YYYY-MM-DD HH:MM:SS
@@ -100,7 +101,7 @@ def parse_helix_log(filepath: str) -> List[Dict]:
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # Parse entries - pattern for HELIX log format
+    # Parse entries - pattern for HELIX log format (with optional SE StdDev)
     entries = re.findall(
         r'ENTRY #(\d+)\s*\n'
         r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -109,7 +110,8 @@ def parse_helix_log(filepath: str) -> List[Dict]:
         r'Take Profit: ([\d.]+)\s*\n'
         r'SL Pips: ([\d.]+)\s*\n'
         r'ATR \(avg\): ([\d.]+)\s*\n'
-        r'SE: ([\d.]+)',
+        r'SE: ([\d.]+)\s*\n'
+        r'(?:SE StdDev: ([\d.]+))?',  # Optional SE StdDev
         content,
         re.IGNORECASE
     )
@@ -139,6 +141,7 @@ def parse_helix_log(filepath: str) -> List[Dict]:
             'sl_pips': float(entry[5]),
             'atr': float(entry[6]),
             'se': float(entry[7]),
+            'se_stddev': float(entry[8]) if entry[8] else 0.0,  # SE StdDev (optional)
         }
         
         # Match with exit if exists
@@ -278,9 +281,59 @@ def analyze_by_se(trades: List[Dict]):
         print(f'   Best single range: {best_range[0]:.2f}-{best_range[1]:.2f} (PF: {best_pf:.2f})')
 
 
+def analyze_by_se_stddev(trades: List[Dict]):
+    """Analyze trades by SE StdDev (stability) - KEY NEW METRIC."""
+    print_section('ANALYSIS BY SE STDDEV (STABILITY) - KEY METRIC')
+    
+    # Check if we have SE StdDev data
+    has_stddev = any(t.get('se_stddev', 0) > 0 for t in trades if 'pnl' in t)
+    if not has_stddev:
+        print('⚠️  No SE StdDev data found in log. Run backtest with use_se_stability=True.')
+        return
+    
+    # SE StdDev ranges
+    ranges = [
+        (0.000, 0.005), (0.005, 0.010), (0.010, 0.015), (0.015, 0.020), 
+        (0.020, 0.030), (0.030, 0.040), (0.040, 0.050), (0.050, 0.100), (0.100, 1.000)
+    ]
+    
+    print(f'{"StdDev Range":>14} | {"Trades":>6} | {"Win%":>5} | {"PF":>5} | {"Net P&L":>12} | {"Expectancy":>10}')
+    print('-' * 75)
+    
+    for low, high in ranges:
+        filtered = [t for t in trades if 'pnl' in t and 'se_stddev' in t and low <= t['se_stddev'] < high]
+        if filtered:
+            stats = calculate_stats(filtered)
+            if stats:
+                exp = calculate_expectancy(stats)
+                label = f'{low:.3f}-{high:.3f}'
+                pf_color = '✅' if stats['profit_factor'] >= 1.5 else ('⚠️' if stats['profit_factor'] >= 1.0 else '❌')
+                print(f'{label:>14} | {stats["total"]:>6} | {stats["win_rate"]:>4.0f}% | '
+                      f'{format_pf(stats["profit_factor"]):>5} | ${stats["net_pnl"]:>10,.0f} | ${exp:>9,.0f} {pf_color}')
+    
+    # Find optimal range (min, max)
+    print('\n📊 SE STDDEV OPTIMAL RANGE:')
+    best_pf = 0
+    best_range = None
+    for min_val in [0.000, 0.005, 0.010]:
+        for max_val in [0.020, 0.025, 0.030, 0.040, 0.050]:
+            if max_val <= min_val:
+                continue
+            filtered = [t for t in trades if 'pnl' in t and 'se_stddev' in t and min_val <= t['se_stddev'] < max_val]
+            if len(filtered) >= 15:
+                stats = calculate_stats(filtered)
+                if stats and stats['profit_factor'] > best_pf:
+                    best_pf = stats['profit_factor']
+                    best_range = (min_val, max_val, stats['total'])
+    
+    if best_range:
+        print(f'   Best StdDev range: {best_range[0]:.3f} - {best_range[1]:.3f} (PF: {best_pf:.2f}, {best_range[2]} trades)')
+        print(f'   Suggested: se_stability_min={best_range[0]:.3f}, se_stability_max={best_range[1]:.3f}')
+
+
 def analyze_se_combinations(trades: List[Dict]):
     """Find optimal SE min/max combination."""
-    print_section('SE RANGE OPTIMIZATION (se_min, se_max)')
+    print_section('SE RANGE OPTIMIZATION (se_min, se_max) [LEGACY]')
     
     # Test different combinations
     se_mins = [0.80, 0.82, 0.84, 0.85, 0.86]
@@ -501,7 +554,26 @@ def generate_filter_suggestions(trades: List[Dict]):
     
     suggestions = []
     
-    # 1. SE Range suggestion
+    # 0. SE STDDEV suggestion (NEW - KEY METRIC)
+    # Find optimal range (min, max) for se_stability
+    best_stddev_pf = 0
+    best_stddev_range = None
+    for min_stddev in [0.000, 0.005, 0.010]:
+        for max_stddev in [0.02, 0.025, 0.03, 0.04, 0.05]:
+            if max_stddev <= min_stddev:
+                continue
+            filtered = [t for t in closed if 'se_stddev' in t and min_stddev <= t['se_stddev'] < max_stddev]
+            if len(filtered) >= 15:
+                stats = calculate_stats(filtered)
+                if stats and stats['profit_factor'] > best_stddev_pf:
+                    best_stddev_pf = stats['profit_factor']
+                    best_stddev_range = (min_stddev, max_stddev, stats['total'])
+    
+    if best_stddev_range:
+        suggestions.append(f"🔑 SE STABILITY: min={best_stddev_range[0]:.3f}, max={best_stddev_range[1]:.3f} "
+                          f"(PF: {best_stddev_pf:.2f}, {best_stddev_range[2]} trades) ⬅️ KEY")
+    
+    # 1. SE Range suggestion [LEGACY - may be less effective]
     best_se_pf = 0
     best_se_range = None
     for se_min in [0.82, 0.84, 0.85, 0.86]:
@@ -516,7 +588,7 @@ def generate_filter_suggestions(trades: List[Dict]):
                     best_se_range = (se_min, se_max, stats['total'])
     
     if best_se_range:
-        suggestions.append(f"SE Range: {best_se_range[0]:.2f} - {best_se_range[1]:.2f} "
+        suggestions.append(f"SE Range [legacy]: {best_se_range[0]:.2f} - {best_se_range[1]:.2f} "
                           f"(PF: {best_se_pf:.2f}, {best_se_range[2]} trades)")
     
     # 2. Best hours
@@ -622,6 +694,7 @@ def main():
     # Run all analyses
     analyze_overall(trades)
     analyze_by_se(trades)
+    analyze_by_se_stddev(trades)  # NEW: Key stability metric
     analyze_se_combinations(trades)
     analyze_by_hour(trades)
     analyze_by_day(trades)

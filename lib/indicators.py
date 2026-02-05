@@ -260,6 +260,50 @@ class SpectralEntropy(bt.Indicator):
         return float(min(max(entropy / max_entropy, 0.0), 1.0))
 
 
+class SEStdDev(bt.Indicator):
+    """
+    SE Stability Indicator - Standard Deviation of Spectral Entropy.
+    
+    Measures the stability/consistency of SE over N periods.
+    
+    Low StdDev = SE is stable = market in consistent regime = good for entry
+    High StdDev = SE is volatile = market changing regime = avoid
+    
+    Usage:
+        se = SpectralEntropy(data, period=20, htf_mult=6)
+        se_std = SEStdDev(se, period=5)
+        if se_std[0] < 0.03:  # Stable SE
+            allow_entry = True
+    """
+    lines = ('stddev',)
+    params = (
+        ('period', 5),  # Lookback for StdDev calculation
+    )
+    
+    plotinfo = dict(
+        subplot=True,
+        plotname='SE StdDev',
+        plotlinelabels=True,
+    )
+    plotlines = dict(
+        stddev=dict(color='yellow', linewidth=1.2),
+    )
+    
+    def __init__(self):
+        import numpy as np
+        self.np = np
+        self.addminperiod(self.p.period)
+    
+    def next(self):
+        if len(self.data) < self.p.period:
+            self.lines.stddev[0] = 0.0
+            return
+        
+        # Get recent SE values
+        se_values = [self.data[-i] for i in range(self.p.period)]
+        self.lines.stddev[0] = float(self.np.std(se_values))
+
+
 # =============================================================================
 # DEPRECATED - Use SpectralEntropy with htf_mult parameter instead
 # =============================================================================
