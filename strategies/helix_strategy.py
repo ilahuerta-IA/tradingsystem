@@ -320,11 +320,13 @@ class HELIXStrategy(bt.Strategy):
             dates = [x[0] for x in self._se_history]
             values = [x[1] for x in self._se_history]
             
+            print(f"[HELIX] SE plot data: {len(dates)} points, range {min(values):.3f}-{max(values):.3f}")
+            
             # Create figure
             fig, ax = plt.subplots(figsize=(14, 4))
             
-            # Plot SE as step line (staircase effect)
-            ax.step(dates, values, where='post', color='cyan', linewidth=1.2, label='SE(60m)')
+            # Plot SE as connected line (not step)
+            ax.plot(dates, values, color='cyan', linewidth=0.8, label='SE(60m)')
             
             # Reference lines
             ax.axhline(y=0.85, color='green', linestyle='--', alpha=0.5, label='Low SE (0.85)')
@@ -336,7 +338,7 @@ class HELIXStrategy(bt.Strategy):
             ax.set_title('HELIX - Spectral Entropy (60m HTF)')
             ax.legend(loc='upper right')
             ax.grid(True, alpha=0.3)
-            ax.set_ylim(0.7, 1.0)
+            ax.set_ylim(0.6, 1.0)
             
             # Date formatting
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
@@ -345,8 +347,6 @@ class HELIXStrategy(bt.Strategy):
             
             plt.tight_layout()
             plt.show(block=False)
-            
-            print(f"[HELIX] SE plot: {len(self._se_history)} data points")
             
         except Exception as e:
             print(f"[HELIX] SE plot failed: {e}")
