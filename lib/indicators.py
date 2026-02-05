@@ -118,35 +118,29 @@ class KAMA(bt.Indicator):
 
 class SpectralEntropy(bt.Indicator):
     """
-    Spectral Entropy (SE) indicator with optional internal HTF aggregation.
+    Spectral Entropy (SE) indicator.
     
     Measures the "randomness" or "structure" of price movements using FFT
-    (Fast Fourier Transform) to analyze frequency components of returns.
+    (Fast Fourier Transform) to analyze frequency components.
     
     Spectral Entropy Theory:
     - Low SE (~0.0-0.5): Dominant frequency exists = structured trend/cycle
     - High SE (~0.7-1.0): Energy spread across frequencies = random/noisy
     
-    Key difference from Efficiency Ratio (ER):
-    - ER measures directional efficiency (trending vs choppy)
-    - SE measures frequency structure (dominant pattern vs noise)
-    
-    Internal HTF Aggregation:
-    - When htf_mult > 1, indicator aggregates base TF bars internally
-    - E.g., htf_mult=6 on 5m data = 30m aggregated bars
-    - This gives TRUE HTF frequency analysis without external resampling
+    For HTF analysis, use resampledata() to create HTF datafeed and apply
+    SE indicator on that feed. This ensures proper calculation and plotting.
     
     Usage:
-        # Standard (same timeframe)
-        se = SpectralEntropy(data.close, period=20)
+        # On same timeframe
+        se = SpectralEntropy(data.close, period=30)
         
-        # HTF (6x aggregation = 30m on 5m data)
-        se_htf = SpectralEntropy(data, period=20, htf_mult=6)
+        # On HTF (use resampledata first)
+        data_60m = cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=60)
+        se_htf = SpectralEntropy(data_60m.close, period=30)
     """
     lines = ('se',)
     params = (
-        ('period', 20),    # FFT window period (in HTF bars if htf_mult > 1)
-        ('htf_mult', 1),   # HTF multiplier (1=same TF, 6=30m from 5m, etc.)
+        ('period', 30),  # FFT window period
     )
     
     plotinfo = dict(
@@ -161,103 +155,52 @@ class SpectralEntropy(bt.Indicator):
     def __init__(self):
         import numpy as np
         self.np = np
-        # Buffer for HTF aggregation
-        self._htf_closes = []
-        self._bar_count = 0
-        self._last_se_value = 1.0
-        
-        # Minimum bars needed for calculation
-        # For HTF, we need period * htf_mult base bars to get 'period' HTF bars
-        min_bars = self.p.period * self.p.htf_mult + 2
-        self.addminperiod(min_bars)
+        self.addminperiod(self.p.period + 1)
     
     def next(self):
-        self._bar_count += 1
+        if len(self.data) < self.p.period + 1:
+            self.lines.se[0] = 1.0
+            return
         
-        # If using HTF aggregation
-        if self.p.htf_mult > 1:
-            # Store close for aggregation
-            self._htf_closes.append(float(self.data.close[0]))
-            
-            # Only calculate when we have a complete HTF bar
-            if self._bar_count % self.p.htf_mult != 0:
-                # Keep previous SE value (smooth)
-                self.lines.se[0] = self._last_se_value
-                return
-            
-            # Calculate HTF closes (last close of each htf_mult group)
-            required_base_bars = (self.p.period + 1) * self.p.htf_mult
-            if len(self._htf_closes) < required_base_bars:
-                self.lines.se[0] = 1.0
-                self._last_se_value = 1.0
-                return
-            
-            # Extract HTF closes (take last bar of each group)
-            recent_closes = self._htf_closes[-required_base_bars:]
-            htf_closes = [
-                recent_closes[i * self.p.htf_mult + self.p.htf_mult - 1]
-                for i in range(self.p.period + 1)
-            ]
-            prices = htf_closes
-            
-            # Cleanup old data
-            max_buffer = required_base_bars + self.p.htf_mult * 2
-            if len(self._htf_closes) > max_buffer:
-                self._htf_closes = self._htf_closes[-max_buffer:]
-        else:
-            # Standard calculation on same timeframe
-            if len(self.data) < self.p.period + 1:
-                self.lines.se[0] = 1.0
-                self._last_se_value = 1.0
-                return
-            prices = [self.data.close[-i] for i in range(self.p.period, -1, -1)]
+        # Get prices - use self.data.get() for efficiency
+        prices = self.np.array(self.data.get(size=self.p.period + 1))
         
-        # Calculate SE from prices
+        # Calculate SE
         se_value = self._calculate_se(prices)
         self.lines.se[0] = se_value
-        self._last_se_value = se_value
     
     def _calculate_se(self, prices):
-        """Calculate Spectral Entropy from price array."""
-        prices = self.np.array(prices)
-        
-        # Calculate returns
-        returns = self.np.diff(prices) / prices[:-1]
-        returns = returns[self.np.isfinite(returns)]
-        
-        if len(returns) < 4:
+        """Calculate Spectral Entropy from price array using periodogram."""
+        if len(prices) < 4:
             return 1.0
         
-        # FFT and power spectrum
-        fft_result = self.np.fft.fft(returns)
-        power_spectrum = self.np.abs(fft_result) ** 2
-        
-        # Positive frequencies only
-        n_freqs = len(power_spectrum) // 2
-        if n_freqs < 2:
+        try:
+            # Use periodogram for cleaner spectral estimation
+            from scipy.signal import periodogram
+            _, psd = periodogram(prices)
+            
+            # Normalize to probability distribution
+            total_power = self.np.sum(psd)
+            if total_power <= 0:
+                return 1.0
+            
+            psd_norm = psd / total_power
+            
+            # Shannon entropy (avoid log(0))
+            psd_norm = psd_norm[psd_norm > 0]
+            if len(psd_norm) == 0:
+                return 1.0
+            
+            entropy = -self.np.sum(psd_norm * self.np.log2(psd_norm + 1e-12))
+            
+            # Normalize to [0, 1]
+            max_entropy = self.np.log2(len(psd_norm))
+            if max_entropy <= 0:
+                return 1.0
+            
+            return float(min(max(entropy / max_entropy, 0.0), 1.0))
+        except:
             return 1.0
-        
-        power_spectrum = power_spectrum[1:n_freqs + 1]
-        
-        # Normalize to probability
-        total_power = self.np.sum(power_spectrum)
-        if total_power <= 0:
-            return 1.0
-        
-        prob = power_spectrum / total_power
-        prob = prob[prob > 0]
-        
-        if len(prob) == 0:
-            return 1.0
-        
-        # Shannon entropy (normalized)
-        entropy = -self.np.sum(prob * self.np.log2(prob))
-        max_entropy = self.np.log2(len(prob))
-        
-        if max_entropy <= 0:
-            return 1.0
-        
-        return float(min(max(entropy / max_entropy, 0.0), 1.0))
 
 
 class SEStdDev(bt.Indicator):

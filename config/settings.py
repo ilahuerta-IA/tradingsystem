@@ -1349,7 +1349,7 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURUSD',
         'data_path': 'data/EURUSD_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
+        'from_date': datetime.datetime(2025, 1, 1),
         'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
@@ -1397,24 +1397,17 @@ STRATEGIES_CONFIG = {
             'atr_max': 0.0006,
             'atr_avg_period': 20,
             
-            # === HTF FILTER (Spectral Entropy - KEY DIFFERENCE) ===
-            # NEW: SE STABILITY filter (StdDev of SE)
-            # Stable SE = consistent market regime = predictable
-            # Volatile SE = market changing regime = avoid
+            # === HTF DATA (generic - any strategy can use) ===
+            # Adds self.datas[1] with resampled HTF data
+            'htf_data_minutes': 60,  # 0 = disabled, 60 = 1h HTF
+            
+            # === HTF FILTER (Spectral Entropy) ===
             'use_htf_filter': True,
-            'htf_timeframe_minutes': 60,
-            'htf_se_period': 20,
+            'htf_se_period': 30,  # SE period on HTF bars
             
-            # SE Stability filter (NEW - preferred)
-            # Insight: StdDev(SE) 0.01-0.02 tiene PF 1.11 (sweet spot)
-            'use_se_stability': True,
-            'se_stability_period': 5,  # Lookback bars for StdDev
-            'se_stability_min': 0.005,  # Min StdDev (too stable = dead market)
-            'se_stability_max': 0.03,  # Max StdDev (too volatile = regime change)
-            
-            # SE Range filter (DEPRECATED - set to 0/1 to disable)
-            'htf_se_min': 0.0,  # Disabled
-            'htf_se_max': 1.0,  # Disabled
+            # SE Range filter (value-based)
+            'htf_se_min': 0.0,
+            'htf_se_max': 1.0,
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,
@@ -1494,19 +1487,14 @@ STRATEGIES_CONFIG = {
             'atr_max': 0.0006,
             'atr_avg_period': 20,
             
+            # === HTF DATA (generic - any strategy can use) ===
+            'htf_data_minutes': 60,  # 0 = disabled, 60 = 1h HTF
+            
             # === HTF FILTER (Spectral Entropy) ===
-            # SE Stability filter (same as EURUSD)
             'use_htf_filter': True,
-            'htf_timeframe_minutes': 60,
-            'htf_se_period': 20,
+            'htf_se_period': 30,  # SE period on HTF bars
             
-            # SE Stability filter (NEW)
-            'use_se_stability': True,
-            'se_stability_period': 5,
-            'se_stability_min': 0.005,  # Min StdDev (too stable = dead market)
-            'se_stability_max': 0.03,   # Max StdDev (too volatile = regime change)
-            
-            # SE Range filter (DEPRECATED)
+            # SE Range filter (value-based)
             'htf_se_min': 0.0,
             'htf_se_max': 1.0,
             

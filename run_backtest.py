@@ -99,6 +99,19 @@ def run_backtest(config_name):
     
     print(f'Loaded data from {data_path}')
     
+    # Generic HTF data support: any strategy can request via htf_data_minutes
+    # This allows strategies to access self.datas[1] for higher timeframe analysis
+    params = config['params']
+    htf_minutes = params.get('htf_data_minutes')
+    if htf_minutes and htf_minutes > 0:
+        data_htf = cerebro.resampledata(
+            data,
+            timeframe=bt.TimeFrame.Minutes,
+            compression=htf_minutes
+        )
+        data_htf.plotinfo.plot = False
+        print(f'HTF data added: {htf_minutes}m (accessible via self.datas[1])')
+    
     # Set broker
     cerebro.broker.setcash(config.get('starting_cash', 100000.0))
     

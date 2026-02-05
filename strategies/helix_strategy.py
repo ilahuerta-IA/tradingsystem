@@ -39,7 +39,7 @@ from lib.filters import (
     detect_pullback,
     check_pullback_breakout,
 )
-from lib.indicators import SpectralEntropy, KAMA, SEStdDev
+from lib.indicators import SpectralEntropy, KAMA
 from lib.position_sizing import calculate_position_size
 
 
@@ -122,19 +122,13 @@ class HELIXStrategy(bt.Strategy):
         atr_avg_period=20,
         
         # === HTF FILTER (Spectral Entropy - KEY DIFFERENCE FROM SEDNA) ===
-        # STABILITY filter: SE with low variance = consistent market regime
-        # High SE variance = market changing regime = avoid
+        # HTF data is provided via htf_data_minutes in config (run_backtest adds it)
+        # Strategy accesses HTF via self.datas[1] if available
+        htf_data_minutes=0,  # Config param (used by run_backtest, not strategy)
         use_htf_filter=True,
-        htf_timeframe_minutes=60,  # 60m for smoother SE
-        htf_se_period=20,  # SE period on HTF equivalent
+        htf_se_period=30,  # SE period on HTF bars
         
-        # SE Stability filter (NEW - replaces se_min/se_max range)
-        use_se_stability=True,  # Use StdDev(SE) instead of SE range
-        se_stability_period=5,  # Lookback for StdDev calculation
-        se_stability_min=0.005,  # Min StdDev (too stable = dead market)
-        se_stability_max=0.03,  # Max StdDev allowed (too volatile = regime change)
-        
-        # SE Range filter (DEPRECATED - use se_stability instead)
+        # SE Range filter (value-based filtering)
         htf_se_min=0.0,  # Min SE (0 = disabled)
         htf_se_max=1.0,  # Max SE (1 = disabled)
         
@@ -195,36 +189,29 @@ class HELIXStrategy(bt.Strategy):
         self.atr = bt.ind.ATR(d, period=self.p.atr_length)
         
         # HTF Spectral Entropy (KEY DIFFERENCE: SE instead of ER)
-        # Uses internal aggregation for TRUE HTF calculation
+        # HTF data comes from run_backtest.py via htf_data_minutes config
         self.htf_se = None
-        self.se_stddev_indicator = None
+        self.htf_data = None
+        
         if self.p.use_htf_filter:
-            # Calculate HTF multiplier (30m from 5m = 6, 60m from 5m = 12)
-            base_tf_minutes = 5  # Base timeframe
-            htf_mult = self.p.htf_timeframe_minutes // base_tf_minutes
-            
-            if htf_mult > 1:
-                # Use internal HTF aggregation (TRUE HTF calculation)
+            # Check if HTF data available (added by run_backtest via htf_data_minutes)
+            if len(self.datas) > 1:
+                self.htf_data = self.datas[1]
+                htf_minutes = int(self.htf_data._compression)
+                # Calculate SE on TRUE HTF data
                 self.htf_se = SpectralEntropy(
-                    d, 
-                    period=self.p.htf_se_period,
-                    htf_mult=htf_mult
+                    self.htf_data.close, 
+                    period=self.p.htf_se_period
                 )
-                self.htf_se.plotinfo.plotname = f'SE({self.p.htf_timeframe_minutes}m) ({self.p.htf_se_period}, {htf_mult})'
+                self.htf_se.plotinfo.plotname = f'SE({htf_minutes}m)'
                 self.htf_se.plotinfo.subplot = True
-                print(f'[HELIX] Using internal HTF aggregation: {base_tf_minutes}m x {htf_mult} = {self.p.htf_timeframe_minutes}m')
+                print(f'[HELIX] HTF Spectral Entropy: {htf_minutes}m, period={self.p.htf_se_period}')
             else:
-                # Same timeframe
+                # Fallback: same timeframe (not ideal but functional)
                 self.htf_se = SpectralEntropy(d.close, period=self.p.htf_se_period)
-                self.htf_se.plotinfo.plotname = f'SE({base_tf_minutes}m)'
-            
-            # SE StdDev indicator (visual)
-            if self.p.use_se_stability:
-                self.se_stddev_indicator = SEStdDev(
-                    self.htf_se.lines.se, 
-                    period=self.p.se_stability_period
-                )
-                self.se_stddev_indicator.plotinfo.plotname = f'SE StdDev({self.p.se_stability_period})'
+                self.htf_se.plotinfo.plotname = 'SE(5m)'
+                self.htf_se.plotinfo.subplot = True
+                print('[HELIX] WARNING: No HTF data, using base TF for SE')
         
         # Entry/Exit plot lines
         if self.p.plot_entry_exit_lines:
@@ -253,10 +240,6 @@ class HELIXStrategy(bt.Strategy):
         
         # ATR history for averaging
         self.atr_history = []
-        
-        # SE history for stability calculation
-        self.se_history = []
-        self.last_se_stddev = 0.0  # Cache for logging
         
         # Price history for pullback detection
         self.price_history = {
@@ -345,7 +328,7 @@ class HELIXStrategy(bt.Strategy):
             if self.p.use_time_filter:
                 self.trade_report_file.write(f"Time Filter: {list(self.p.allowed_hours)}\n")
             if self.p.use_htf_filter:
-                self.trade_report_file.write(f"HTF Filter: SE(period={self.p.htf_se_period}, TF={self.p.htf_timeframe_minutes}m) in [{self.p.htf_se_min}, {self.p.htf_se_max}]\n")
+                self.trade_report_file.write(f"HTF Filter: SE(period={self.p.htf_se_period}, TF={self.p.htf_data_minutes}m) in [{self.p.htf_se_min}, {self.p.htf_se_max}]\n")
             self.trade_report_file.write("\n")
             print(f"Trade report: {report_path}")
         except Exception as e:
@@ -470,51 +453,22 @@ class HELIXStrategy(bt.Strategy):
         """
         Check Higher Timeframe structure filter (MAIN TRIGGER).
         
-        Two conditions required:
-        1. SE STABILITY: StdDev(SE) < threshold (consistent market regime)
-           OR SE in range [se_min, se_max] (legacy mode)
+        Conditions:
+        1. SE in range [se_min, se_max] (if range filter enabled)
         2. Close > KAMA (bullish direction)
         
-        NEW INSIGHT (2026-02-05):
-        - What matters is NOT the SE value, but its STABILITY
-        - Stable SE (any level) = market in consistent regime = predictable
-        - Volatile SE (spikes) = market changing regime = avoid
-        
-        Returns: (passed: bool, se_value: float, se_stddev: float)
+        Returns: (passed: bool, se_value: float)
         """
         if not self.p.use_htf_filter:
-            return True, 1.0, 0.0
+            return True, 1.0
         
         try:
             se_value = 1.0
-            se_stddev = 0.0
             
             if self.htf_se is not None:
                 se_value = float(self.htf_se[0])
                 
-                # Update SE history
-                self.se_history.append(se_value)
-                max_history = self.p.se_stability_period + 5
-                if len(self.se_history) > max_history:
-                    self.se_history = self.se_history[-max_history:]
-                
-                # Condition 1A: SE Stability filter (NEW - preferred)
-                # Insight: ni muy estable (mercado muerto) ni muy volátil (régimen cambiando)
-                if self.p.use_se_stability:
-                    if len(self.se_history) >= self.p.se_stability_period:
-                        import numpy as np
-                        recent_se = self.se_history[-self.p.se_stability_period:]
-                        se_stddev = float(np.std(recent_se))
-                        self.last_se_stddev = se_stddev  # Cache for logging
-                        
-                        # Too volatile = regime changing = avoid
-                        if se_stddev > self.p.se_stability_max:
-                            return False, se_value, se_stddev
-                        # Too stable = dead market = avoid (optional)
-                        if self.p.se_stability_min > 0 and se_stddev < self.p.se_stability_min:
-                            return False, se_value, se_stddev
-                
-                # Condition 1B: SE Range filter (legacy - optional)
+                # SE Range filter
                 if self.p.htf_se_min > 0.0 or self.p.htf_se_max < 1.0:
                     if not check_spectral_entropy_filter(
                         se_value=se_value,
@@ -522,20 +476,17 @@ class HELIXStrategy(bt.Strategy):
                         se_max=self.p.htf_se_max,
                         enabled=True
                     ):
-                        return False, se_value, se_stddev
-            
-            # Cache stddev for logging
-            self.last_se_stddev = se_stddev
+                        return False, se_value
             
             # Condition 2: Close > KAMA (bullish direction)
             close_price = float(self.data.close[0])
             kama_value = float(self.kama[0])
             if close_price <= kama_value:
-                return False, se_value, se_stddev
+                return False, se_value
             
-            return True, se_value, se_stddev
+            return True, se_value
         except:
-            return True, 1.0, 0.0
+            return True, 1.0
 
     def _check_pullback_condition(self) -> bool:
         """Check pullback condition using standard reusable filter."""
@@ -578,8 +529,8 @@ class HELIXStrategy(bt.Strategy):
             if not check_day_filter(dt, self.p.allowed_days, True):
                 return False, 1.0
         
-        # Phase 1: HTF Filter (SE stability AND Close > KAMA)
-        htf_passed, se_value, se_stddev = self._check_htf_filter()
+        # Phase 1: HTF Filter (SE range AND Close > KAMA)
+        htf_passed, se_value = self._check_htf_filter()
         if not htf_passed:
             return False, se_value
         
@@ -679,10 +630,10 @@ class HELIXStrategy(bt.Strategy):
         
         # Record entry
         cci_val = self._calculate_cci_hl2() if self.p.use_cci_filter else 0
-        self._record_trade_entry(dt, entry_price, bt_size, avg_atr, cci_val, sl_pips, se_value, self.last_se_stddev)
+        self._record_trade_entry(dt, entry_price, bt_size, avg_atr, cci_val, sl_pips, se_value)
         
         if self.p.print_signals:
-            print(f"[HELIX] {dt} ENTRY | Price: {entry_price:.5f} | SL: {self.stop_level:.5f} | TP: {self.take_level:.5f} | SE: {se_value:.3f} | StdDev: {self.last_se_stddev:.4f}")
+            print(f"[HELIX] {dt} ENTRY | Price: {entry_price:.5f} | SL: {self.stop_level:.5f} | TP: {self.take_level:.5f} | SE: {se_value:.3f}")
         
         self.state = "SCANNING"
 
