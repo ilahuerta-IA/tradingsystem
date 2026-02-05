@@ -204,17 +204,14 @@ class HELIXStrategy(bt.Strategy):
                     self.htf_data.close, 
                     period=self.p.htf_se_period
                 )
-                # SE plots on its own subplot (HTF axis)
-                self.htf_se.plotinfo.plot = True
-                self.htf_se.plotinfo.subplot = True
-                self.htf_se.plotinfo.plotname = f'SE({htf_minutes}m)'
+                # Disable Backtrader plot - we use matplotlib instead
+                self.htf_se.plotinfo.plot = False
                 
                 print(f'[HELIX] HTF Spectral Entropy: {htf_minutes}m, period={self.p.htf_se_period}')
             else:
                 # Fallback: same timeframe (not ideal but functional)
                 self.htf_se = SpectralEntropy(d.close, period=self.p.htf_se_period)
-                self.htf_se.plotinfo.plotname = 'SE(5m)'
-                self.htf_se.plotinfo.subplot = True
+                self.htf_se.plotinfo.plot = False
                 print('[HELIX] WARNING: No HTF data, using base TF for SE')
         
         # Entry/Exit plot lines
@@ -264,6 +261,9 @@ class HELIXStrategy(bt.Strategy):
         self._trade_pnls = []
         self._starting_cash = self.broker.get_cash()
         
+        # SE history for external plotting
+        self._se_history = []  # List of (datetime, se_value)
+        
         # Trade reporting
         self.trade_reports = []
         self.trade_report_file = None
@@ -302,6 +302,55 @@ class HELIXStrategy(bt.Strategy):
         recent_atr = self.atr_history[-self.p.atr_avg_period:]
         return sum(recent_atr) / len(recent_atr)
 
+    # =========================================================================
+    # SE PLOTTING (External matplotlib)
+    # =========================================================================
+    
+    def _plot_se_history(self):
+        """Plot SE history with matplotlib in a separate window."""
+        if not self._se_history or len(self._se_history) < 10:
+            print("[HELIX] Not enough SE data to plot")
+            return
+        
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+            
+            # Extract data
+            dates = [x[0] for x in self._se_history]
+            values = [x[1] for x in self._se_history]
+            
+            # Create figure
+            fig, ax = plt.subplots(figsize=(14, 4))
+            
+            # Plot SE as step line (staircase effect)
+            ax.step(dates, values, where='post', color='cyan', linewidth=1.2, label='SE(60m)')
+            
+            # Reference lines
+            ax.axhline(y=0.85, color='green', linestyle='--', alpha=0.5, label='Low SE (0.85)')
+            ax.axhline(y=0.92, color='red', linestyle='--', alpha=0.5, label='High SE (0.92)')
+            
+            # Formatting
+            ax.set_ylabel('Spectral Entropy')
+            ax.set_xlabel('Date')
+            ax.set_title('HELIX - Spectral Entropy (60m HTF)')
+            ax.legend(loc='upper right')
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim(0.7, 1.0)
+            
+            # Date formatting
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            ax.xaxis.set_major_locator(mdates.MonthLocator())
+            fig.autofmt_xdate()
+            
+            plt.tight_layout()
+            plt.show(block=False)
+            
+            print(f"[HELIX] SE plot: {len(self._se_history)} data points")
+            
+        except Exception as e:
+            print(f"[HELIX] SE plot failed: {e}")
+    
     # =========================================================================
     # TRADE REPORTING
     # =========================================================================
@@ -647,6 +696,19 @@ class HELIXStrategy(bt.Strategy):
     
     def next(self):
         dt = self._get_datetime()
+        
+        # Record SE value for external plotting (only when HTF has data)
+        if self.htf_se is not None and len(self.htf_se) > 0:
+            try:
+                se_val = float(self.htf_se[0])
+                # Use HTF datetime if available
+                if self.htf_data is not None and len(self.htf_data) > 0:
+                    htf_dt = self.htf_data.datetime.datetime(0)
+                    # Only add if new HTF bar (avoid duplicates)
+                    if not self._se_history or self._se_history[-1][0] != htf_dt:
+                        self._se_history.append((htf_dt, se_val))
+            except:
+                pass
         
         # Update price history
         try:
@@ -1032,3 +1094,6 @@ class HELIXStrategy(bt.Strategy):
                 self.trade_report_file.close()
             except:
                 pass
+        
+        # Plot SE history with matplotlib (separate window)
+        self._plot_se_history()
