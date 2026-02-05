@@ -247,6 +247,48 @@ class SEStdDev(bt.Indicator):
         self.lines.stddev[0] = float(self.np.std(se_values))
 
 
+class HTFIndicatorSync(bt.Indicator):
+    """
+    Syncs an HTF indicator line to the base timeframe for plotting.
+    
+    Problem: When you calculate an indicator on HTF data (e.g., 60m), it has
+    fewer data points than the base TF (e.g., 5m). Backtrader cannot plot
+    arrays of different lengths on the same chart.
+    
+    Solution: This indicator runs on the BASE data and uses coupling ()
+    to read values from an HTF indicator line.
+    
+    Usage:
+        # In strategy __init__:
+        self.htf_se_raw = SpectralEntropy(self.datas[1].close, period=30)
+        self.htf_se_raw.plotinfo.plot = False  # Hide raw HTF
+        
+        # Sync to base TF for plotting - pass the LINE directly
+        self.htf_se = HTFIndicatorSync(self.data0, htf_line=self.htf_se_raw.lines.se)
+        self.htf_se.plotinfo.plotname = 'SE(60m)'
+    """
+    lines = ('value',)
+    params = (
+        ('htf_line', None),  # The HTF indicator LINE (not indicator) to sync
+    )
+    
+    plotinfo = dict(
+        subplot=True,
+        plotname='HTF Synced',
+        plotlinelabels=True,
+    )
+    plotlines = dict(
+        value=dict(color='cyan', linewidth=1.2),
+    )
+    
+    def __init__(self):
+        # Use Backtrader's coupling mechanism - THIS IS THE KEY
+        # By using the htf_line in an operation, Backtrader will auto-sync
+        if self.p.htf_line is not None:
+            # Direct coupling - Backtrader handles the sync automatically
+            self.lines.value = self.p.htf_line()
+
+
 # =============================================================================
 # DEPRECATED - Use SpectralEntropy with htf_mult parameter instead
 # =============================================================================

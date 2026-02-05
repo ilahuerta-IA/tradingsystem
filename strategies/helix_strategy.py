@@ -198,13 +198,17 @@ class HELIXStrategy(bt.Strategy):
             if len(self.datas) > 1:
                 self.htf_data = self.datas[1]
                 htf_minutes = int(self.htf_data._compression)
+                
                 # Calculate SE on TRUE HTF data
                 self.htf_se = SpectralEntropy(
                     self.htf_data.close, 
                     period=self.p.htf_se_period
                 )
-                self.htf_se.plotinfo.plotname = f'SE({htf_minutes}m)'
+                # SE plots on its own subplot (HTF axis)
+                self.htf_se.plotinfo.plot = True
                 self.htf_se.plotinfo.subplot = True
+                self.htf_se.plotinfo.plotname = f'SE({htf_minutes}m)'
+                
                 print(f'[HELIX] HTF Spectral Entropy: {htf_minutes}m, period={self.p.htf_se_period}')
             else:
                 # Fallback: same timeframe (not ideal but functional)
