@@ -1460,7 +1460,7 @@ STRATEGIES_CONFIG = {
         'params': {
             # === ROC DIVERGENCE SETTINGS ===
             'roc_period': 12,              # 12 bars = 1 hour on 5m timeframe
-            'divergence_threshold': 0.001, # Min ROC sum for entry (0.1%)
+            'divergence_threshold': 0.01, # Min ROC sum for entry (0.1%)
             'divergence_bars': 3,          # Divergence must be positive N bars
             
             # === TREND FILTER ===

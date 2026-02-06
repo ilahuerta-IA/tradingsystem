@@ -338,6 +338,60 @@ def analyze_by_divergence_range(trades: List[Dict], step: float = 0.0005) -> Non
         print(f'\nSuggested: divergence_threshold >= {best_range[0]:.4f} (PF={best_pf:.2f})')
 
 
+def analyze_by_atr_range(trades: List[Dict], step: float = 0.0001) -> None:
+    """Analyze performance by ATR ranges."""
+    print_section('ANALYSIS BY ATR RANGE')
+    
+    if not trades:
+        print('No trades to analyze')
+        return
+    
+    # Get ATR range
+    atrs = [t['atr'] for t in trades]
+    min_atr = min(atrs)
+    max_atr = max(atrs)
+    
+    print(f'ATR range: {min_atr:.6f} to {max_atr:.6f}')
+    print(f'\n{"Range":<22} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
+    print('-' * 65)
+    
+    # Analyze by ranges
+    current = round(min_atr, 4)
+    while current <= max_atr:
+        range_max = current + step
+        range_trades = [t for t in trades if current <= t['atr'] < range_max]
+        
+        if range_trades:
+            m = calculate_metrics(range_trades)
+            range_str = f'{current:.5f}-{range_max:.5f}'
+            print(f'{range_str:<22} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
+        
+        current += step
+    
+    # Find optimal range (best PF with min 5 trades)
+    best_pf = 0
+    best_range = None
+    current = round(min_atr, 4)
+    while current <= max_atr:
+        range_max = current + step
+        range_trades = [t for t in trades if current <= t['atr'] < range_max]
+        if range_trades:
+            m = calculate_metrics(range_trades)
+            if m['pf'] > best_pf and m['n'] >= 5:
+                best_pf = m['pf']
+                best_range = (current, range_max)
+        current += step
+    
+    if best_range:
+        print(f'\nBest ATR range: {best_range[0]:.5f}-{best_range[1]:.5f} (PF={best_pf:.2f})')
+    
+    # Show ATR stats
+    print(f'\nATR Stats:')
+    print(f'  Min: {min_atr:.6f}')
+    print(f'  Max: {max_atr:.6f}')
+    print(f'  Avg: {sum(atrs)/len(atrs):.6f}')
+
+
 # Note: analyze_by_momentum removed - ROC approach uses sustained divergence_bars instead
 
 
@@ -542,6 +596,7 @@ def main():
     # Run all analyses
     print_summary(trades)
     analyze_by_divergence_range(trades)
+    analyze_by_atr_range(trades)
     analyze_by_hour(trades)
     analyze_by_day(trades)
     analyze_by_sl_pips(trades)
