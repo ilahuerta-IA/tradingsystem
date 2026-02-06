@@ -64,28 +64,27 @@ class EntryExitLines(bt.Indicator):
         pass
 
 
-class SpreadIndicator(bt.Indicator):
-    """Indicator to plot divergence momentum and threshold in a subplot."""
-    lines = ('spread', 'threshold')
+class ROCDualIndicator(bt.Indicator):
+    """Indicator to plot ROC of primary and reference pairs in same subplot."""
+    lines = ('roc_primary', 'roc_reference', 'zero')
     
     plotinfo = dict(
         subplot=True,
-        plotname='Divergence (ROC sum)',
+        plotname='ROC (Primary vs Reference)',
         plotlinelabels=True
     )
     plotlines = dict(
-        spread=dict(color='purple', linewidth=1.5),
-        threshold=dict(color='orange', linestyle='--', linewidth=1.0),
+        roc_primary=dict(color='blue', linewidth=1.5, _name='ROC Primary'),
+        roc_reference=dict(color='red', linewidth=1.5, _name='ROC Reference'),
+        zero=dict(color='gray', linestyle='--', linewidth=0.8),
     )
-    
-    params = dict(threshold_value=1.5)
     
     def __init__(self):
         pass
     
     def next(self):
-        # Threshold is constant
-        self.lines.threshold[0] = self.p.threshold_value
+        # Zero line constant
+        self.lines.zero[0] = 0.0
 
 
 class GEMINIStrategy(bt.Strategy):
@@ -98,7 +97,8 @@ class GEMINIStrategy(bt.Strategy):
     
     params = dict(
         # === ROC DIVERGENCE SETTINGS ===
-        roc_period=12,                  # ROC period (12 = 1 hour on 5m)
+        roc_period_primary=12,          # ROC period for primary (12 = 1 hour on 5m)
+        roc_period_reference=12,        # ROC period for reference (can be different)
         divergence_threshold=0.001,     # Min divergence (ROC sum) for entry
         divergence_bars=3,              # Divergence must be positive N bars
         
@@ -191,11 +191,8 @@ class GEMINIStrategy(bt.Strategy):
         else:
             self.entry_exit_lines = None
         
-        # Divergence indicator for subplot
-        self.spread_indicator = SpreadIndicator(
-            self.primary_data,
-            threshold_value=self.p.divergence_threshold
-        )
+        # ROC indicator for subplot (shows both ROC lines)
+        self.roc_indicator = ROCDualIndicator(self.primary_data)
         
         # Orders
         self.order = None
@@ -246,7 +243,7 @@ class GEMINIStrategy(bt.Strategy):
         divergence = ROC_EURUSD + ROC_USDCHF
         (Sum because negative USDCHF ROC = good for EUR)
         
-        Returns: (divergence_value, threshold_ok, sustained_ok)
+        Returns: (divergence_value, roc_primary, roc_reference, threshold_ok, sustained_ok)
         """
         try:
             # Get current close prices
@@ -257,20 +254,21 @@ class GEMINIStrategy(bt.Strategy):
             self.primary_close_history.append(primary_close)
             self.reference_close_history.append(reference_close)
             
-            # Need enough data for ROC
-            required_len = self.p.roc_period + 1
+            # Need enough data for ROC (use max of both periods)
+            max_period = max(self.p.roc_period_primary, self.p.roc_period_reference)
+            required_len = max_period + 1
             if len(self.primary_close_history) < required_len:
-                return 0.0, False, False
+                return 0.0, 0.0, 0.0, False, False
             
             # Keep only needed history
-            max_history = self.p.roc_period + self.p.divergence_bars + 5
+            max_history = max_period + self.p.divergence_bars + 5
             if len(self.primary_close_history) > max_history:
                 self.primary_close_history = self.primary_close_history[-max_history:]
                 self.reference_close_history = self.reference_close_history[-max_history:]
             
-            # Calculate ROC using lib function (reusable across strategies)
-            roc_primary = calculate_roc_from_history(self.primary_close_history, self.p.roc_period)
-            roc_reference = calculate_roc_from_history(self.reference_close_history, self.p.roc_period)
+            # Calculate ROC using lib function (each with its own period)
+            roc_primary = calculate_roc_from_history(self.primary_close_history, self.p.roc_period_primary)
+            roc_reference = calculate_roc_from_history(self.reference_close_history, self.p.roc_period_reference)
             
             # Divergence = ROC_EURUSD + ROC_USDCHF
             # (Sum because negative USDCHF = EUR strength)
@@ -287,10 +285,10 @@ class GEMINIStrategy(bt.Strategy):
             # Check sustained (divergence positive for N bars)
             sustained_ok = self._check_divergence_sustained()
             
-            return divergence, threshold_ok, sustained_ok
+            return divergence, roc_primary, roc_reference, threshold_ok, sustained_ok
             
         except Exception as e:
-            return 0.0, False, False
+            return 0.0, 0.0, 0.0, False, False
     
     def _check_divergence_sustained(self) -> bool:
         """Check if divergence has been positive for N bars."""
@@ -328,7 +326,8 @@ class GEMINIStrategy(bt.Strategy):
                 self.trade_report_file.write("KAMA Filter: ENABLED\n")
             else:
                 self.trade_report_file.write("KAMA Filter: DISABLED\n")
-            self.trade_report_file.write(f"Divergence: roc_period={self.p.roc_period}, threshold={self.p.divergence_threshold}, bars={self.p.divergence_bars}\n")
+            self.trade_report_file.write(f"ROC: primary_period={self.p.roc_period_primary}, reference_period={self.p.roc_period_reference}\n")
+            self.trade_report_file.write(f"Divergence: threshold={self.p.divergence_threshold}, bars={self.p.divergence_bars}\n")
             self.trade_report_file.write(f"ATR: length={self.p.atr_length}, avg_period={self.p.atr_avg_period}\n")
             self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
             self.trade_report_file.write(f"Pip Value: {self.p.pip_value}\n")
@@ -461,7 +460,7 @@ class GEMINIStrategy(bt.Strategy):
         Returns: (passed: bool, divergence_value: float)
         """
         # Calculate divergence and check conditions
-        divergence_value, threshold_ok, sustained_ok = self._calculate_divergence()
+        divergence_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_divergence()
         passed, _ = self._check_entry_conditions_internal(dt, threshold_ok, sustained_ok)
         return passed, divergence_value
 
@@ -648,10 +647,11 @@ class GEMINIStrategy(bt.Strategy):
                 self.atr_history = self.atr_history[-self.p.atr_avg_period * 2:]
         
         # Calculate divergence every bar (for plotting)
-        divergence_value, threshold_ok, sustained_ok = self._calculate_divergence()
+        divergence_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_divergence()
         
-        # Update divergence indicator for subplot
-        self.spread_indicator.lines.spread[0] = divergence_value
+        # Update ROC indicator for subplot (both lines)
+        self.roc_indicator.lines.roc_primary[0] = roc_primary
+        self.roc_indicator.lines.roc_reference[0] = roc_reference
         
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())

@@ -1448,7 +1448,7 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
         'reference_symbol': 'USDCHF',
         
-        'from_date': datetime.datetime(2024, 7, 1),
+        'from_date': datetime.datetime(2024, 8, 20),
         'to_date': datetime.datetime(2024, 9, 1),
         
         'starting_cash': 100000.0,
@@ -1459,9 +1459,10 @@ STRATEGIES_CONFIG = {
         
         'params': {
             # === ROC DIVERGENCE SETTINGS ===
-            'roc_period': 12,              # 12 bars = 1 hour on 5m timeframe
-            'divergence_threshold': 0.01, # Min ROC sum for entry (0.1%)
-            'divergence_bars': 3,          # Divergence must be positive N bars
+            'roc_period_primary': 12,       # ROC period for EURUSD (12 bars = 1h on 5m)
+            'roc_period_reference': 12,     # ROC period for USDCHF (can be different)
+            'divergence_threshold': 0.001,  # Min ROC sum for entry
+            'divergence_bars': 3,           # Divergence must be positive N bars
             
             # === TREND FILTER ===
             'use_kama_filter': True,
@@ -1527,7 +1528,8 @@ STRATEGIES_CONFIG = {
         
         'params': {
             # === ROC DIVERGENCE SETTINGS ===
-            'roc_period': 12,
+            'roc_period_primary': 12,
+            'roc_period_reference': 12,
             'divergence_threshold': 0.001,
             'divergence_bars': 3,
             
