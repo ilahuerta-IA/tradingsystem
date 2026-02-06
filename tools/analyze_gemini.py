@@ -72,7 +72,118 @@ def find_all_logs(log_dir: str, prefix: str = 'GEMINI_trades_') -> List[str]:
     return sorted([f for f in os.listdir(log_dir) if f.startswith(prefix) and f.endswith('.txt')])
 
 
-def parse_gemini_log(filepath: str) -> List[Dict]:
+def parse_config_header(content: str) -> Dict:
+    """Parse configuration header from GEMINI trade log."""
+    config = {}
+    
+    # KAMA
+    match = re.search(r'KAMA: period=(\d+), fast=(\d+), slow=(\d+)', content)
+    if match:
+        config['kama_period'] = int(match.group(1))
+        config['kama_fast'] = int(match.group(2))
+        config['kama_slow'] = int(match.group(3))
+    
+    # KAMA Filter
+    config['kama_filter'] = 'ENABLED' in re.search(r'KAMA Filter: (\w+)', content or '').group(1) if re.search(r'KAMA Filter: (\w+)', content) else False
+    
+    # Spread
+    match = re.search(r'Spread: EMA=(\d+), zscore_period=(\d+), threshold=([\d.]+)', content)
+    if match:
+        config['spread_ema'] = int(match.group(1))
+        config['spread_zscore_period'] = int(match.group(2))
+        config['spread_threshold'] = float(match.group(3))
+    
+    # Momentum
+    match = re.search(r'Momentum: (\d+) bars', content)
+    if match:
+        config['momentum_bars'] = int(match.group(1))
+    
+    # ATR
+    match = re.search(r'ATR: length=(\d+), avg_period=(\d+)', content)
+    if match:
+        config['atr_length'] = int(match.group(1))
+        config['atr_avg_period'] = int(match.group(2))
+    
+    # SL/TP multipliers
+    match = re.search(r'SL: ([\d.]+)x ATR \| TP: ([\d.]+)x ATR', content)
+    if match:
+        config['sl_mult'] = float(match.group(1))
+        config['tp_mult'] = float(match.group(2))
+    
+    # Pip Value
+    match = re.search(r'Pip Value: ([\d.]+)', content)
+    if match:
+        config['pip_value'] = float(match.group(1))
+    
+    # Risk
+    match = re.search(r'Risk: ([\d.]+)%', content)
+    if match:
+        config['risk_pct'] = float(match.group(1))
+    
+    # Filters
+    config['sl_pips_filter'] = 'SL Pips Filter: DISABLED' not in content
+    config['atr_filter'] = 'ATR Filter: DISABLED' not in content
+    config['time_filter'] = 'Time Filter: DISABLED' not in content
+    config['day_filter'] = 'Day Filter: DISABLED' not in content
+    
+    # Parse filter values if enabled
+    if config.get('sl_pips_filter'):
+        match = re.search(r'SL Pips Filter: (\d+)-(\d+) pips', content)
+        if match:
+            config['sl_pips_min'] = int(match.group(1))
+            config['sl_pips_max'] = int(match.group(2))
+    
+    if config.get('time_filter'):
+        match = re.search(r'Time Filter: \[([\d, ]+)\]', content)
+        if match:
+            config['allowed_hours'] = [int(h.strip()) for h in match.group(1).split(',')]
+    
+    if config.get('day_filter'):
+        match = re.search(r'Day Filter: \[(.*?)\]', content)
+        if match:
+            config['allowed_days'] = match.group(1)
+    
+    return config
+
+
+def print_config(config: Dict):
+    """Print parsed configuration."""
+    print_section('CONFIGURATION (from log header)')
+    
+    if not config:
+        print("No configuration found in log header")
+        return
+    
+    # KAMA
+    if 'kama_period' in config:
+        print(f"KAMA: period={config['kama_period']}, fast={config['kama_fast']}, slow={config['kama_slow']}")
+    
+    # Spread
+    if 'spread_threshold' in config:
+        print(f"Spread: EMA={config.get('spread_ema', '?')}, zscore_period={config.get('spread_zscore_period', '?')}, threshold={config['spread_threshold']}")
+    
+    if 'momentum_bars' in config:
+        print(f"Momentum: {config['momentum_bars']} bars")
+    
+    # ATR
+    if 'sl_mult' in config:
+        print(f"SL: {config['sl_mult']}x ATR | TP: {config['tp_mult']}x ATR")
+    
+    if 'pip_value' in config:
+        print(f"Pip Value: {config['pip_value']}")
+    
+    if 'risk_pct' in config:
+        print(f"Risk: {config['risk_pct']}%")
+    
+    # Filters
+    print("\nFilters:")
+    print(f"  SL Pips Filter: {'ENABLED ' + str(config.get('sl_pips_min', '?')) + '-' + str(config.get('sl_pips_max', '?')) + ' pips' if config.get('sl_pips_filter') else 'DISABLED'}")
+    print(f"  ATR Filter: {'ENABLED' if config.get('atr_filter') else 'DISABLED'}")
+    print(f"  Time Filter: {'ENABLED ' + str(config.get('allowed_hours', [])) if config.get('time_filter') else 'DISABLED'}")
+    print(f"  Day Filter: {'ENABLED ' + str(config.get('allowed_days', '')) if config.get('day_filter') else 'DISABLED'}")
+
+
+def parse_gemini_log(filepath: str) -> tuple:
     """
     Parse GEMINI trade log file (HELIX-style .txt format).
     
@@ -154,7 +265,12 @@ def parse_gemini_log(filepath: str) -> List[Dict]:
         trades.append(trade)
     
     # Filter to only closed trades
-    return [t for t in trades if 'pnl' in t]
+    closed_trades = [t for t in trades if 'pnl' in t]
+    
+    # Parse configuration header
+    config = parse_config_header(content)
+    
+    return closed_trades, config
 
 
 # =============================================================================
@@ -407,6 +523,7 @@ def main():
     args = parser.parse_args()
     
     trades = []
+    config = {}
     
     if args.all:
         # Analyze all logs combined
@@ -417,7 +534,10 @@ def main():
         print(f'Analyzing {len(logs)} log files...')
         for log in logs:
             filepath = os.path.join(LOG_DIR, log)
-            trades.extend(parse_gemini_log(filepath))
+            log_trades, log_config = parse_gemini_log(filepath)
+            trades.extend(log_trades)
+            if not config:
+                config = log_config  # Use first log's config
     elif args.logfile:
         # Analyze specific log
         if os.path.exists(args.logfile):
@@ -428,7 +548,7 @@ def main():
             print(f'Log file not found: {filepath}')
             return
         print(f'Analyzing: {filepath}')
-        trades = parse_gemini_log(filepath)
+        trades, config = parse_gemini_log(filepath)
     else:
         # Analyze latest log
         latest = find_latest_log(LOG_DIR)
@@ -437,13 +557,16 @@ def main():
             return
         filepath = os.path.join(LOG_DIR, latest)
         print(f'Analyzing latest: {filepath}')
-        trades = parse_gemini_log(filepath)
+        trades, config = parse_gemini_log(filepath)
     
     if not trades:
         print('No trades parsed from log file(s)')
         return
     
     print(f'\nTotal trades parsed: {len(trades)}')
+    
+    # Print configuration first
+    print_config(config)
     
     # Run all analyses
     print_summary(trades)

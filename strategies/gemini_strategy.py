@@ -58,6 +58,30 @@ class EntryExitLines(bt.Indicator):
         pass
 
 
+class SpreadIndicator(bt.Indicator):
+    """Indicator to plot spread z-score and threshold in a subplot."""
+    lines = ('spread', 'threshold')
+    
+    plotinfo = dict(
+        subplot=True,
+        plotname='Spread Z-Score',
+        plotlinelabels=True
+    )
+    plotlines = dict(
+        spread=dict(color='purple', linewidth=1.5),
+        threshold=dict(color='orange', linestyle='--', linewidth=1.0),
+    )
+    
+    params = dict(threshold_value=1.5)
+    
+    def __init__(self):
+        pass
+    
+    def next(self):
+        # Threshold is constant
+        self.lines.threshold[0] = self.p.threshold_value
+
+
 class GEMINIStrategy(bt.Strategy):
     """
     GEMINI Strategy - Correlation Divergence Momentum.
@@ -171,6 +195,12 @@ class GEMINIStrategy(bt.Strategy):
             self.entry_exit_lines = EntryExitLines(self.primary_data)
         else:
             self.entry_exit_lines = None
+        
+        # Spread indicator for subplot
+        self.spread_indicator = SpreadIndicator(
+            self.primary_data,
+            threshold_value=self.p.spread_entry_threshold
+        )
         
         # Orders
         self.order = None
@@ -301,16 +331,41 @@ class GEMINIStrategy(bt.Strategy):
             self.trade_report_file = open(report_path, 'w', encoding='utf-8')
             self.trade_report_file.write("=== GEMINI STRATEGY TRADE REPORT ===\n")
             self.trade_report_file.write(f"Generated: {datetime.now()}\n")
+            self.trade_report_file.write("\n")
+            # Configuration header
+            self.trade_report_file.write("=== CONFIGURATION ===\n")
             self.trade_report_file.write(f"KAMA: period={self.p.kama_period}, fast={self.p.kama_fast}, slow={self.p.kama_slow}\n")
-            self.trade_report_file.write(f"Spread: EMA={self.p.spread_ema_period}, zscore={self.p.spread_zscore_period}, threshold={self.p.spread_entry_threshold}\n")
+            if self.p.use_kama_filter:
+                self.trade_report_file.write("KAMA Filter: ENABLED\n")
+            else:
+                self.trade_report_file.write("KAMA Filter: DISABLED\n")
+            self.trade_report_file.write(f"Spread: EMA={self.p.spread_ema_period}, zscore_period={self.p.spread_zscore_period}, threshold={self.p.spread_entry_threshold}\n")
             self.trade_report_file.write(f"Momentum: {self.p.spread_momentum_bars} bars\n")
+            self.trade_report_file.write(f"Reference: invert={self.p.invert_reference}\n")
+            self.trade_report_file.write(f"ATR: length={self.p.atr_length}, avg_period={self.p.atr_avg_period}\n")
             self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
+            self.trade_report_file.write(f"Pip Value: {self.p.pip_value}\n")
+            self.trade_report_file.write(f"Risk: {self.p.risk_percent * 100:.1f}%\n")
+            # Filters
+            self.trade_report_file.write("\n=== FILTERS ===\n")
             if self.p.use_sl_pips_filter:
-                self.trade_report_file.write(f"SL Filter: {self.p.sl_pips_min}-{self.p.sl_pips_max} pips\n")
+                self.trade_report_file.write(f"SL Pips Filter: {self.p.sl_pips_min}-{self.p.sl_pips_max} pips\n")
+            else:
+                self.trade_report_file.write("SL Pips Filter: DISABLED\n")
             if self.p.use_atr_filter:
-                self.trade_report_file.write(f"ATR Filter: {self.p.atr_min}-{self.p.atr_max} (avg {self.p.atr_avg_period})\n")
+                self.trade_report_file.write(f"ATR Filter: {self.p.atr_min}-{self.p.atr_max}\n")
+            else:
+                self.trade_report_file.write("ATR Filter: DISABLED\n")
             if self.p.use_time_filter:
                 self.trade_report_file.write(f"Time Filter: {list(self.p.allowed_hours)}\n")
+            else:
+                self.trade_report_file.write("Time Filter: DISABLED\n")
+            if self.p.use_day_filter:
+                day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                days = [day_names[d] for d in self.p.allowed_days if d < 7]
+                self.trade_report_file.write(f"Day Filter: {days}\n")
+            else:
+                self.trade_report_file.write("Day Filter: DISABLED\n")
             self.trade_report_file.write("\n")
             print(f"[GEMINI] Trade report: {report_path}")
         except Exception as e:
@@ -420,30 +475,38 @@ class GEMINIStrategy(bt.Strategy):
         
         Returns: (passed: bool, spread_value: float)
         """
+        # Calculate spread and check conditions
+        spread_value, spread_ok, momentum_ok = self._calculate_spread()
+        passed, _ = self._check_entry_conditions_internal(dt, spread_ok, momentum_ok)
+        return passed, spread_value
+
+    def _check_entry_conditions_internal(self, dt: datetime, spread_ok: bool, momentum_ok: bool) -> tuple:
+        """
+        Check entry conditions with pre-calculated spread values.
+        
+        Returns: (passed: bool, None)
+        """
         # Time filter
         if self.p.use_time_filter:
             if not check_time_filter(dt, self.p.allowed_hours, True):
-                return False, 0.0
+                return False, None
         
         # Day filter
         if self.p.use_day_filter:
             if not check_day_filter(dt, self.p.allowed_days, True):
-                return False, 0.0
-        
-        # Calculate spread and check conditions
-        spread_value, spread_ok, momentum_ok = self._calculate_spread()
+                return False, None
         
         if not spread_ok:
-            return False, spread_value
+            return False, None
         
         if not momentum_ok:
-            return False, spread_value
+            return False, None
         
         # KAMA condition (trend filter)
         if not self._check_kama_condition():
-            return False, spread_value
+            return False, None
         
-        return True, spread_value
+        return True, None
 
     # =========================================================================
     # ENTRY EXECUTION
@@ -600,6 +663,12 @@ class GEMINIStrategy(bt.Strategy):
             if len(self.atr_history) > self.p.atr_avg_period * 2:
                 self.atr_history = self.atr_history[-self.p.atr_avg_period * 2:]
         
+        # Calculate spread every bar (for plotting)
+        spread_value, spread_ok, momentum_ok = self._calculate_spread()
+        
+        # Update spread indicator for subplot
+        self.spread_indicator.lines.spread[0] = spread_value
+        
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())
         
@@ -626,8 +695,8 @@ class GEMINIStrategy(bt.Strategy):
                 )
         
         elif self.state == "SCANNING":
-            # Check entry conditions
-            passed, spread_value = self._check_entry_conditions(dt)
+            # Check entry conditions (spread already calculated)
+            passed, _ = self._check_entry_conditions_internal(dt, spread_ok, momentum_ok)
             if passed:
                 self._execute_entry(dt, spread_value)
 
@@ -810,6 +879,26 @@ class GEMINIStrategy(bt.Strategy):
             
             print(f"{'='*70}")
         
+        # Commission Summary (calculated from trade_reports)
+        total_lots = sum(t.get('size', 0) / self.p.lot_size for t in self.trade_reports if 'size' in t)
+        total_commission = total_lots * 2 * 2.5  # Round-trip * $2.5 per lot (typical forex)
+        avg_commission = total_commission / total_trades if total_trades > 0 else 0
+        avg_lots = total_lots / total_trades if total_trades > 0 else 0
+        
+        print(f"\n{'='*70}")
+        print('COMMISSION SUMMARY')
+        print(f"{'='*70}")
+        print(f'Total Commission Paid:    ${total_commission:,.2f}')
+        print(f'Total Lots Traded:        {total_lots:,.2f}')
+        print(f'Avg Commission per Trade: ${avg_commission:,.2f}')
+        print(f'Avg Lots per Trade:       {avg_lots:,.2f}')
+        print(f"{'='*70}")
+        
+        # Final summary
+        total_return = ((final_value - self._starting_cash) / self._starting_cash) * 100 if self._starting_cash > 0 else 0
+        print(f'\nFinal Value: ${final_value:,.2f}')
+        print(f'Return: {total_return:.2f}%')
+        
         # Close trade report file
         if self.trade_report_file:
             try:
@@ -823,6 +912,8 @@ class GEMINIStrategy(bt.Strategy):
                 self.trade_report_file.write(f"Max Drawdown: {max_drawdown_pct:.2f}%\n")
                 self.trade_report_file.write(f"CAGR: {cagr:.2f}%\n")
                 self.trade_report_file.write(f"Net P&L: ${total_pnl:,.2f}\n")
+                self.trade_report_file.write(f"Total Commission: ${total_commission:,.2f}\n")
+                self.trade_report_file.write(f"Total Return: {total_return:.2f}%\n")
                 self.trade_report_file.close()
             except:
                 pass

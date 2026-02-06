@@ -1448,8 +1448,8 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
         'reference_symbol': 'USDCHF',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2024, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -1459,10 +1459,10 @@ STRATEGIES_CONFIG = {
         
         'params': {
             # === SPREAD DIVERGENCE SETTINGS ===
-            'spread_ema_period': 20,
+            'spread_ema_period': 20,  # Increased from 20 for smoother spread (5h on 5m)
             'spread_zscore_period': 50,
-            'spread_entry_threshold': 1.5,  # Min z-score spread for entry (increased from 0.5)
-            'spread_momentum_bars': 5,  # Spread must grow N bars (increased from 3)
+            'spread_entry_threshold': 2.5,  # Min z-score spread for entry (testing stability)
+            'spread_momentum_bars': 15,  # Spread must grow N bars (increased from 3)
             'invert_reference': True,  # Invert USDCHF to compare
             
             # === TREND FILTER ===
@@ -1474,7 +1474,7 @@ STRATEGIES_CONFIG = {
             # === ATR for SL/TP ===
             'atr_length': 14,
             'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 8.0,
+            'atr_tp_multiplier': 6.0,
             
             # === FILTERS ===
             'use_time_filter': False,
@@ -1503,7 +1503,7 @@ STRATEGIES_CONFIG = {
             'risk_percent': 0.01,
             
             # Debug & Reporting
-            'print_signals': True,  # Enable to see signals during backtest
+            'print_signals': False,  # Enable to see signals during backtest
             'export_reports': True,
         }
     },
