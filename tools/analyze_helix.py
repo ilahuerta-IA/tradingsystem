@@ -91,7 +91,9 @@ def parse_helix_log(filepath: str) -> List[Dict]:
         SL Pips: XX.X
         ATR (avg): X.XXXXXX
         SE: X.XXX
-        SE StdDev: X.XXXX  (NEW)
+        SE StdDev: X.XXXX
+        Breakout Waited: N bars
+        Pullback Bars: N
         
         EXIT #N
         Time: YYYY-MM-DD HH:MM:SS
@@ -101,7 +103,7 @@ def parse_helix_log(filepath: str) -> List[Dict]:
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # Parse entries - pattern for HELIX log format (with optional SE StdDev)
+    # Parse entries - pattern for HELIX log format (with optional new fields)
     entries = re.findall(
         r'ENTRY #(\d+)\s*\n'
         r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -111,7 +113,9 @@ def parse_helix_log(filepath: str) -> List[Dict]:
         r'SL Pips: ([\d.]+)\s*\n'
         r'ATR \(avg\): ([\d.]+)\s*\n'
         r'SE: ([\d.]+)\s*\n'
-        r'(?:SE StdDev: ([\d.]+))?',  # Optional SE StdDev
+        r'(?:SE StdDev: ([\d.]+)\s*\n)?'       # Optional SE StdDev
+        r'(?:Breakout Waited: (\d+) bars\s*\n)?' # Optional Breakout Waited
+        r'(?:Pullback Bars: (\d+))?',           # Optional Pullback Bars
         content,
         re.IGNORECASE
     )
@@ -142,6 +146,8 @@ def parse_helix_log(filepath: str) -> List[Dict]:
             'atr': float(entry[6]),
             'se': float(entry[7]),
             'se_stddev': float(entry[8]) if entry[8] else 0.0,  # SE StdDev (optional)
+            'breakout_waited_bars': int(entry[9]) if entry[9] else 0,  # Breakout waited (optional)
+            'pullback_bars': int(entry[10]) if entry[10] else 0,  # Pullback bars (optional)
         }
         
         # Match with exit if exists
@@ -469,6 +475,95 @@ def analyze_by_atr(trades: List[Dict]):
                   f'{format_pf(stats["profit_factor"]):>5} | ${stats["net_pnl"]:>10,.0f} {pf_color}')
 
 
+def analyze_by_breakout_waited(trades: List[Dict]):
+    """Analyze trades by how many bars waited for breakout."""
+    print_section('ANALYSIS BY BREAKOUT WAITED BARS')
+    
+    # Check if we have data
+    has_data = any(t.get('breakout_waited_bars', 0) >= 0 for t in trades if 'pnl' in t)
+    if not has_data:
+        print('No Breakout Waited data. Run backtest with updated strategy.')
+        return
+    
+    # Analyze by individual bar count
+    groups = defaultdict(list)
+    for t in trades:
+        if 'pnl' in t:
+            bars = t.get('breakout_waited_bars', 0)
+            groups[bars].append(t)
+    
+    print(f'{"Bars Waited":>12} | {"Trades":>6} | {"Win%":>5} | {"PF":>5} | {"Net P&L":>12}')
+    print('-' * 55)
+    
+    for bars in sorted(groups.keys()):
+        stats = calculate_stats(groups[bars])
+        if stats and stats['total'] >= 3:
+            pf_color = '✅' if stats['profit_factor'] >= 1.5 else ('⚠️' if stats['profit_factor'] >= 1.0 else '❌')
+            print(f'{bars:>12} | {stats["total"]:>6} | {stats["win_rate"]:>4.0f}% | '
+                  f'{format_pf(stats["profit_factor"]):>5} | ${stats["net_pnl"]:>10,.0f} {pf_color}')
+    
+    # Find optimal range
+    print('\n📊 OPTIMAL BREAKOUT WINDOW:')
+    best_pf = 0
+    best_range = None
+    for max_bars in range(1, 11):
+        filtered = [t for t in trades if 'pnl' in t and t.get('breakout_waited_bars', 0) <= max_bars]
+        if len(filtered) >= 15:
+            stats = calculate_stats(filtered)
+            if stats and stats['profit_factor'] > best_pf:
+                best_pf = stats['profit_factor']
+                best_range = (max_bars, stats['total'])
+    
+    if best_range:
+        print(f'   Best max window: {best_range[0]} bars (PF: {best_pf:.2f}, {best_range[1]} trades) -> breakout_window_candles={best_range[0]}')
+
+
+def analyze_by_pullback_bars(trades: List[Dict]):
+    """Analyze trades by pullback duration (bars since HH)."""
+    print_section('ANALYSIS BY PULLBACK DURATION (BARS)')
+    
+    # Check if we have data
+    has_data = any(t.get('pullback_bars', 0) > 0 for t in trades if 'pnl' in t)
+    if not has_data:
+        print('No Pullback Bars data. Run backtest with updated strategy.')
+        return
+    
+    # Analyze by individual bar count
+    groups = defaultdict(list)
+    for t in trades:
+        if 'pnl' in t:
+            bars = t.get('pullback_bars', 0)
+            groups[bars].append(t)
+    
+    print(f'{"Pullback Bars":>14} | {"Trades":>6} | {"Win%":>5} | {"PF":>5} | {"Net P&L":>12}')
+    print('-' * 58)
+    
+    for bars in sorted(groups.keys()):
+        stats = calculate_stats(groups[bars])
+        if stats and stats['total'] >= 3:
+            pf_color = '✅' if stats['profit_factor'] >= 1.5 else ('⚠️' if stats['profit_factor'] >= 1.0 else '❌')
+            print(f'{bars:>14} | {stats["total"]:>6} | {stats["win_rate"]:>4.0f}% | '
+                  f'{format_pf(stats["profit_factor"]):>5} | ${stats["net_pnl"]:>10,.0f} {pf_color}')
+    
+    # Find optimal range (min, max)
+    print('\n📊 OPTIMAL PULLBACK RANGE:')
+    best_pf = 0
+    best_range = None
+    for min_bars in range(1, 4):
+        for max_bars in range(min_bars + 1, 8):
+            filtered = [t for t in trades if 'pnl' in t 
+                       and min_bars <= t.get('pullback_bars', 0) <= max_bars]
+            if len(filtered) >= 15:
+                stats = calculate_stats(filtered)
+                if stats and stats['profit_factor'] > best_pf:
+                    best_pf = stats['profit_factor']
+                    best_range = (min_bars, max_bars, stats['total'])
+    
+    if best_range:
+        print(f'   Best range: {best_range[0]}-{best_range[1]} bars (PF: {best_pf:.2f}, {best_range[2]} trades)')
+        print(f'   Suggested: pullback_min_bars={best_range[0]}, pullback_max_bars={best_range[1]}')
+
+
 def analyze_by_year(trades: List[Dict]):
     """Analyze trades by year."""
     print_section('YEARLY STATISTICS')
@@ -700,6 +795,8 @@ def main():
     analyze_by_day(trades)
     analyze_by_sl_pips(trades)
     analyze_by_atr(trades)
+    analyze_by_breakout_waited(trades)  # NEW: Breakout window optimization
+    analyze_by_pullback_bars(trades)    # NEW: Pullback duration optimization
     analyze_by_year(trades)
     analyze_by_exit_reason(trades)
     analyze_trade_duration(trades)

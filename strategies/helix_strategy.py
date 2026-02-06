@@ -387,7 +387,8 @@ class HELIXStrategy(bt.Strategy):
         except Exception as e:
             print(f"Trade reporting init failed: {e}")
 
-    def _record_trade_entry(self, dt, entry_price, size, atr, cci, sl_pips, se_value, se_stddev=0.0):
+    def _record_trade_entry(self, dt, entry_price, size, atr, cci, sl_pips, se_value, 
+                             se_stddev=0.0, breakout_waited_bars=0, pullback_bars=0):
         """Record entry to trade report file."""
         if not self.trade_report_file:
             return
@@ -403,6 +404,8 @@ class HELIXStrategy(bt.Strategy):
                 'sl_pips': sl_pips,
                 'stop_level': self.stop_level,
                 'take_level': self.take_level,
+                'breakout_waited_bars': breakout_waited_bars,
+                'pullback_bars': pullback_bars,
             }
             self.trade_reports.append(entry)
             self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
@@ -414,6 +417,8 @@ class HELIXStrategy(bt.Strategy):
             self.trade_report_file.write(f"ATR (avg): {atr:.6f}\n")
             self.trade_report_file.write(f"SE: {se_value:.3f}\n")
             self.trade_report_file.write(f"SE StdDev: {se_stddev:.4f}\n")
+            self.trade_report_file.write(f"Breakout Waited: {breakout_waited_bars} bars\n")
+            self.trade_report_file.write(f"Pullback Bars: {pullback_bars}\n")
             if self.p.use_cci_filter:
                 self.trade_report_file.write(f"CCI (HL2): {cci:.2f}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
@@ -681,9 +686,20 @@ class HELIXStrategy(bt.Strategy):
         self.last_entry_price = entry_price
         self.last_entry_bar = len(self.data)
         
+        # Calculate bars waited for breakout (0 if immediate entry)
+        breakout_waited_bars = 0
+        if self.pattern_detected_bar:
+            breakout_waited_bars = len(self.data) - self.pattern_detected_bar
+        
+        # Get pullback duration from pullback_data
+        pullback_bars = 0
+        if self.pullback_data and self.pullback_data.get('valid'):
+            pullback_bars = self.pullback_data.get('bars_since_hh', 0)
+        
         # Record entry
         cci_val = self._calculate_cci_hl2() if self.p.use_cci_filter else 0
-        self._record_trade_entry(dt, entry_price, bt_size, avg_atr, cci_val, sl_pips, se_value)
+        self._record_trade_entry(dt, entry_price, bt_size, avg_atr, cci_val, sl_pips, se_value,
+                                 breakout_waited_bars=breakout_waited_bars, pullback_bars=pullback_bars)
         
         if self.p.print_signals:
             print(f"[HELIX] {dt} ENTRY | Price: {entry_price:.5f} | SL: {self.stop_level:.5f} | TP: {self.take_level:.5f} | SE: {se_value:.3f}")
