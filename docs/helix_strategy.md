@@ -1,5 +1,23 @@
 # HELIX Strategy
 
+> ⚠️ **ESTADO: DEPRECATED (2026-02-06)**
+>
+> Esta estrategia ha sido **deprecada** tras análisis de backtesting e investigación académica.
+>
+> **Problema Diagnosticado:**
+> - La estrategia base (KAMA + pullback + breakout) tiene PF < 1.0 en EURUSD
+> - Spectral Entropy como filtro solo reorganiza trades, no crea edge
+> - Parámetros óptimos cambian drásticamente entre runs = overfitting
+> - SE se usa en literatura como **filtro de régimen**, NO como trigger de entrada
+>
+> **Nueva Dirección:**
+> Se está explorando una estrategia basada en **divergencia de correlación EURUSD/USDCHF**
+> que confirma momentum real. Ver CONTEXT.md sección "🚀 NUEVA IDEA".
+>
+> Este documento se mantiene como **referencia histórica** del experimento HELIX.
+
+---
+
 **Type:** HTF Structure + Pullback + Breakout (Spectral Entropy variant)  
 **Assets:** EURUSD, USDCHF (target pairs where SEDNA fails)  
 **Direction:** Long Only  
@@ -182,6 +200,45 @@ Kaufman's Adaptive Moving Average on HL2.
 1. Run backtest: `python run_backtest.py USDCHF_HELIX`
 2. Evaluate metrics vs criteria
 3. If fails → adjust SE parameters or try Hilbert Transform
+
+---
+
+## Lecciones Aprendidas (Post-mortem 2026-02-06)
+
+### ❌ Lo que NO funcionó
+
+1. **SE como filtro de entrada:**
+   - Investigación académica mostró que SE se usa como filtro de RÉGIMEN, no trigger
+   - Timeframes adecuados: 1H mínimo, diario ideal
+   - En 5m/15m el ruido domina
+
+2. **Estrategia base sin edge:**
+   - KAMA + pullback + breakout en EURUSD = PF ~0.97
+   - No tiene ventaja estadística inherente
+   - Filtros solo reorganizan trades, no crean edge
+
+3. **Optimización de parámetros:**
+   - Valores óptimos cambian drásticamente entre runs
+   - SE 0.80-0.82 en un run, 0.90-0.92 en otro
+   - Síntoma clásico de overfitting
+
+### 📚 Referencias Académicas Consultadas
+
+- Cerra & Tuceryan (2012): SE para caracterización de imagen
+- Fernandes et al. (2019): SE en señales EEG
+- Li & Bastos (2020): "Entropy measures for biological signal analyses"
+- Pan et al. (2020): SE como filtro de régimen de mercado
+
+### ✅ Qué se aprendió
+
+1. **Verificar edge base ANTES de añadir filtros**
+2. **Indicador de régimen ≠ indicador de entrada**
+3. **Parámetros inestables = posible overfitting**
+4. **Correlación entre pares puede ser más confiable que indicadores sintéticos**
+
+### 🔄 Nueva Dirección
+
+Ver CONTEXT.md → Sección "🚀 NUEVA IDEA: Estrategia de Correlación EURUSD/USDCHF"
 4. If passes → create `live/checkers/helix_checker.py`
 
 ---
