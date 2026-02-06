@@ -116,6 +116,86 @@ class KAMA(bt.Indicator):
         self.lines.kama[0] = self.lines.kama[-1] + sc * (self.data[0] - self.lines.kama[-1])
 
 
+class ROC(bt.Indicator):
+    """
+    Rate of Change (ROC) indicator.
+    
+    Measures the percentage change in price over N periods.
+    
+    Formula:
+        ROC = (close - close[-period]) / close[-period]
+    
+    Values:
+    - Positive: Price increased over period
+    - Negative: Price decreased over period
+    - Magnitude indicates strength of move
+    
+    Usage:
+        roc = ROC(data.close, period=12)
+        if roc[0] > 0.001:  # Price up >0.1%
+            # Bullish momentum
+    """
+    lines = ('roc',)
+    params = (
+        ('period', 12),  # Lookback period for ROC calculation
+    )
+    
+    plotinfo = dict(
+        subplot=True,
+        plotname='Rate of Change',
+        plotlinelabels=True,
+    )
+    plotlines = dict(
+        roc=dict(color='blue', linewidth=1.2),
+    )
+    
+    def __init__(self):
+        self.addminperiod(self.p.period + 1)
+    
+    def next(self):
+        old_price = self.data[-self.p.period]
+        if old_price != 0:
+            self.lines.roc[0] = (self.data[0] - old_price) / old_price
+        else:
+            self.lines.roc[0] = 0.0
+
+
+def calculate_roc(current_price: float, old_price: float) -> float:
+    """
+    Calculate Rate of Change (helper function for non-backtrader use).
+    
+    Args:
+        current_price: Current price
+        old_price: Price N periods ago
+    
+    Returns:
+        ROC as decimal (0.01 = 1% change)
+    
+    Usage:
+        # With price history list
+        roc = calculate_roc(prices[-1], prices[-period-1])
+    """
+    if old_price == 0:
+        return 0.0
+    return (current_price - old_price) / old_price
+
+
+def calculate_roc_from_history(prices: list, period: int) -> float:
+    """
+    Calculate ROC from price history list.
+    
+    Args:
+        prices: List of prices (most recent at end)
+        period: Lookback period
+    
+    Returns:
+        ROC as decimal, or 0.0 if insufficient data
+    """
+    if len(prices) < period + 1:
+        return 0.0
+    return calculate_roc(prices[-1], prices[-period - 1])
+
+
 class SpectralEntropy(bt.Indicator):
     """
     Spectral Entropy (SE) indicator.

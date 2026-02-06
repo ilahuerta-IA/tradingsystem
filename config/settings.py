@@ -1448,8 +1448,8 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
         'reference_symbol': 'USDCHF',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2024, 12, 1),
+        'from_date': datetime.datetime(2024, 7, 1),
+        'to_date': datetime.datetime(2024, 9, 1),
         
         'starting_cash': 100000.0,
         
@@ -1458,12 +1458,10 @@ STRATEGIES_CONFIG = {
         'save_log': True,
         
         'params': {
-            # === SPREAD DIVERGENCE SETTINGS ===
-            'spread_ema_period': 20,  # Increased from 20 for smoother spread (5h on 5m)
-            'spread_zscore_period': 50,
-            'spread_entry_threshold': 2.5,  # Min z-score spread for entry (testing stability)
-            'spread_momentum_bars': 15,  # Spread must grow N bars (increased from 3)
-            'invert_reference': True,  # Invert USDCHF to compare
+            # === ROC DIVERGENCE SETTINGS ===
+            'roc_period': 12,              # 12 bars = 1 hour on 5m timeframe
+            'divergence_threshold': 0.001, # Min ROC sum for entry (0.1%)
+            'divergence_bars': 3,          # Divergence must be positive N bars
             
             # === TREND FILTER ===
             'use_kama_filter': True,
@@ -1528,12 +1526,10 @@ STRATEGIES_CONFIG = {
         'save_log': True,
         
         'params': {
-            # === SPREAD DIVERGENCE SETTINGS ===
-            'spread_ema_period': 20,
-            'spread_zscore_period': 50,
-            'spread_entry_threshold': 0.5,
-            'spread_momentum_bars': 3,
-            'invert_reference': False,  # EURUSD doesn't need inversion
+            # === ROC DIVERGENCE SETTINGS ===
+            'roc_period': 12,
+            'divergence_threshold': 0.001,
+            'divergence_bars': 3,
             
             # === TREND FILTER ===
             'use_kama_filter': True,

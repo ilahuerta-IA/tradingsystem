@@ -10,8 +10,7 @@ Usage:
     python analyze_gemini.py --all                     # Analyze all GEMINI logs combined
 
 Key Parameters to Analyze:
-- Spread Z-Score ranges
-- Momentum bars
+- Divergence (ROC sum) ranges
 - Entry hour (UTC)
 - Day of week
 - SL pips ranges
@@ -86,17 +85,12 @@ def parse_config_header(content: str) -> Dict:
     # KAMA Filter
     config['kama_filter'] = 'ENABLED' in re.search(r'KAMA Filter: (\w+)', content or '').group(1) if re.search(r'KAMA Filter: (\w+)', content) else False
     
-    # Spread
-    match = re.search(r'Spread: EMA=(\d+), zscore_period=(\d+), threshold=([\d.]+)', content)
+    # Divergence (ROC)
+    match = re.search(r'Divergence: roc_period=(\d+), threshold=([\d.]+), bars=(\d+)', content)
     if match:
-        config['spread_ema'] = int(match.group(1))
-        config['spread_zscore_period'] = int(match.group(2))
-        config['spread_threshold'] = float(match.group(3))
-    
-    # Momentum
-    match = re.search(r'Momentum: (\d+) bars', content)
-    if match:
-        config['momentum_bars'] = int(match.group(1))
+        config['roc_period'] = int(match.group(1))
+        config['divergence_threshold'] = float(match.group(2))
+        config['divergence_bars'] = int(match.group(3))
     
     # ATR
     match = re.search(r'ATR: length=(\d+), avg_period=(\d+)', content)
@@ -158,12 +152,9 @@ def print_config(config: Dict):
     if 'kama_period' in config:
         print(f"KAMA: period={config['kama_period']}, fast={config['kama_fast']}, slow={config['kama_slow']}")
     
-    # Spread
-    if 'spread_threshold' in config:
-        print(f"Spread: EMA={config.get('spread_ema', '?')}, zscore_period={config.get('spread_zscore_period', '?')}, threshold={config['spread_threshold']}")
-    
-    if 'momentum_bars' in config:
-        print(f"Momentum: {config['momentum_bars']} bars")
+    # Divergence
+    if 'roc_period' in config:
+        print(f"Divergence: roc_period={config['roc_period']}, threshold={config['divergence_threshold']}, bars={config['divergence_bars']}")
     
     # ATR
     if 'sl_mult' in config:
@@ -195,8 +186,7 @@ def parse_gemini_log(filepath: str) -> tuple:
         Take Profit: X.XXXXX
         SL Pips: XX.X
         ATR (avg): X.XXXXXX
-        Spread Z-Score: X.XXXX
-        Momentum Bars: N
+        Divergence (ROC): X.XXXXXX
         
         EXIT #N
         Time: YYYY-MM-DD HH:MM:SS
@@ -215,8 +205,7 @@ def parse_gemini_log(filepath: str) -> tuple:
         r'Take Profit: ([\d.]+)\s*\n'
         r'SL Pips: ([\d.]+)\s*\n'
         r'ATR \(avg\): ([\d.]+)\s*\n'
-        r'Spread Z-Score: ([\d.-]+)\s*\n'
-        r'Momentum Bars: (\d+)',
+        r'Divergence \(ROC\): ([\d.-]+)',
         content,
         re.IGNORECASE
     )
@@ -247,8 +236,7 @@ def parse_gemini_log(filepath: str) -> tuple:
             'tp': float(entry[4]),
             'sl_pips': float(entry[5]),
             'atr': float(entry[6]),
-            'spread': float(entry[7]),
-            'spread_momentum': int(entry[8]),
+            'divergence': float(entry[7]),
             'hour': entry_time.hour,
             'day_of_week': entry_time.weekday(),
         }
@@ -302,43 +290,43 @@ def calculate_metrics(trades: List[Dict]) -> Dict:
     }
 
 
-def analyze_by_spread_range(trades: List[Dict], step: float = 0.1) -> None:
-    """Analyze performance by spread ranges."""
-    print_section('ANALYSIS BY SPREAD RANGE')
+def analyze_by_divergence_range(trades: List[Dict], step: float = 0.0005) -> None:
+    """Analyze performance by divergence (ROC sum) ranges."""
+    print_section('ANALYSIS BY DIVERGENCE (ROC) RANGE')
     
     if not trades:
         print('No trades to analyze')
         return
     
-    # Get spread range
-    spreads = [t['spread'] for t in trades]
-    min_spread = min(spreads)
-    max_spread = max(spreads)
+    # Get divergence range
+    divergences = [t['divergence'] for t in trades]
+    min_div = min(divergences)
+    max_div = max(divergences)
     
-    print(f'Spread range: {min_spread:.3f} to {max_spread:.3f}')
-    print(f'\n{"Range":<15} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
-    print('-' * 60)
+    print(f'Divergence range: {min_div:.6f} to {max_div:.6f}')
+    print(f'\n{"Range":<20} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
+    print('-' * 65)
     
     # Analyze by ranges
-    current = round(min_spread, 1)
-    while current <= max_spread:
+    current = round(min_div, 4)
+    while current <= max_div:
         range_max = current + step
-        range_trades = [t for t in trades if current <= t['spread'] < range_max]
+        range_trades = [t for t in trades if current <= t['divergence'] < range_max]
         
         if range_trades:
             m = calculate_metrics(range_trades)
-            range_str = f'{current:.2f}-{range_max:.2f}'
-            print(f'{range_str:<15} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
+            range_str = f'{current:.4f}-{range_max:.4f}'
+            print(f'{range_str:<20} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
         
         current += step
     
     # Find optimal range
     best_pf = 0
     best_range = None
-    current = round(min_spread, 1)
-    while current <= max_spread:
+    current = round(min_div, 4)
+    while current <= max_div:
         range_max = current + step
-        range_trades = [t for t in trades if current <= t['spread'] < range_max]
+        range_trades = [t for t in trades if current <= t['divergence'] < range_max]
         if range_trades:
             m = calculate_metrics(range_trades)
             if m['pf'] > best_pf and m['n'] >= 10:
@@ -347,27 +335,10 @@ def analyze_by_spread_range(trades: List[Dict], step: float = 0.1) -> None:
         current += step
     
     if best_range:
-        print(f'\nSuggested: spread_entry_threshold >= {best_range[0]:.2f} (PF={best_pf:.2f})')
+        print(f'\nSuggested: divergence_threshold >= {best_range[0]:.4f} (PF={best_pf:.2f})')
 
 
-def analyze_by_momentum(trades: List[Dict]) -> None:
-    """Analyze performance by spread momentum bars."""
-    print_section('ANALYSIS BY SPREAD MOMENTUM BARS')
-    
-    if not trades:
-        print('No trades to analyze')
-        return
-    
-    momentum_groups = defaultdict(list)
-    for t in trades:
-        momentum_groups[t['spread_momentum']].append(t)
-    
-    print(f'\n{"Momentum":>10} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
-    print('-' * 55)
-    
-    for momentum in sorted(momentum_groups.keys()):
-        m = calculate_metrics(momentum_groups[momentum])
-        print(f'{momentum:>10} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
+# Note: analyze_by_momentum removed - ROC approach uses sustained divergence_bars instead
 
 
 def analyze_by_hour(trades: List[Dict]) -> None:
@@ -500,10 +471,10 @@ def print_summary(trades: List[Dict]) -> None:
     dates = sorted([t['datetime'] for t in trades])
     print(f'\nDate Range:       {dates[0]} to {dates[-1]}')
     
-    # Spread Z-Score stats
-    spreads = [t['spread'] for t in trades]
-    print(f'\nSpread Z-Score Range: {min(spreads):.2f} to {max(spreads):.2f}')
-    print(f'Spread Z-Score Avg:   {sum(spreads)/len(spreads):.2f}')
+    # Divergence (ROC) stats
+    divergences = [t['divergence'] for t in trades]
+    print(f'\nDivergence (ROC) Range: {min(divergences):.6f} to {max(divergences):.6f}')
+    print(f'Divergence (ROC) Avg:   {sum(divergences)/len(divergences):.6f}')
     
     # Bars held stats
     if 'bars_held' in trades[0]:
@@ -570,8 +541,7 @@ def main():
     
     # Run all analyses
     print_summary(trades)
-    analyze_by_spread_range(trades)
-    analyze_by_momentum(trades)
+    analyze_by_divergence_range(trades)
     analyze_by_hour(trades)
     analyze_by_day(trades)
     analyze_by_sl_pips(trades)

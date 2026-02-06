@@ -1,16 +1,23 @@
 """
-GEMINI Strategy - Correlation Divergence Momentum
+GEMINI Strategy - Correlation Divergence Momentum (ROC-based)
 
 CONCEPT:
 EURUSD and USDCHF are inversely correlated (~-0.90) via USD.
-When EURUSD rises but USDCHF_inverted doesn't follow equally,
-EUR has INTRINSIC strength (not just USD weakness) -> LONG EURUSD.
+We measure MOMENTUM (Rate of Change) of each pair, not price levels.
 
-This is NOT mean reversion. It's MOMENTUM CONFIRMED BY DIVERGENCE.
+Divergence = ROC_EURUSD + ROC_USDCHF
+(Sum because negative USDCHF ROC = good for EUR)
 
-ENTRY SYSTEM (3 PHASES):
-1. SPREAD FILTER: Spread (z-score difference) > threshold
-2. MOMENTUM: Spread growing for N consecutive bars
+When divergence > threshold sustained for N bars -> LONG EURUSD
+
+This captures ALL scenarios of EUR relative strength:
+- EURUSD rising, USDCHF falling (clear divergence)
+- EURUSD rising, USDCHF ranging (EUR has momentum)
+- EURUSD ranging, USDCHF falling (CHF weak = EUR strong relative)
+
+ENTRY SYSTEM:
+1. DIVERGENCE: ROC_EURUSD + ROC_USDCHF > threshold
+2. SUSTAINED: Divergence positive for N consecutive bars
 3. TREND: Price > KAMA (optional)
 
 EXIT SYSTEM:
@@ -19,7 +26,6 @@ EXIT SYSTEM:
 
 TARGET PAIRS: 
 - EURUSD_GEMINI (primary=EURUSD, reference=USDCHF)
-- USDCHF_GEMINI (primary=USDCHF, reference=EURUSD)
 """
 from __future__ import annotations
 import math
@@ -36,7 +42,7 @@ from lib.filters import (
     check_atr_filter,
     check_sl_pips_filter,
 )
-from lib.indicators import KAMA
+from lib.indicators import KAMA, calculate_roc_from_history
 from lib.position_sizing import calculate_position_size
 
 
@@ -59,12 +65,12 @@ class EntryExitLines(bt.Indicator):
 
 
 class SpreadIndicator(bt.Indicator):
-    """Indicator to plot spread z-score and threshold in a subplot."""
+    """Indicator to plot divergence momentum and threshold in a subplot."""
     lines = ('spread', 'threshold')
     
     plotinfo = dict(
         subplot=True,
-        plotname='Spread Z-Score',
+        plotname='Divergence (ROC sum)',
         plotlinelabels=True
     )
     plotlines = dict(
@@ -91,12 +97,10 @@ class GEMINIStrategy(bt.Strategy):
     """
     
     params = dict(
-        # === SPREAD DIVERGENCE SETTINGS ===
-        spread_ema_period=20,           # EMA period for price smoothing
-        spread_zscore_period=50,        # Lookback for z-score normalization
-        spread_entry_threshold=1.0,     # Min spread z-score for entry
-        spread_momentum_bars=3,         # Spread must grow N consecutive bars
-        invert_reference=True,          # True for USDCHF reference
+        # === ROC DIVERGENCE SETTINGS ===
+        roc_period=12,                  # ROC period (12 = 1 hour on 5m)
+        divergence_threshold=0.001,     # Min divergence (ROC sum) for entry
+        divergence_bars=3,              # Divergence must be positive N bars
         
         # === KAMA FILTER (optional trend) ===
         use_kama_filter=True,
@@ -181,25 +185,16 @@ class GEMINIStrategy(bt.Strategy):
         # ATR on primary
         self.atr = bt.ind.ATR(self.primary_data, period=self.p.atr_length)
         
-        # EMAs for spread calculation
-        self.ema_primary = bt.ind.EMA(self.hl2, period=self.p.spread_ema_period)
-        ref_hl2 = (self.reference_data.high + self.reference_data.low) / 2.0
-        self.ema_reference = bt.ind.EMA(ref_hl2, period=self.p.spread_ema_period)
-        
-        # Hide from plot
-        self.ema_primary.plotinfo.plot = False
-        self.ema_reference.plotinfo.plot = False
-        
         # Entry/Exit plot lines
         if self.p.plot_entry_exit_lines:
             self.entry_exit_lines = EntryExitLines(self.primary_data)
         else:
             self.entry_exit_lines = None
         
-        # Spread indicator for subplot
+        # Divergence indicator for subplot
         self.spread_indicator = SpreadIndicator(
             self.primary_data,
-            threshold_value=self.p.spread_entry_threshold
+            threshold_value=self.p.divergence_threshold
         )
         
         # Orders
@@ -217,10 +212,10 @@ class GEMINIStrategy(bt.Strategy):
         # State machine
         self.state = "SCANNING"
         
-        # History for spread calculation
-        self.primary_ema_history = []
-        self.reference_ema_history = []
-        self.spread_history = []
+        # History for ROC calculation
+        self.primary_close_history = []
+        self.reference_close_history = []
+        self.divergence_history = []
         
         # ATR history for averaging
         self.atr_history = []
@@ -241,77 +236,71 @@ class GEMINIStrategy(bt.Strategy):
         self._init_trade_reporting()
 
     # =========================================================================
-    # SPREAD CALCULATION
+    # DIVERGENCE CALCULATION (ROC-based)
     # =========================================================================
     
-    def _calculate_spread(self) -> tuple:
+    def _calculate_divergence(self) -> tuple:
         """
-        Calculate normalized spread between primary and reference.
+        Calculate momentum divergence using ROC.
         
-        Returns: (spread_value, spread_ok, momentum_ok)
+        divergence = ROC_EURUSD + ROC_USDCHF
+        (Sum because negative USDCHF ROC = good for EUR)
+        
+        Returns: (divergence_value, threshold_ok, sustained_ok)
         """
         try:
-            # Get current EMA values
-            primary_val = float(self.ema_primary[0])
-            reference_val = float(self.ema_reference[0])
-            
-            # Invert reference if needed (USDCHF -> 1/USDCHF)
-            if self.p.invert_reference and reference_val != 0:
-                reference_val = 1.0 / reference_val
+            # Get current close prices
+            primary_close = float(self.primary_data.close[0])
+            reference_close = float(self.reference_data.close[0])
             
             # Store history
-            self.primary_ema_history.append(primary_val)
-            self.reference_ema_history.append(reference_val)
+            self.primary_close_history.append(primary_close)
+            self.reference_close_history.append(reference_close)
             
-            # Need enough data for z-score
-            if len(self.primary_ema_history) < self.p.spread_zscore_period:
+            # Need enough data for ROC
+            required_len = self.p.roc_period + 1
+            if len(self.primary_close_history) < required_len:
                 return 0.0, False, False
             
             # Keep only needed history
-            if len(self.primary_ema_history) > self.p.spread_zscore_period:
-                self.primary_ema_history = self.primary_ema_history[-self.p.spread_zscore_period:]
-                self.reference_ema_history = self.reference_ema_history[-self.p.spread_zscore_period:]
+            max_history = self.p.roc_period + self.p.divergence_bars + 5
+            if len(self.primary_close_history) > max_history:
+                self.primary_close_history = self.primary_close_history[-max_history:]
+                self.reference_close_history = self.reference_close_history[-max_history:]
             
-            # Calculate z-scores
-            z_primary = self._zscore(self.primary_ema_history)
-            z_reference = self._zscore(self.reference_ema_history)
+            # Calculate ROC using lib function (reusable across strategies)
+            roc_primary = calculate_roc_from_history(self.primary_close_history, self.p.roc_period)
+            roc_reference = calculate_roc_from_history(self.reference_close_history, self.p.roc_period)
             
-            # Spread = z(primary) - z(reference_inv)
-            spread = z_primary - z_reference
+            # Divergence = ROC_EURUSD + ROC_USDCHF
+            # (Sum because negative USDCHF = EUR strength)
+            divergence = roc_primary + roc_reference
             
-            # Store spread history
-            self.spread_history.append(spread)
-            if len(self.spread_history) > self.p.spread_momentum_bars + 1:
-                self.spread_history = self.spread_history[-(self.p.spread_momentum_bars + 1):]
+            # Store divergence history
+            self.divergence_history.append(divergence)
+            if len(self.divergence_history) > self.p.divergence_bars + 1:
+                self.divergence_history = self.divergence_history[-(self.p.divergence_bars + 1):]
             
             # Check threshold
-            spread_ok = spread >= self.p.spread_entry_threshold
+            threshold_ok = divergence >= self.p.divergence_threshold
             
-            # Check momentum (spread growing for N bars)
-            momentum_ok = self._check_spread_momentum()
+            # Check sustained (divergence positive for N bars)
+            sustained_ok = self._check_divergence_sustained()
             
-            return spread, spread_ok, momentum_ok
+            return divergence, threshold_ok, sustained_ok
             
         except Exception as e:
             return 0.0, False, False
     
-    def _zscore(self, values: list) -> float:
-        """Calculate z-score of last value in series."""
-        if len(values) < 2:
-            return 0.0
-        mean = sum(values) / len(values)
-        variance = sum((x - mean) ** 2 for x in values) / len(values)
-        std = math.sqrt(variance) if variance > 0 else 1.0
-        return (values[-1] - mean) / std if std > 0 else 0.0
-    
-    def _check_spread_momentum(self) -> bool:
-        """Check if spread has been growing for N bars."""
-        if len(self.spread_history) < self.p.spread_momentum_bars + 1:
+    def _check_divergence_sustained(self) -> bool:
+        """Check if divergence has been positive for N bars."""
+        if len(self.divergence_history) < self.p.divergence_bars:
             return False
         
-        # Check each bar is higher than previous
-        for i in range(1, len(self.spread_history)):
-            if self.spread_history[i] <= self.spread_history[i-1]:
+        # Check all recent bars are above threshold
+        recent = self.divergence_history[-self.p.divergence_bars:]
+        for val in recent:
+            if val < self.p.divergence_threshold:
                 return False
         return True
 
@@ -339,9 +328,7 @@ class GEMINIStrategy(bt.Strategy):
                 self.trade_report_file.write("KAMA Filter: ENABLED\n")
             else:
                 self.trade_report_file.write("KAMA Filter: DISABLED\n")
-            self.trade_report_file.write(f"Spread: EMA={self.p.spread_ema_period}, zscore_period={self.p.spread_zscore_period}, threshold={self.p.spread_entry_threshold}\n")
-            self.trade_report_file.write(f"Momentum: {self.p.spread_momentum_bars} bars\n")
-            self.trade_report_file.write(f"Reference: invert={self.p.invert_reference}\n")
+            self.trade_report_file.write(f"Divergence: roc_period={self.p.roc_period}, threshold={self.p.divergence_threshold}, bars={self.p.divergence_bars}\n")
             self.trade_report_file.write(f"ATR: length={self.p.atr_length}, avg_period={self.p.atr_avg_period}\n")
             self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
             self.trade_report_file.write(f"Pip Value: {self.p.pip_value}\n")
@@ -371,7 +358,7 @@ class GEMINIStrategy(bt.Strategy):
         except Exception as e:
             print(f"[GEMINI] Trade reporting init failed: {e}")
 
-    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, spread_value, momentum_bars):
+    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, divergence_value):
         """Record entry to trade report file."""
         if not self.trade_report_file:
             return
@@ -381,8 +368,7 @@ class GEMINIStrategy(bt.Strategy):
                 'entry_price': entry_price,
                 'size': size,
                 'atr': atr,
-                'spread': spread_value,
-                'momentum_bars': momentum_bars,
+                'divergence': divergence_value,
                 'sl_pips': sl_pips,
                 'stop_level': self.stop_level,
                 'take_level': self.take_level,
@@ -395,8 +381,7 @@ class GEMINIStrategy(bt.Strategy):
             self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
             self.trade_report_file.write(f"SL Pips: {sl_pips:.1f}\n")
             self.trade_report_file.write(f"ATR (avg): {atr:.6f}\n")
-            self.trade_report_file.write(f"Spread Z-Score: {spread_value:.4f}\n")
-            self.trade_report_file.write(f"Momentum Bars: {momentum_bars}\n")
+            self.trade_report_file.write(f"Divergence (ROC): {divergence_value:.6f}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
             self.trade_report_file.flush()
         except Exception as e:
@@ -473,16 +458,16 @@ class GEMINIStrategy(bt.Strategy):
         """
         Check all entry conditions.
         
-        Returns: (passed: bool, spread_value: float)
+        Returns: (passed: bool, divergence_value: float)
         """
-        # Calculate spread and check conditions
-        spread_value, spread_ok, momentum_ok = self._calculate_spread()
-        passed, _ = self._check_entry_conditions_internal(dt, spread_ok, momentum_ok)
-        return passed, spread_value
+        # Calculate divergence and check conditions
+        divergence_value, threshold_ok, sustained_ok = self._calculate_divergence()
+        passed, _ = self._check_entry_conditions_internal(dt, threshold_ok, sustained_ok)
+        return passed, divergence_value
 
-    def _check_entry_conditions_internal(self, dt: datetime, spread_ok: bool, momentum_ok: bool) -> tuple:
+    def _check_entry_conditions_internal(self, dt: datetime, threshold_ok: bool, sustained_ok: bool) -> tuple:
         """
-        Check entry conditions with pre-calculated spread values.
+        Check entry conditions with pre-calculated divergence values.
         
         Returns: (passed: bool, None)
         """
@@ -496,10 +481,10 @@ class GEMINIStrategy(bt.Strategy):
             if not check_day_filter(dt, self.p.allowed_days, True):
                 return False, None
         
-        if not spread_ok:
+        if not threshold_ok:
             return False, None
         
-        if not momentum_ok:
+        if not sustained_ok:
             return False, None
         
         # KAMA condition (trend filter)
@@ -512,7 +497,7 @@ class GEMINIStrategy(bt.Strategy):
     # ENTRY EXECUTION
     # =========================================================================
     
-    def _execute_entry(self, dt: datetime, spread_value: float):
+    def _execute_entry(self, dt: datetime, divergence_value: float):
         """Execute market entry."""
         
         entry_price = float(self.primary_data.close[0])
@@ -564,15 +549,14 @@ class GEMINIStrategy(bt.Strategy):
         
         # Record entry
         self._record_trade_entry(
-            dt, entry_price, bt_size, avg_atr, sl_pips,
-            spread_value, self.p.spread_momentum_bars
+            dt, entry_price, bt_size, avg_atr, sl_pips, divergence_value
         )
         
         # Update plot lines
         self._update_plot_lines(entry_price, self.stop_level, self.take_level)
         
         if self.p.print_signals:
-            print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | Spread={spread_value:.4f} | SL={self.stop_level:.5f} | TP={self.take_level:.5f}")
+            print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | Divergence={divergence_value:.6f} | SL={self.stop_level:.5f} | TP={self.take_level:.5f}")
 
     # =========================================================================
     # EXIT LOGIC
@@ -663,11 +647,11 @@ class GEMINIStrategy(bt.Strategy):
             if len(self.atr_history) > self.p.atr_avg_period * 2:
                 self.atr_history = self.atr_history[-self.p.atr_avg_period * 2:]
         
-        # Calculate spread every bar (for plotting)
-        spread_value, spread_ok, momentum_ok = self._calculate_spread()
+        # Calculate divergence every bar (for plotting)
+        divergence_value, threshold_ok, sustained_ok = self._calculate_divergence()
         
-        # Update spread indicator for subplot
-        self.spread_indicator.lines.spread[0] = spread_value
+        # Update divergence indicator for subplot
+        self.spread_indicator.lines.spread[0] = divergence_value
         
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())
@@ -695,10 +679,10 @@ class GEMINIStrategy(bt.Strategy):
                 )
         
         elif self.state == "SCANNING":
-            # Check entry conditions (spread already calculated)
-            passed, _ = self._check_entry_conditions_internal(dt, spread_ok, momentum_ok)
+            # Check entry conditions (divergence already calculated)
+            passed, _ = self._check_entry_conditions_internal(dt, threshold_ok, sustained_ok)
             if passed:
-                self._execute_entry(dt, spread_value)
+                self._execute_entry(dt, divergence_value)
 
     # =========================================================================
     # STOP - FINAL REPORT (same structure as HELIX)
