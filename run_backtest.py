@@ -19,6 +19,7 @@ from strategies.koi_strategy import KOIStrategy
 from strategies.sedna_strategy import SEDNAStrategy
 from strategies.gliese_strategy import GLIESEStrategy
 from strategies.helix_strategy import HELIXStrategy
+from strategies.gemini_strategy import GEMINIStrategy
 from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
@@ -32,6 +33,7 @@ STRATEGY_REGISTRY = {
     'SEDNA': SEDNAStrategy,
     'GLIESE': GLIESEStrategy,
     'HELIX': HELIXStrategy,
+    'GEMINI': GEMINIStrategy,
 }
 
 
@@ -111,6 +113,37 @@ def run_backtest(config_name):
         )
         data_htf.plotinfo.plot = False
         print(f'HTF data added: {htf_minutes}m (accessible via self.datas[1])')
+    
+    # Reference data support (for GEMINI and correlation-based strategies)
+    # Loads a second symbol as self.datas[1] for cross-pair analysis
+    reference_data_path = config.get('reference_data_path')
+    if reference_data_path:
+        ref_path = Path(reference_data_path)
+        if not ref_path.exists():
+            print(f'Reference data file not found: {ref_path}')
+            return None
+        
+        ref_name = config.get('reference_symbol', 'REFERENCE')
+        ref_kwargs = dict(
+            dataname=str(ref_path),
+            dtformat='%Y%m%d',
+            tmformat='%H:%M:%S',
+            datetime=0,
+            time=1,
+            open=2,
+            high=3,
+            low=4,
+            close=5,
+            volume=6,
+            openinterest=-1,
+            fromdate=config['from_date'],
+            todate=config['to_date'],
+            timeframe=bt.TimeFrame.Minutes,
+            compression=5,
+        )
+        ref_data = bt.feeds.GenericCSVData(**ref_kwargs)
+        cerebro.adddata(ref_data, name=ref_name)
+        print(f'Reference data added: {ref_name} (accessible via self.datas[1])')
     
     # Set broker
     cerebro.broker.setcash(config.get('starting_cash', 100000.0))

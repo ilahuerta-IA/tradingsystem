@@ -1340,11 +1340,11 @@ STRATEGIES_CONFIG = {
 
     # =========================================================================
     # HELIX STRATEGY CONFIGURATIONS (SE-based variant of SEDNA)
-    # Target: EURUSD, USDCHF (where SEDNA doesn't work well)
+    # Target: EURUSD (where SEDNA doesn't work well)
     # =========================================================================
-    
+    #ko
     'EURUSD_HELIX': {
-        'active': True,
+        'active': False,
         'strategy_name': 'HELIX',
         'asset_name': 'EURUSD',
         'data_path': 'data/EURUSD_5m_5Yea.csv',
@@ -1407,7 +1407,7 @@ STRATEGIES_CONFIG = {
             
             # SE Range filter (value-based)
             'htf_se_min': 0.0,
-            'htf_se_max': 1.0,
+            'htf_se_max': 0.20,
             
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,
@@ -1433,11 +1433,20 @@ STRATEGIES_CONFIG = {
         }
     },
 
-    'USDCHF_HELIX': {
+    # =========================================================================
+    # GEMINI STRATEGY CONFIGURATIONS (Correlation Divergence Momentum)
+    # Concept: EUR strength confirmed by EURUSD vs USDCHF divergence
+    # =========================================================================
+    
+    'EURUSD_GEMINI': {
         'active': True,
-        'strategy_name': 'HELIX',
-        'asset_name': 'USDCHF',
-        'data_path': 'data/USDCHF_5m_5Yea.csv',
+        'strategy_name': 'GEMINI',
+        'asset_name': 'EURUSD',
+        'data_path': 'data/EURUSD_5m_5Yea.csv',
+        
+        # Reference pair for correlation (USDCHF inverted)
+        'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
+        'reference_symbol': 'USDCHF',
         
         'from_date': datetime.datetime(2020, 1, 1),
         'to_date': datetime.datetime(2025, 12, 1),
@@ -1449,27 +1458,23 @@ STRATEGIES_CONFIG = {
         'save_log': True,
         
         'params': {
-            # KAMA settings
+            # === SPREAD DIVERGENCE SETTINGS ===
+            'spread_ema_period': 20,
+            'spread_zscore_period': 50,
+            'spread_entry_threshold': 1.5,  # Min z-score spread for entry (increased from 0.5)
+            'spread_momentum_bars': 5,  # Spread must grow N bars (increased from 3)
+            'invert_reference': True,  # Invert USDCHF to compare
+            
+            # === TREND FILTER ===
+            'use_kama_filter': True,
             'kama_period': 10,
             'kama_fast': 2,
             'kama_slow': 30,
-            'hl2_ema_period': 1,
             
-            # CCI settings
-            'use_cci_filter': False,
-            'cci_period': 20,
-            'cci_threshold': 100,
-            'cci_max_threshold': 999,
-            
-            # ATR
+            # === ATR for SL/TP ===
             'atr_length': 14,
             'atr_sl_multiplier': 3.0,
             'atr_tp_multiplier': 8.0,
-            
-            # Breakout Window
-            'use_breakout_window': True,
-            'breakout_window_candles': 5,
-            'breakout_level_offset_pips': 1.0,
             
             # === FILTERS ===
             'use_time_filter': False,
@@ -1487,24 +1492,75 @@ STRATEGIES_CONFIG = {
             'atr_max': 0.0006,
             'atr_avg_period': 20,
             
-            # === HTF DATA (generic - any strategy can use) ===
-            'htf_data_minutes': 60,  # 0 = disabled, 60 = 1h HTF
+            # Asset config
+            'pip_value': 0.0001,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
             
-            # === HTF FILTER (Spectral Entropy) ===
-            'use_htf_filter': True,
-            'htf_se_period': 30,  # SE period on HTF bars
+            # Risk
+            'risk_percent': 0.01,
             
-            # SE Range filter (value-based)
-            'htf_se_min': 0.0,
-            'htf_se_max': 1.0,
+            # Debug & Reporting
+            'print_signals': True,  # Enable to see signals during backtest
+            'export_reports': True,
+        }
+    },
+    
+    'USDCHF_GEMINI': {
+        'active': False,  # Start with EURUSD first
+        'strategy_name': 'GEMINI',
+        'asset_name': 'USDCHF',
+        'data_path': 'data/USDCHF_5m_5Yea.csv',
+        
+        # Reference pair (EURUSD - no inversion needed)
+        'reference_data_path': 'data/EURUSD_5m_5Yea.csv',
+        'reference_symbol': 'EURUSD',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # === SPREAD DIVERGENCE SETTINGS ===
+            'spread_ema_period': 20,
+            'spread_zscore_period': 50,
+            'spread_entry_threshold': 0.5,
+            'spread_momentum_bars': 3,
+            'invert_reference': False,  # EURUSD doesn't need inversion
             
-            # === PULLBACK DETECTION ===
-            'use_pullback_filter': True,
-            'pullback_min_bars': 1,
-            'pullback_max_bars': 4,
+            # === TREND FILTER ===
+            'use_kama_filter': True,
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
             
-            # === EXIT CONDITIONS ===
-            'use_kama_exit': False,
+            # === ATR for SL/TP ===
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # === FILTERS ===
+            'use_time_filter': False,
+            'allowed_hours': [],
+            
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 30,
+            
+            'use_atr_filter': False,
+            'atr_min': 0.0002,
+            'atr_max': 0.0006,
+            'atr_avg_period': 20,
             
             # Asset config
             'pip_value': 0.0001,
@@ -1517,10 +1573,11 @@ STRATEGIES_CONFIG = {
             'risk_percent': 0.01,
             
             # Debug & Reporting
-            'print_signals': False,
+            'print_signals': True,
             'export_reports': True,
         }
     },
+
 }
 
 # Broker settings for commission calculation

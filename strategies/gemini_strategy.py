@@ -1,0 +1,828 @@
+"""
+GEMINI Strategy - Correlation Divergence Momentum
+
+CONCEPT:
+EURUSD and USDCHF are inversely correlated (~-0.90) via USD.
+When EURUSD rises but USDCHF_inverted doesn't follow equally,
+EUR has INTRINSIC strength (not just USD weakness) -> LONG EURUSD.
+
+This is NOT mean reversion. It's MOMENTUM CONFIRMED BY DIVERGENCE.
+
+ENTRY SYSTEM (3 PHASES):
+1. SPREAD FILTER: Spread (z-score difference) > threshold
+2. MOMENTUM: Spread growing for N consecutive bars
+3. TREND: Price > KAMA (optional)
+
+EXIT SYSTEM:
+- Stop Loss: Entry - (ATR x SL multiplier)
+- Take Profit: Entry + (ATR x TP multiplier)
+
+TARGET PAIRS: 
+- EURUSD_GEMINI (primary=EURUSD, reference=USDCHF)
+- USDCHF_GEMINI (primary=USDCHF, reference=EURUSD)
+"""
+from __future__ import annotations
+import math
+from pathlib import Path
+from datetime import datetime
+from collections import defaultdict
+
+import backtrader as bt
+import numpy as np
+
+from lib.filters import (
+    check_time_filter,
+    check_day_filter,
+    check_atr_filter,
+    check_sl_pips_filter,
+)
+from lib.indicators import KAMA
+from lib.position_sizing import calculate_position_size
+
+
+class EntryExitLines(bt.Indicator):
+    """Indicator to plot entry/exit price levels as horizontal dashed lines."""
+    lines = ('entry', 'stop_loss', 'take_profit')
+    
+    plotinfo = dict(subplot=False, plotlinelabels=True)
+    plotlines = dict(
+        entry=dict(color='green', linestyle='--', linewidth=1.0),
+        stop_loss=dict(color='red', linestyle='--', linewidth=1.0),
+        take_profit=dict(color='blue', linestyle='--', linewidth=1.0),
+    )
+    
+    def __init__(self):
+        pass
+    
+    def next(self):
+        pass
+
+
+class GEMINIStrategy(bt.Strategy):
+    """
+    GEMINI Strategy - Correlation Divergence Momentum.
+    
+    Trades EURUSD (or USDCHF) based on divergence from correlated pair.
+    Long when spread expands positive = primary pair has intrinsic strength.
+    """
+    
+    params = dict(
+        # === SPREAD DIVERGENCE SETTINGS ===
+        spread_ema_period=20,           # EMA period for price smoothing
+        spread_zscore_period=50,        # Lookback for z-score normalization
+        spread_entry_threshold=1.0,     # Min spread z-score for entry
+        spread_momentum_bars=3,         # Spread must grow N consecutive bars
+        invert_reference=True,          # True for USDCHF reference
+        
+        # === KAMA FILTER (optional trend) ===
+        use_kama_filter=True,
+        kama_period=10,
+        kama_fast=2,
+        kama_slow=30,
+        
+        # HL2 EMA for KAMA comparison
+        hl2_ema_period=1,
+        
+        # === ATR for SL/TP ===
+        atr_length=14,
+        atr_sl_multiplier=3.0,
+        atr_tp_multiplier=8.0,
+        
+        # === FILTERS ===
+        # Time Filter
+        use_time_filter=False,
+        allowed_hours=[],
+        
+        # Day Filter (0=Monday, 6=Sunday)
+        use_day_filter=False,
+        allowed_days=[0, 1, 2, 3, 4],
+        
+        # SL Pips Filter
+        use_sl_pips_filter=False,
+        sl_pips_min=5.0,
+        sl_pips_max=50.0,
+        
+        # ATR Filter
+        use_atr_filter=False,
+        atr_min=0.0,
+        atr_max=1.0,
+        atr_avg_period=20,
+        
+        # === ASSET CONFIG ===
+        pip_value=0.0001,
+        is_jpy_pair=False,
+        jpy_rate=150.0,
+        lot_size=100000,
+        is_etf=False,
+        margin_pct=3.33,
+        
+        # Risk
+        risk_percent=0.01,
+        
+        # Debug & Reporting
+        print_signals=False,
+        export_reports=True,
+        
+        # Plot options
+        plot_entry_exit_lines=True,
+    )
+
+    def __init__(self):
+        # Primary data (EURUSD)
+        self.primary_data = self.datas[0]
+        
+        # Reference data (USDCHF)
+        if len(self.datas) > 1:
+            self.reference_data = self.datas[1]
+            print(f'[GEMINI] Reference data: {self.reference_data._name}')
+        else:
+            raise ValueError('[GEMINI] ERROR: Reference data required (datas[1])')
+        
+        # HL2 for primary
+        self.hl2 = (self.primary_data.high + self.primary_data.low) / 2.0
+        
+        # KAMA on primary HL2
+        self.kama = KAMA(
+            self.hl2,
+            period=self.p.kama_period,
+            fast=self.p.kama_fast,
+            slow=self.p.kama_slow
+        )
+        
+        # EMA on HL2 for KAMA comparison
+        self.hl2_ema = bt.ind.EMA(self.hl2, period=self.p.hl2_ema_period)
+        self.hl2_ema.plotinfo.subplot = False
+        self.hl2_ema.plotinfo.plotname = 'HL2 EMA'
+        
+        # ATR on primary
+        self.atr = bt.ind.ATR(self.primary_data, period=self.p.atr_length)
+        
+        # EMAs for spread calculation
+        self.ema_primary = bt.ind.EMA(self.hl2, period=self.p.spread_ema_period)
+        ref_hl2 = (self.reference_data.high + self.reference_data.low) / 2.0
+        self.ema_reference = bt.ind.EMA(ref_hl2, period=self.p.spread_ema_period)
+        
+        # Hide from plot
+        self.ema_primary.plotinfo.plot = False
+        self.ema_reference.plotinfo.plot = False
+        
+        # Entry/Exit plot lines
+        if self.p.plot_entry_exit_lines:
+            self.entry_exit_lines = EntryExitLines(self.primary_data)
+        else:
+            self.entry_exit_lines = None
+        
+        # Orders
+        self.order = None
+        self.stop_order = None
+        self.limit_order = None
+        
+        # Levels
+        self.stop_level = None
+        self.take_level = None
+        self.last_entry_price = None
+        self.last_entry_bar = None
+        self.last_exit_reason = None
+        
+        # State machine
+        self.state = "SCANNING"
+        
+        # History for spread calculation
+        self.primary_ema_history = []
+        self.reference_ema_history = []
+        self.spread_history = []
+        
+        # ATR history for averaging
+        self.atr_history = []
+        
+        # Stats
+        self.trades = 0
+        self.wins = 0
+        self.losses = 0
+        self.gross_profit = 0.0
+        self.gross_loss = 0.0
+        self._portfolio_values = []
+        self._trade_pnls = []
+        self._starting_cash = self.broker.get_cash()
+        
+        # Trade reporting
+        self.trade_reports = []
+        self.trade_report_file = None
+        self._init_trade_reporting()
+
+    # =========================================================================
+    # SPREAD CALCULATION
+    # =========================================================================
+    
+    def _calculate_spread(self) -> tuple:
+        """
+        Calculate normalized spread between primary and reference.
+        
+        Returns: (spread_value, spread_ok, momentum_ok)
+        """
+        try:
+            # Get current EMA values
+            primary_val = float(self.ema_primary[0])
+            reference_val = float(self.ema_reference[0])
+            
+            # Invert reference if needed (USDCHF -> 1/USDCHF)
+            if self.p.invert_reference and reference_val != 0:
+                reference_val = 1.0 / reference_val
+            
+            # Store history
+            self.primary_ema_history.append(primary_val)
+            self.reference_ema_history.append(reference_val)
+            
+            # Need enough data for z-score
+            if len(self.primary_ema_history) < self.p.spread_zscore_period:
+                return 0.0, False, False
+            
+            # Keep only needed history
+            if len(self.primary_ema_history) > self.p.spread_zscore_period:
+                self.primary_ema_history = self.primary_ema_history[-self.p.spread_zscore_period:]
+                self.reference_ema_history = self.reference_ema_history[-self.p.spread_zscore_period:]
+            
+            # Calculate z-scores
+            z_primary = self._zscore(self.primary_ema_history)
+            z_reference = self._zscore(self.reference_ema_history)
+            
+            # Spread = z(primary) - z(reference_inv)
+            spread = z_primary - z_reference
+            
+            # Store spread history
+            self.spread_history.append(spread)
+            if len(self.spread_history) > self.p.spread_momentum_bars + 1:
+                self.spread_history = self.spread_history[-(self.p.spread_momentum_bars + 1):]
+            
+            # Check threshold
+            spread_ok = spread >= self.p.spread_entry_threshold
+            
+            # Check momentum (spread growing for N bars)
+            momentum_ok = self._check_spread_momentum()
+            
+            return spread, spread_ok, momentum_ok
+            
+        except Exception as e:
+            return 0.0, False, False
+    
+    def _zscore(self, values: list) -> float:
+        """Calculate z-score of last value in series."""
+        if len(values) < 2:
+            return 0.0
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / len(values)
+        std = math.sqrt(variance) if variance > 0 else 1.0
+        return (values[-1] - mean) / std if std > 0 else 0.0
+    
+    def _check_spread_momentum(self) -> bool:
+        """Check if spread has been growing for N bars."""
+        if len(self.spread_history) < self.p.spread_momentum_bars + 1:
+            return False
+        
+        # Check each bar is higher than previous
+        for i in range(1, len(self.spread_history)):
+            if self.spread_history[i] <= self.spread_history[i-1]:
+                return False
+        return True
+
+    # =========================================================================
+    # TRADE REPORTING (same format as HELIX)
+    # =========================================================================
+    
+    def _init_trade_reporting(self):
+        """Initialize trade report file."""
+        if not self.p.export_reports:
+            return
+        try:
+            report_dir = Path("logs")
+            report_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_path = report_dir / f"GEMINI_trades_{timestamp}.txt"
+            self.trade_report_file = open(report_path, 'w', encoding='utf-8')
+            self.trade_report_file.write("=== GEMINI STRATEGY TRADE REPORT ===\n")
+            self.trade_report_file.write(f"Generated: {datetime.now()}\n")
+            self.trade_report_file.write(f"KAMA: period={self.p.kama_period}, fast={self.p.kama_fast}, slow={self.p.kama_slow}\n")
+            self.trade_report_file.write(f"Spread: EMA={self.p.spread_ema_period}, zscore={self.p.spread_zscore_period}, threshold={self.p.spread_entry_threshold}\n")
+            self.trade_report_file.write(f"Momentum: {self.p.spread_momentum_bars} bars\n")
+            self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
+            if self.p.use_sl_pips_filter:
+                self.trade_report_file.write(f"SL Filter: {self.p.sl_pips_min}-{self.p.sl_pips_max} pips\n")
+            if self.p.use_atr_filter:
+                self.trade_report_file.write(f"ATR Filter: {self.p.atr_min}-{self.p.atr_max} (avg {self.p.atr_avg_period})\n")
+            if self.p.use_time_filter:
+                self.trade_report_file.write(f"Time Filter: {list(self.p.allowed_hours)}\n")
+            self.trade_report_file.write("\n")
+            print(f"[GEMINI] Trade report: {report_path}")
+        except Exception as e:
+            print(f"[GEMINI] Trade reporting init failed: {e}")
+
+    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, spread_value, momentum_bars):
+        """Record entry to trade report file."""
+        if not self.trade_report_file:
+            return
+        try:
+            entry = {
+                'entry_time': dt,
+                'entry_price': entry_price,
+                'size': size,
+                'atr': atr,
+                'spread': spread_value,
+                'momentum_bars': momentum_bars,
+                'sl_pips': sl_pips,
+                'stop_level': self.stop_level,
+                'take_level': self.take_level,
+            }
+            self.trade_reports.append(entry)
+            self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
+            self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.trade_report_file.write(f"Entry Price: {entry_price:.5f}\n")
+            self.trade_report_file.write(f"Stop Loss: {self.stop_level:.5f}\n")
+            self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
+            self.trade_report_file.write(f"SL Pips: {sl_pips:.1f}\n")
+            self.trade_report_file.write(f"ATR (avg): {atr:.6f}\n")
+            self.trade_report_file.write(f"Spread Z-Score: {spread_value:.4f}\n")
+            self.trade_report_file.write(f"Momentum Bars: {momentum_bars}\n")
+            self.trade_report_file.write("-" * 50 + "\n\n")
+            self.trade_report_file.flush()
+        except Exception as e:
+            pass
+
+    def _record_trade_exit(self, dt, pnl, reason):
+        """Record exit to trade report file."""
+        if not self.trade_report_file or not self.trade_reports:
+            return
+        try:
+            self.trade_reports[-1]['pnl'] = pnl
+            self.trade_reports[-1]['exit_reason'] = reason
+            self.trade_reports[-1]['exit_time'] = dt
+            self.trade_report_file.write(f"EXIT #{len(self.trade_reports)}\n")
+            self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.trade_report_file.write(f"Exit Reason: {reason}\n")
+            self.trade_report_file.write(f"P&L: ${pnl:.2f}\n")
+            self.trade_report_file.write("=" * 80 + "\n\n")
+            self.trade_report_file.flush()
+        except:
+            pass
+
+    # =========================================================================
+    # PLOT LINES UPDATE
+    # =========================================================================
+    
+    def _update_plot_lines(self, entry_price=None, stop_level=None, take_level=None):
+        """Update entry/exit plot lines on chart."""
+        if not self.entry_exit_lines:
+            return
+        
+        nan = float('nan')
+        self.entry_exit_lines.lines.entry[0] = entry_price if entry_price else nan
+        self.entry_exit_lines.lines.stop_loss[0] = stop_level if stop_level else nan
+        self.entry_exit_lines.lines.take_profit[0] = take_level if take_level else nan
+
+    # =========================================================================
+    # DATETIME HELPER
+    # =========================================================================
+    
+    def _get_datetime(self, offset=0) -> datetime:
+        """Get correct datetime combining date and time."""
+        try:
+            dt_date = self.primary_data.datetime.date(offset)
+            dt_time = self.primary_data.datetime.time(offset)
+            return datetime.combine(dt_date, dt_time)
+        except Exception:
+            return self.primary_data.datetime.datetime(offset)
+
+    def _get_average_atr(self) -> float:
+        """Get average ATR over the specified period."""
+        if len(self.atr_history) < self.p.atr_avg_period:
+            return float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0
+        
+        recent_atr = self.atr_history[-self.p.atr_avg_period:]
+        return sum(recent_atr) / len(recent_atr)
+
+    # =========================================================================
+    # CONDITION CHECKS
+    # =========================================================================
+    
+    def _check_kama_condition(self) -> bool:
+        """Check if EMA(HL2) is above KAMA."""
+        if not self.p.use_kama_filter:
+            return True
+        try:
+            hl2_ema_value = float(self.hl2_ema[0])
+            kama_value = float(self.kama[0])
+            return hl2_ema_value > kama_value
+        except:
+            return False
+
+    def _check_entry_conditions(self, dt: datetime) -> tuple:
+        """
+        Check all entry conditions.
+        
+        Returns: (passed: bool, spread_value: float)
+        """
+        # Time filter
+        if self.p.use_time_filter:
+            if not check_time_filter(dt, self.p.allowed_hours, True):
+                return False, 0.0
+        
+        # Day filter
+        if self.p.use_day_filter:
+            if not check_day_filter(dt, self.p.allowed_days, True):
+                return False, 0.0
+        
+        # Calculate spread and check conditions
+        spread_value, spread_ok, momentum_ok = self._calculate_spread()
+        
+        if not spread_ok:
+            return False, spread_value
+        
+        if not momentum_ok:
+            return False, spread_value
+        
+        # KAMA condition (trend filter)
+        if not self._check_kama_condition():
+            return False, spread_value
+        
+        return True, spread_value
+
+    # =========================================================================
+    # ENTRY EXECUTION
+    # =========================================================================
+    
+    def _execute_entry(self, dt: datetime, spread_value: float):
+        """Execute market entry."""
+        
+        entry_price = float(self.primary_data.close[0])
+        avg_atr = self._get_average_atr()
+        
+        # ATR Filter
+        if self.p.use_atr_filter:
+            if not check_atr_filter(avg_atr, self.p.atr_min, self.p.atr_max, True):
+                return
+        
+        # Calculate SL/TP
+        self.stop_level = entry_price - (avg_atr * self.p.atr_sl_multiplier)
+        self.take_level = entry_price + (avg_atr * self.p.atr_tp_multiplier)
+        
+        # SL Pips Filter
+        sl_pips = abs(entry_price - self.stop_level) / self.p.pip_value
+        if self.p.use_sl_pips_filter:
+            if not check_sl_pips_filter(sl_pips, self.p.sl_pips_min, self.p.sl_pips_max, True):
+                return
+        
+        # Position sizing
+        if self.p.is_etf:
+            pair_type = 'ETF'
+        elif self.p.is_jpy_pair:
+            pair_type = 'JPY'
+        else:
+            pair_type = 'STANDARD'
+        
+        bt_size = calculate_position_size(
+            entry_price=entry_price,
+            stop_loss=self.stop_level,
+            equity=self.broker.get_value(),
+            risk_percent=self.p.risk_percent,
+            pair_type=pair_type,
+            lot_size=self.p.lot_size,
+            jpy_rate=self.p.jpy_rate,
+            pip_value=self.p.pip_value,
+            margin_pct=self.p.margin_pct,
+        )
+        
+        if bt_size <= 0:
+            return
+        
+        # Execute order
+        self.order = self.buy(size=bt_size, exectype=bt.Order.Market)
+        self.last_entry_price = entry_price
+        self.last_entry_bar = len(self.primary_data)
+        self.state = "IN_POSITION"
+        
+        # Record entry
+        self._record_trade_entry(
+            dt, entry_price, bt_size, avg_atr, sl_pips,
+            spread_value, self.p.spread_momentum_bars
+        )
+        
+        # Update plot lines
+        self._update_plot_lines(entry_price, self.stop_level, self.take_level)
+        
+        if self.p.print_signals:
+            print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | Spread={spread_value:.4f} | SL={self.stop_level:.5f} | TP={self.take_level:.5f}")
+
+    # =========================================================================
+    # EXIT LOGIC
+    # =========================================================================
+    
+    def _check_exit_conditions(self) -> str:
+        """Check exit conditions. Returns exit reason or empty string."""
+        low = float(self.primary_data.low[0])
+        high = float(self.primary_data.high[0])
+        
+        # Stop Loss hit
+        if low <= self.stop_level:
+            return 'SL'
+        
+        # Take Profit hit
+        if high >= self.take_level:
+            return 'TP'
+        
+        return ''
+    
+    def _execute_exit(self, dt: datetime, reason: str):
+        """Execute exit order. Stats updated in notify_trade."""
+        self.last_exit_reason = reason
+        self.order = self.close()
+        
+        # Update plot lines (clear)
+        self._update_plot_lines()
+        
+        # Reset state (stats updated in notify_trade)
+        self.state = "SCANNING"
+        self.stop_level = None
+        self.take_level = None
+        self.last_entry_price = None
+        self.last_entry_bar = None
+
+    # =========================================================================
+    # ORDER NOTIFICATION
+    # =========================================================================
+    
+    def notify_order(self, order):
+        """Handle order notifications."""
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        
+        if order.status in [order.Canceled, order.Margin, order.Rejected]:
+            if self.p.print_signals:
+                print(f'[GEMINI] Order failed: {order.status}')
+            self.state = "SCANNING"
+        
+        self.order = None
+
+    def notify_trade(self, trade):
+        """Handle trade close notifications - calculate real P&L from Backtrader."""
+        if not trade.isclosed:
+            return
+        
+        dt = self._get_datetime()
+        pnl = trade.pnl  # Real P&L from Backtrader
+        
+        self.trades += 1
+        self._trade_pnls.append(pnl)
+        
+        if pnl > 0:
+            self.wins += 1
+            self.gross_profit += pnl
+        else:
+            self.losses += 1
+            self.gross_loss += abs(pnl)
+        
+        reason = self.last_exit_reason or "UNKNOWN"
+        self._record_trade_exit(dt, pnl, reason)
+        
+        if self.p.print_signals:
+            print(f"[GEMINI] {dt} EXIT ({reason}) | P&L: ${pnl:.2f}")
+        
+        self.last_exit_reason = None
+
+    # =========================================================================
+    # MAIN LOOP
+    # =========================================================================
+    
+    def next(self):
+        """Main strategy loop."""
+        # Update ATR history
+        atr_val = float(self.atr[0])
+        if not math.isnan(atr_val):
+            self.atr_history.append(atr_val)
+            if len(self.atr_history) > self.p.atr_avg_period * 2:
+                self.atr_history = self.atr_history[-self.p.atr_avg_period * 2:]
+        
+        # Track portfolio value
+        self._portfolio_values.append(self.broker.get_value())
+        
+        # Skip if order pending
+        if self.order:
+            return
+        
+        # Get current datetime
+        dt = self._get_datetime()
+        
+        # State machine
+        if self.state == "IN_POSITION":
+            # Check exit conditions
+            exit_reason = self._check_exit_conditions()
+            if exit_reason:
+                self._execute_exit(dt, exit_reason)
+                
+            # Update plot lines while in position
+            else:
+                self._update_plot_lines(
+                    self.last_entry_price, 
+                    self.stop_level, 
+                    self.take_level
+                )
+        
+        elif self.state == "SCANNING":
+            # Check entry conditions
+            passed, spread_value = self._check_entry_conditions(dt)
+            if passed:
+                self._execute_entry(dt, spread_value)
+
+    # =========================================================================
+    # STOP - FINAL REPORT (same structure as HELIX)
+    # =========================================================================
+    
+    def stop(self):
+        """Generate final report."""
+        total_trades = self.trades
+        win_rate = (self.wins / total_trades * 100) if total_trades > 0 else 0
+        profit_factor = (self.gross_profit / self.gross_loss) if self.gross_loss > 0 else float('inf')
+        total_pnl = self.gross_profit - self.gross_loss
+        final_value = self.broker.get_value()
+        
+        # Calculate advanced metrics
+        sharpe_ratio = 0.0
+        sortino_ratio = 0.0
+        if len(self._trade_pnls) > 1:
+            pnl_array = np.array(self._trade_pnls)
+            mean_pnl = np.mean(pnl_array)
+            std_pnl = np.std(pnl_array)
+            
+            if std_pnl > 0:
+                sharpe_ratio = (mean_pnl / std_pnl) * np.sqrt(len(pnl_array))
+            
+            negative_pnls = pnl_array[pnl_array < 0]
+            if len(negative_pnls) > 0:
+                downside_std = np.std(negative_pnls)
+                if downside_std > 0:
+                    sortino_ratio = (mean_pnl / downside_std) * np.sqrt(len(pnl_array))
+        
+        # Max Drawdown
+        max_drawdown_pct = 0.0
+        if len(self._portfolio_values) > 0:
+            peak = self._portfolio_values[0]
+            for val in self._portfolio_values:
+                if val > peak:
+                    peak = val
+                dd = (peak - val) / peak * 100
+                if dd > max_drawdown_pct:
+                    max_drawdown_pct = dd
+        
+        # CAGR
+        cagr = 0.0
+        if len(self._portfolio_values) > 252:  # ~1 year of trading days
+            years = len(self._portfolio_values) / 252
+            if self._starting_cash > 0 and final_value > 0:
+                cagr = ((final_value / self._starting_cash) ** (1 / years) - 1) * 100
+        
+        # Calmar Ratio
+        calmar_ratio = cagr / max_drawdown_pct if max_drawdown_pct > 0 else 0
+        
+        # Monte Carlo simulation
+        monte_carlo_dd_95 = 0.0
+        monte_carlo_dd_99 = 0.0
+        if len(self._trade_pnls) >= 30:
+            monte_carlo_dds = []
+            for _ in range(10000):
+                shuffled_pnls = np.random.choice(self._trade_pnls, size=len(self._trade_pnls), replace=True)
+                cumsum = np.cumsum(shuffled_pnls)
+                running_max = np.maximum.accumulate(cumsum + self._starting_cash)
+                drawdowns = (running_max - (cumsum + self._starting_cash)) / running_max * 100
+                monte_carlo_dds.append(np.max(drawdowns))
+            
+            monte_carlo_dd_95 = np.percentile(monte_carlo_dds, 95)
+            monte_carlo_dd_99 = np.percentile(monte_carlo_dds, 99)
+        
+        # Yearly Statistics
+        yearly_stats = defaultdict(lambda: {
+            'trades': 0, 'wins': 0, 'losses': 0,
+            'gross_profit': 0.0, 'gross_loss': 0.0, 'pnl': 0.0,
+            'pnls': []
+        })
+        
+        for trade in self.trade_reports:
+            if 'exit_time' in trade and 'pnl' in trade:
+                year = trade['exit_time'].year
+                pnl = trade['pnl']
+                yearly_stats[year]['trades'] += 1
+                yearly_stats[year]['pnl'] += pnl
+                yearly_stats[year]['pnls'].append(pnl)
+                if pnl > 0:
+                    yearly_stats[year]['wins'] += 1
+                    yearly_stats[year]['gross_profit'] += pnl
+                else:
+                    yearly_stats[year]['losses'] += 1
+                    yearly_stats[year]['gross_loss'] += abs(pnl)
+        
+        # Calculate yearly Sharpe
+        for year in yearly_stats:
+            pnls = yearly_stats[year]['pnls']
+            if len(pnls) > 1:
+                pnl_array = np.array(pnls)
+                mean_pnl = np.mean(pnl_array)
+                std_pnl = np.std(pnl_array)
+                if std_pnl > 0:
+                    yearly_stats[year]['sharpe'] = (mean_pnl / std_pnl) * np.sqrt(len(pnls))
+                else:
+                    yearly_stats[year]['sharpe'] = 0.0
+                
+                neg_pnls = pnl_array[pnl_array < 0]
+                if len(neg_pnls) > 0:
+                    downside_std = np.std(neg_pnls)
+                    if downside_std > 0:
+                        yearly_stats[year]['sortino'] = (mean_pnl / downside_std) * np.sqrt(len(pnls))
+                    else:
+                        yearly_stats[year]['sortino'] = 0.0
+                else:
+                    yearly_stats[year]['sortino'] = float('inf') if mean_pnl > 0 else 0.0
+            else:
+                yearly_stats[year]['sharpe'] = 0.0
+                yearly_stats[year]['sortino'] = 0.0
+        
+        # =================================================================
+        # PRINT SUMMARY
+        # =================================================================
+        print('\n' + '=' * 70)
+        print('=== GEMINI STRATEGY SUMMARY ===')
+        print('=' * 70)
+        
+        print(f'Total Trades: {total_trades}')
+        print(f'Wins: {self.wins} | Losses: {self.losses}')
+        print(f'Win Rate: {win_rate:.1f}%')
+        print(f'Profit Factor: {profit_factor:.2f}')
+        print(f'Gross Profit: ${self.gross_profit:,.2f}')
+        print(f'Gross Loss: ${self.gross_loss:,.2f}')
+        print(f'Net P&L: ${total_pnl:,.2f}')
+        print(f'Final Value: ${final_value:,.2f}')
+        
+        # Advanced Metrics
+        print(f"\n{'='*70}")
+        print('ADVANCED RISK METRICS')
+        print(f"{'='*70}")
+        
+        sharpe_status = "Poor" if sharpe_ratio < 0.5 else "Marginal" if sharpe_ratio < 1.0 else "Good" if sharpe_ratio < 2.0 else "Excellent"
+        print(f'Sharpe Ratio:    {sharpe_ratio:>8.2f}  [{sharpe_status}]')
+        
+        sortino_status = "Poor" if sortino_ratio < 0.5 else "Marginal" if sortino_ratio < 1.0 else "Good" if sortino_ratio < 2.0 else "Excellent"
+        print(f'Sortino Ratio:   {sortino_ratio:>8.2f}  [{sortino_status}]')
+        
+        cagr_status = "Below Market" if cagr < 8 else "Market-level" if cagr < 12 else "Good" if cagr < 20 else "Exceptional"
+        print(f'CAGR:            {cagr:>7.2f}%  [{cagr_status}]')
+        
+        dd_status = "Excellent" if max_drawdown_pct < 10 else "Acceptable" if max_drawdown_pct < 20 else "High" if max_drawdown_pct < 30 else "Dangerous"
+        print(f'Max Drawdown:    {max_drawdown_pct:>7.2f}%  [{dd_status}]')
+        
+        calmar_status = "Poor" if calmar_ratio < 0.5 else "Acceptable" if calmar_ratio < 1.0 else "Good" if calmar_ratio < 2.0 else "Excellent"
+        print(f'Calmar Ratio:    {calmar_ratio:>8.2f}  [{calmar_status}]')
+        
+        if monte_carlo_dd_95 > 0:
+            mc_ratio = monte_carlo_dd_95 / max_drawdown_pct if max_drawdown_pct > 0 else 0
+            mc_status = "Good" if mc_ratio < 1.5 else "Caution" if mc_ratio < 2.0 else "Warning"
+            print(f'\nMonte Carlo Analysis (10,000 simulations):')
+            print(f'  95th Percentile DD: {monte_carlo_dd_95:>6.2f}%  [{mc_status}]')
+            print(f'  99th Percentile DD: {monte_carlo_dd_99:>6.2f}%')
+            print(f'  Historical vs MC95: {mc_ratio:.2f}x')
+        
+        print(f"{'='*70}")
+        
+        # Yearly Statistics
+        if yearly_stats:
+            print(f"\n{'='*70}")
+            print('YEARLY STATISTICS')
+            print(f"{'='*70}")
+            print(f"{'Year':<6} {'Trades':>7} {'WR%':>7} {'PF':>7} {'PnL':>12} {'Sharpe':>8} {'Sortino':>8}")
+            print(f"{'-'*70}")
+            
+            for year in sorted(yearly_stats.keys()):
+                stats = yearly_stats[year]
+                wr = (stats['wins'] / stats['trades'] * 100) if stats['trades'] > 0 else 0
+                year_pf = (stats['gross_profit'] / stats['gross_loss']) if stats['gross_loss'] > 0 else float('inf')
+                year_sharpe = stats.get('sharpe', 0.0)
+                year_sortino = stats.get('sortino', 0.0)
+                
+                pf_str = f"{year_pf:>7.2f}" if year_pf != float('inf') else "    inf"
+                sortino_str = f"{year_sortino:>7.2f}" if year_sortino != float('inf') else "    inf"
+                
+                print(f"{year:<6} {stats['trades']:>7} {wr:>6.1f}% {pf_str} ${stats['pnl']:>10,.0f} {year_sharpe:>8.2f} {sortino_str}")
+            
+            print(f"{'='*70}")
+        
+        # Close trade report file
+        if self.trade_report_file:
+            try:
+                self.trade_report_file.write("\n=== SUMMARY ===\n")
+                self.trade_report_file.write(f"Total Trades: {total_trades}\n")
+                self.trade_report_file.write(f"Wins: {self.wins} | Losses: {self.losses}\n")
+                self.trade_report_file.write(f"Win Rate: {win_rate:.1f}%\n")
+                self.trade_report_file.write(f"Profit Factor: {profit_factor:.2f}\n")
+                self.trade_report_file.write(f"Sharpe Ratio: {sharpe_ratio:.2f}\n")
+                self.trade_report_file.write(f"Sortino Ratio: {sortino_ratio:.2f}\n")
+                self.trade_report_file.write(f"Max Drawdown: {max_drawdown_pct:.2f}%\n")
+                self.trade_report_file.write(f"CAGR: {cagr:.2f}%\n")
+                self.trade_report_file.write(f"Net P&L: ${total_pnl:,.2f}\n")
+                self.trade_report_file.close()
+            except:
+                pass
