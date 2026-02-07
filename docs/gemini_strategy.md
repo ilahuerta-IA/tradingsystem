@@ -88,17 +88,42 @@ harmony = ROC_primary × (-ROC_reference) × scale
 
 ---
 
-## Entry System
+## Entry System (v2 - KAMA Cross + Angle Confirmation)
+
+### Two-Phase Entry Architecture
+
+```
+Phase 1 (TRIGGER):   HL2_EMA crosses above KAMA
+                     → Opens N-bar confirmation window
+
+Phase 2 (CONFIRM):   Within the window:
+                     - roc_angle >= entry_roc_angle_min
+                     - harmony_angle >= entry_harmony_angle_min
+                     → ENTRY (with additional filters)
+```
 
 ### Entry Conditions (ALL must be true)
 
-| Condition | Description |
-|-----------|-------------|
-| Harmony > threshold | Harmony score above minimum |
-| ROC_primary > 0 | Confirms LONG direction makes sense |
-| Harmony sustained | Positive for N consecutive bars |
-| KAMA filter | Price > KAMA (optional trend confirmation) |
-| Filters pass | Time, day, ATR, SL pips filters if enabled |
+| Phase | Condition | Description |
+|-------|-----------|-------------|
+| 1 | KAMA Cross | HL2_EMA[0] > KAMA[0] AND HL2_EMA[-1] <= KAMA[-1] |
+| 2 | Window Active | Within `cross_window_bars` after cross |
+| 2 | ROC Angle | roc_angle >= `entry_roc_angle_min` (degrees) |
+| 2 | Harmony Angle | harmony_angle >= `entry_harmony_angle_min` (degrees) |
+| 2 | Filters | Time, day, ATR, SL pips filters if enabled |
+
+### Angle Calculation (on plot-scaled values)
+
+```python
+# Calculated on PLOT-SCALED values for visual consistency
+roc_plot = roc_primary * plot_roc_multiplier
+roc_angle = atan((roc_plot[0] - roc_plot[-1]) * roc_angle_scale)
+
+harmony_plot = harmony * plot_harmony_multiplier
+harmony_angle = atan((harmony_plot[0] - harmony_plot[-1]) * harmony_angle_scale)
+```
+
+**Key insight:** What you SEE in the Angles subplot = what the system evaluates for entry.
 
 ### Exit Conditions
 
@@ -119,10 +144,19 @@ class ROCDualIndicator(bt.Indicator):
     Dual ROC indicator with Harmony Score.
     
     Lines:
-    - roc_primary: ROC of primary pair (blue)
-    - roc_reference: ROC of reference pair (red)
+    - roc_primary: ROC of EURUSD (blue)
+    - roc_reference: ROC of USDCHF (red)
     - harmony: Scaled harmony score (purple)
     - zero: Zero reference line
+    """
+
+class AngleIndicator(bt.Indicator):
+    """
+    Slope angles (calculated on plot-scaled values).
+    
+    Lines:
+    - roc_angle: ROC slope angle in degrees (blue)
+    - harmony_angle: Harmony slope angle in degrees (purple)
     """
 ```
 
@@ -140,15 +174,32 @@ Standard Kaufman Adaptive Moving Average for trend filter.
 
 ## Configuration Parameters
 
-### Harmony Score Settings
+### ROC & Harmony Settings
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `roc_period_primary` | 12 | ROC period for EURUSD (12 bars = 1h on 5m) |
-| `roc_period_reference` | 12 | ROC period for USDCHF |
-| `harmony_threshold` | 0.0 | Min harmony for entry (0 = any positive) |
-| `harmony_scale` | 10000 | Scale factor for visualization |
-| `harmony_bars` | 3 | Harmony must be positive N bars |
+| `roc_period_primary` | 5 | ROC period for EURUSD |
+| `roc_period_reference` | 5 | ROC period for USDCHF |
+| `harmony_scale` | 10000 | Scale factor for harmony calculation |
+
+### Entry System Settings (KAMA Cross + Angles)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `cross_window_bars` | 5 | Bars after KAMA cross to confirm entry |
+| `entry_roc_angle_min` | 20.0 | Min ROC angle to enter (degrees) |
+| `entry_harmony_angle_min` | 20.0 | Min Harmony angle to enter (degrees) |
+| `roc_angle_scale` | 1.0 | Scale for ROC angle atan() |
+| `harmony_angle_scale` | 1.0 | Scale for Harmony angle atan() |
+
+### Plot Settings (SYNCED with Entry Calculation)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `plot_roc_multiplier` | 500 | Scale ROC for plot AND angle calculation |
+| `plot_harmony_multiplier` | 15.0 | Scale Harmony for plot AND angle calculation |
+
+**IMPORTANT:** `plot_*_multiplier` affects BOTH visualization AND entry calculation. Visual = Logic.
 
 ### ATR Settings
 
@@ -162,7 +213,6 @@ Standard Kaufman Adaptive Moving Average for trend filter.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `use_kama_filter` | True | Require price > KAMA |
 | `use_time_filter` | False | Hour-based filter |
 | `use_day_filter` | False | Day-of-week filter |
 | `use_sl_pips_filter` | False | SL range filter |
@@ -219,10 +269,20 @@ Harmony Score: X.XXXX
 - **Improvement:** Measures momentum, not position
 - **Result:** PF 1.19 with threshold optimization
 
-### Phase 3: Harmony Score (CURRENT)
+### Phase 3: Harmony Score
 - **Approach:** ROC_primary × (-ROC_reference) × scale
 - **Insight:** Product captures symmetric divergence
-- **Status:** Testing and optimization in progress
+- **Result:** PF 0.86 - base funcional but noisy
+
+### Phase 4: Slope Filter
+- **Approach:** Add angle filters on ROC and Harmony slopes
+- **Problem:** Too restrictive as additional filter
+- **Result:** 0 trades with strict thresholds
+
+### Phase 5: KAMA Cross + Angle Confirmation (CURRENT)
+- **Approach:** KAMA cross as trigger, angles as confirmation within window
+- **Insight:** Visual pattern - KAMA cross + rising angles = quality setup
+- **Status:** Visual tuning in progress
 
 ---
 
@@ -269,3 +329,7 @@ Parameters to tune:
 | 2026-02-06 | Pivoted to ROC Sum approach |
 | 2026-02-06 | Evolved to Harmony Score formula |
 | 2026-02-06 | Added harmony visualization (purple line) |
+| 2026-02-07 | Added Slope Filter (angle-based) |
+| 2026-02-07 | Refactored to KAMA Cross + Angle Confirmation system |
+| 2026-02-07 | Added AngleIndicator subplot (roc_angle, harmony_angle) |
+| 2026-02-07 | Synced plot multipliers with entry calculation |
