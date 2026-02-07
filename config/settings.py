@@ -1459,16 +1459,16 @@ STRATEGIES_CONFIG = {
         
         'params': {
             # === ROC SETTINGS ===
-            'roc_period_primary': 12,       # ROC period for EURUSD (12 bars = 1h on 5m)
-            'roc_period_reference': 12,     # ROC period for USDCHF
+            'roc_period_primary': 5,       # ROC period for EURUSD (12 bars = 1h on 5m)
+            'roc_period_reference': 5,     # ROC period for USDCHF
             'harmony_scale': 10000,         # Scale factor for harmony calculation
             
             # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
             # Step 1: TRIGGER - HL2_EMA crosses above KAMA
             # Step 2: CONFIRMATION - Within N bars, check angles
             'cross_window_bars': 5,         # Window after cross to look for entry (N bars)
-            'entry_roc_angle_min': 10.0,    # Min ROC angle during window (degrees)
-            'entry_harmony_angle_min': 10.0,  # Min Harmony angle during window (degrees)
+            'entry_roc_angle_min': 20.0,    # Min ROC angle during window (degrees)
+            'entry_harmony_angle_min': 20.0,  # Min Harmony angle during window (degrees)
             'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
             'harmony_angle_scale': 1.0,     # Scale for Harmony angle calculation
             
@@ -1509,12 +1509,12 @@ STRATEGIES_CONFIG = {
             'risk_percent': 0.01,
             
             # Debug & Reporting
-            'print_signals': True,  # Enable to see KAMA cross and entries
+            'print_signals': False,  # Enable to see KAMA cross and entries
             'export_reports': True,
             
             # Plot options
-            'plot_roc_multiplier': 10000,    # Scale ROC for visibility
-            'plot_harmony_multiplier': 1.0,  # Scale for harmony
+            'plot_roc_multiplier': 500,    # Scale ROC for visibility
+            'plot_harmony_multiplier': 15.0,  # Scale for harmony
         }
     },
     

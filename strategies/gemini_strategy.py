@@ -407,12 +407,11 @@ class GEMINIStrategy(bt.Strategy):
             # Configuration header
             self.trade_report_file.write("=== CONFIGURATION ===\n")
             self.trade_report_file.write(f"KAMA: period={self.p.kama_period}, fast={self.p.kama_fast}, slow={self.p.kama_slow}\n")
-            if self.p.use_kama_filter:
-                self.trade_report_file.write("KAMA Filter: ENABLED\n")
-            else:
-                self.trade_report_file.write("KAMA Filter: DISABLED\n")
+            self.trade_report_file.write(f"Entry System: KAMA Cross + Angle Confirmation\n")
+            self.trade_report_file.write(f"Cross Window: {self.p.cross_window_bars} bars\n")
             self.trade_report_file.write(f"ROC: primary_period={self.p.roc_period_primary}, reference_period={self.p.roc_period_reference}\n")
-            self.trade_report_file.write(f"Harmony: threshold={self.p.harmony_threshold}, scale={self.p.harmony_scale}, bars={self.p.harmony_bars}\n")
+            self.trade_report_file.write(f"Harmony Scale: {self.p.harmony_scale}\n")
+            self.trade_report_file.write(f"Entry Angles: ROC >= {self.p.entry_roc_angle_min}°, Harmony >= {self.p.entry_harmony_angle_min}°\n")
             self.trade_report_file.write(f"ATR: length={self.p.atr_length}, avg_period={self.p.atr_avg_period}\n")
             self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
             self.trade_report_file.write(f"Pip Value: {self.p.pip_value}\n")
@@ -532,9 +531,7 @@ class GEMINIStrategy(bt.Strategy):
     # =========================================================================
     
     def _check_kama_condition(self) -> bool:
-        """Check if EMA(HL2) is above KAMA."""
-        if not self.p.use_kama_filter:
-            return True
+        """Check if EMA(HL2) is above KAMA. Always checks (KAMA cross is the trigger)."""
         try:
             hl2_ema_value = float(self.hl2_ema[0])
             kama_value = float(self.kama[0])
