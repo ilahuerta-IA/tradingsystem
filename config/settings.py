@@ -1458,23 +1458,21 @@ STRATEGIES_CONFIG = {
         'save_log': True,
         
         'params': {
-            # === HARMONY SCORE SETTINGS ===
-            'roc_period_primary': 11,       # ROC period for EURUSD (12 bars = 1h on 5m)
-            'roc_period_reference': 11,     # ROC period for USDCHF (can be different)
-            'harmony_threshold': 0.0,       # Min harmony score for entry (0 = any positive)
-            'harmony_scale': 500,         # Scale factor for visualization
-            'harmony_bars': 5,              # Harmony must be positive N consecutive bars
+            # === ROC SETTINGS ===
+            'roc_period_primary': 12,       # ROC period for EURUSD (12 bars = 1h on 5m)
+            'roc_period_reference': 12,     # ROC period for USDCHF
+            'harmony_scale': 10000,         # Scale factor for harmony calculation
             
-            # === SLOPE FILTER (angle of rising ROC and Harmony) ===
-            'use_slope_filter': True,       # Enable slope/angle filter
-            'roc_min_value': 0.0,           # Min ROC_primary value (filters CHF-only moves)
-            'roc_angle_min': 0.0,           # Min angle for ROC slope (degrees)
-            'roc_angle_scale': 10000.0,     # Scale for atan calculation
-            'harmony_angle_min': 0.0,       # Min angle for Harmony slope (degrees)
-            'harmony_angle_scale': 1.0,     # Scale for atan (harmony already scaled)
+            # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
+            # Step 1: TRIGGER - HL2_EMA crosses above KAMA
+            # Step 2: CONFIRMATION - Within N bars, check angles
+            'cross_window_bars': 5,         # Window after cross to look for entry (N bars)
+            'entry_roc_angle_min': 10.0,    # Min ROC angle during window (degrees)
+            'entry_harmony_angle_min': 10.0,  # Min Harmony angle during window (degrees)
+            'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
+            'harmony_angle_scale': 1.0,     # Scale for Harmony angle calculation
             
-            # === TREND FILTER ===
-            'use_kama_filter': True,
+            # === KAMA SETTINGS ===
             'kama_period': 10,
             'kama_fast': 2,
             'kama_slow': 30,
@@ -1484,7 +1482,7 @@ STRATEGIES_CONFIG = {
             'atr_sl_multiplier': 3.0,
             'atr_tp_multiplier': 6.0,
             
-            # === FILTERS ===
+            # === FILTERS (applied after angle confirmation) ===
             'use_time_filter': False,
             'allowed_hours': [],
             
@@ -1511,12 +1509,12 @@ STRATEGIES_CONFIG = {
             'risk_percent': 0.01,
             
             # Debug & Reporting
-            'print_signals': False,  # Enable to see signals during backtest
+            'print_signals': True,  # Enable to see KAMA cross and entries
             'export_reports': True,
             
             # Plot options
-            'plot_roc_multiplier': 1000,     # Scale ROC for visibility
-            'plot_harmony_multiplier': 800.0,   # Additional scale for harmony
+            'plot_roc_multiplier': 10000,    # Scale ROC for visibility
+            'plot_harmony_multiplier': 1.0,  # Scale for harmony
         }
     },
     

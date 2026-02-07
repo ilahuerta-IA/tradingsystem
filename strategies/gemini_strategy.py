@@ -90,6 +90,29 @@ class ROCDualIndicator(bt.Indicator):
         self.lines.zero[0] = 0.0
 
 
+class AngleIndicator(bt.Indicator):
+    """Indicator to plot slope angles of ROC and Harmony."""
+    lines = ('roc_angle', 'harmony_angle', 'zero')
+    
+    plotinfo = dict(
+        subplot=True,
+        plotname='Slope Angles (degrees)',
+        plotlinelabels=True,
+        plotheight=1.5,
+    )
+    plotlines = dict(
+        roc_angle=dict(color='blue', linewidth=1.2, _name='ROC Angle'),
+        harmony_angle=dict(color='purple', linewidth=1.2, _name='Harmony Angle'),
+        zero=dict(color='gray', linestyle='--', linewidth=0.8),
+    )
+    
+    def __init__(self):
+        pass
+    
+    def next(self):
+        self.lines.zero[0] = 0.0
+
+
 class GEMINIStrategy(bt.Strategy):
     """
     GEMINI Strategy - Correlation Divergence Momentum.
@@ -104,20 +127,19 @@ class GEMINIStrategy(bt.Strategy):
         roc_period_reference=12,        # ROC period for reference (can be different)
         
         # === HARMONY SCORE ===
-        harmony_threshold=0.0,          # Min harmony product for entry (scaled)
         harmony_scale=10000,            # Multiplier for visualization (raw values ~0.000001)
-        harmony_bars=3,                 # Harmony must be positive N bars
         
-        # === SLOPE FILTER (angle of rising ROC and Harmony) ===
-        use_slope_filter=True,          # Enable slope/angle filter
-        roc_min_value=0.0,              # Min ROC_primary value (filters CHF-only moves)
-        roc_angle_min=0.0,              # Min angle for ROC slope (degrees)
-        roc_angle_scale=10000.0,        # Scale for atan calculation
-        harmony_angle_min=0.0,          # Min angle for Harmony slope (degrees)
-        harmony_angle_scale=1.0,        # Scale for atan (harmony already scaled)
+        # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
+        # Step 1: TRIGGER - HL2_EMA crosses above KAMA
+        # Step 2: CONFIRMATION - Within N bars, check angles
+        cross_window_bars=5,            # Window after cross to look for entry (N bars)
+        entry_roc_angle_min=10.0,       # Min ROC angle during window (degrees)
+        entry_harmony_angle_min=10.0,   # Min Harmony angle during window (degrees)
+        # Angle scales (for plot-scaled values)
+        roc_angle_scale=1.0,            # Scale for ROC angle calculation
+        harmony_angle_scale=1.0,        # Scale for Harmony angle calculation
         
-        # === KAMA FILTER (optional trend) ===
-        use_kama_filter=True,
+        # === KAMA SETTINGS ===
         kama_period=10,
         kama_fast=2,
         kama_slow=30,
@@ -215,6 +237,9 @@ class GEMINIStrategy(bt.Strategy):
         # ROC indicator for subplot (shows both ROC lines)
         self.roc_indicator = ROCDualIndicator(self.primary_data)
         
+        # Angle indicator for subplot (shows slope angles)
+        self.angle_indicator = AngleIndicator(self.primary_data)
+        
         # Orders
         self.order = None
         self.stop_order = None
@@ -229,6 +254,11 @@ class GEMINIStrategy(bt.Strategy):
         
         # State machine
         self.state = "SCANNING"
+        
+        # Cross detection state
+        self.cross_detected_bar = None      # Bar number when cross detected
+        self.in_cross_window = False        # Currently in entry window
+        self.prev_hl2_above_kama = False    # Previous bar HL2 > KAMA state
         
         # History for ROC calculation
         self.primary_close_history = []
@@ -289,7 +319,7 @@ class GEMINIStrategy(bt.Strategy):
         High harmony = both ROCs diverging from zero proportionally
         (primary rising, reference falling = harmonic divergence)
         
-        Returns: (harmony_scaled, roc_primary, roc_reference, threshold_ok, sustained_ok)
+        Returns: (harmony_scaled, roc_primary, roc_reference, roc_angle, harmony_angle)
         """
         try:
             # Get current close prices
@@ -304,10 +334,10 @@ class GEMINIStrategy(bt.Strategy):
             max_period = max(self.p.roc_period_primary, self.p.roc_period_reference)
             required_len = max_period + 1
             if len(self.primary_close_history) < required_len:
-                return 0.0, 0.0, 0.0, False, False
+                return 0.0, 0.0, 0.0, 0.0, 0.0
             
             # Keep only needed history
-            max_history = max_period + self.p.harmony_bars + 5
+            max_history = max_period + 10
             if len(self.primary_close_history) > max_history:
                 self.primary_close_history = self.primary_close_history[-max_history:]
                 self.reference_close_history = self.reference_close_history[-max_history:]
@@ -331,57 +361,31 @@ class GEMINIStrategy(bt.Strategy):
             if len(self.harmony_value_history) > 5:
                 self.harmony_value_history = self.harmony_value_history[-5:]
             
-            # Store harmony history for sustained check
-            self.harmony_history.append(harmony_scaled)
-            if len(self.harmony_history) > self.p.harmony_bars + 1:
-                self.harmony_history = self.harmony_history[-(self.p.harmony_bars + 1):]
-            
-            # Check threshold (harmony > threshold AND primary > roc_min_value for LONG)
-            threshold_ok = (harmony_scaled >= self.p.harmony_threshold) and (roc_primary > self.p.roc_min_value)
-            
-            # Check slope filter if enabled
-            slope_ok = True
+            # Calculate angles using PLOT-SCALED values (same as what's visible in subplot)
             roc_angle = 0.0
             harmony_angle = 0.0
             
-            if self.p.use_slope_filter and len(self.roc_primary_history) >= 2 and len(self.harmony_value_history) >= 2:
-                # Calculate angles
+            if len(self.roc_primary_history) >= 2 and len(self.harmony_value_history) >= 2:
+                roc_plot_current = self.roc_primary_history[-1] * self.p.plot_roc_multiplier
+                roc_plot_previous = self.roc_primary_history[-2] * self.p.plot_roc_multiplier
+                harmony_plot_current = self.harmony_value_history[-1] * self.p.plot_harmony_multiplier
+                harmony_plot_previous = self.harmony_value_history[-2] * self.p.plot_harmony_multiplier
+                
                 roc_angle = self._calculate_angle(
-                    self.roc_primary_history[-1], 
-                    self.roc_primary_history[-2],
+                    roc_plot_current, 
+                    roc_plot_previous,
                     self.p.roc_angle_scale
                 )
                 harmony_angle = self._calculate_angle(
-                    self.harmony_value_history[-1],
-                    self.harmony_value_history[-2],
+                    harmony_plot_current,
+                    harmony_plot_previous,
                     self.p.harmony_angle_scale
                 )
-                
-                # Both angles must be above minimum
-                slope_ok = (roc_angle >= self.p.roc_angle_min) and (harmony_angle >= self.p.harmony_angle_min)
             
-            # Combine all conditions
-            threshold_ok = threshold_ok and slope_ok
-            
-            # Check sustained (harmony positive for N bars)
-            sustained_ok = self._check_harmony_sustained()
-            
-            return harmony_scaled, roc_primary, roc_reference, threshold_ok, sustained_ok
+            return harmony_scaled, roc_primary, roc_reference, roc_angle, harmony_angle
             
         except Exception as e:
-            return 0.0, 0.0, 0.0, False, False
-    
-    def _check_harmony_sustained(self) -> bool:
-        """Check if harmony has been positive for N bars."""
-        if len(self.harmony_history) < self.p.harmony_bars:
-            return False
-        
-        # Check all recent bars are above threshold
-        recent = self.harmony_history[-self.p.harmony_bars:]
-        for val in recent:
-            if val < self.p.harmony_threshold:
-                return False
-        return True
+            return 0.0, 0.0, 0.0, 0.0, 0.0
 
     # =========================================================================
     # TRADE REPORTING (same format as HELIX)
@@ -438,7 +442,7 @@ class GEMINIStrategy(bt.Strategy):
         except Exception as e:
             print(f"[GEMINI] Trade reporting init failed: {e}")
 
-    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, harmony_value):
+    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, harmony_value, roc_angle, harmony_angle):
         """Record entry to trade report file."""
         if not self.trade_report_file:
             return
@@ -449,6 +453,8 @@ class GEMINIStrategy(bt.Strategy):
                 'size': size,
                 'atr': atr,
                 'harmony': harmony_value,
+                'roc_angle': roc_angle,
+                'harmony_angle': harmony_angle,
                 'sl_pips': sl_pips,
                 'stop_level': self.stop_level,
                 'take_level': self.take_level,
@@ -461,6 +467,8 @@ class GEMINIStrategy(bt.Strategy):
             self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
             self.trade_report_file.write(f"SL Pips: {sl_pips:.1f}\n")
             self.trade_report_file.write(f"ATR (avg): {atr:.6f}\n")
+            self.trade_report_file.write(f"ROC Angle: {roc_angle:.1f}°\n")
+            self.trade_report_file.write(f"Harmony Angle: {harmony_angle:.1f}°\n")
             self.trade_report_file.write(f"Harmony Score: {harmony_value:.4f}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
             self.trade_report_file.flush()
@@ -534,51 +542,78 @@ class GEMINIStrategy(bt.Strategy):
         except:
             return False
 
-    def _check_entry_conditions(self, dt: datetime) -> tuple:
+    def _detect_kama_cross(self) -> bool:
         """
-        Check all entry conditions.
+        Detect if HL2_EMA just crossed above KAMA (bullish cross).
         
-        Returns: (passed: bool, harmony_value: float)
+        Returns: True if cross detected THIS bar
         """
-        # Calculate harmony and check conditions
-        harmony_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_harmony()
-        passed, _ = self._check_entry_conditions_internal(dt, threshold_ok, sustained_ok)
-        return passed, harmony_value
-
-    def _check_entry_conditions_internal(self, dt: datetime, threshold_ok: bool, sustained_ok: bool) -> tuple:
+        try:
+            hl2_ema_now = float(self.hl2_ema[0])
+            kama_now = float(self.kama[0])
+            
+            # Current state
+            hl2_above_kama_now = hl2_ema_now > kama_now
+            
+            # Cross detected: was below/equal, now above
+            cross = hl2_above_kama_now and not self.prev_hl2_above_kama
+            
+            # Update state for next bar
+            self.prev_hl2_above_kama = hl2_above_kama_now
+            
+            return cross
+        except:
+            return False
+    
+    def _check_cross_window(self) -> bool:
         """
-        Check entry conditions with pre-calculated divergence values.
+        Check if we're still within the entry window after a cross.
         
-        Returns: (passed: bool, None)
+        Returns: True if within window
+        """
+        if self.cross_detected_bar is None:
+            return False
+        
+        current_bar = len(self.primary_data)
+        bars_since_cross = current_bar - self.cross_detected_bar
+        
+        return bars_since_cross <= self.p.cross_window_bars
+    
+    def _check_angle_conditions(self, roc_angle: float, harmony_angle: float) -> bool:
+        """
+        Check if both angles meet minimum requirements.
+        
+        Returns: True if both angles >= minimum
+        """
+        roc_ok = roc_angle >= self.p.entry_roc_angle_min
+        harmony_ok = harmony_angle >= self.p.entry_harmony_angle_min
+        return roc_ok and harmony_ok
+    
+    def _check_final_filters(self, dt: datetime) -> bool:
+        """
+        Check final filters before entry (time, day, ATR, SL pips).
+        Applied AFTER angle confirmation.
+        
+        Returns: True if all filters pass
         """
         # Time filter
         if self.p.use_time_filter:
             if not check_time_filter(dt, self.p.allowed_hours, True):
-                return False, None
+                return False
         
         # Day filter
         if self.p.use_day_filter:
             if not check_day_filter(dt, self.p.allowed_days, True):
-                return False, None
+                return False
         
-        if not threshold_ok:
-            return False, None
-        
-        if not sustained_ok:
-            return False, None
-        
-        # KAMA condition (trend filter)
-        if not self._check_kama_condition():
-            return False, None
-        
-        return True, None
+        return True
 
     # =========================================================================
     # ENTRY EXECUTION
     # =========================================================================
     
-    def _execute_entry(self, dt: datetime, harmony_value: float):
-        """Execute market entry."""
+    def _execute_entry(self, dt: datetime, harmony_value: float, roc_angle: float, harmony_angle: float):
+        """Execute market entry after KAMA cross + angle confirmation."""
         
         entry_price = float(self.primary_data.close[0])
         avg_atr = self._get_average_atr()
@@ -629,14 +664,14 @@ class GEMINIStrategy(bt.Strategy):
         
         # Record entry
         self._record_trade_entry(
-            dt, entry_price, bt_size, avg_atr, sl_pips, harmony_value
+            dt, entry_price, bt_size, avg_atr, sl_pips, harmony_value, roc_angle, harmony_angle
         )
         
         # Update plot lines
         self._update_plot_lines(entry_price, self.stop_level, self.take_level)
         
         if self.p.print_signals:
-            print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | Harmony={harmony_value:.4f} | SL={self.stop_level:.5f} | TP={self.take_level:.5f}")
+            print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | ROC_angle={roc_angle:.1f}° | Harm_angle={harmony_angle:.1f}° | SL={self.stop_level:.5f}")
 
     # =========================================================================
     # EXIT LOGIC
@@ -728,13 +763,17 @@ class GEMINIStrategy(bt.Strategy):
                 self.atr_history = self.atr_history[-self.p.atr_avg_period * 2:]
         
         # Calculate harmony every bar (for plotting)
-        harmony_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_harmony()
+        harmony_value, roc_primary, roc_reference, roc_angle, harmony_angle = self._calculate_harmony()
         
         # Update ROC indicator for subplot (both lines + harmony)
         # Apply plot multipliers for visibility (doesn't affect calculations)
         self.roc_indicator.lines.roc_primary[0] = roc_primary * self.p.plot_roc_multiplier
         self.roc_indicator.lines.roc_reference[0] = roc_reference * self.p.plot_roc_multiplier
         self.roc_indicator.lines.harmony[0] = harmony_value * self.p.plot_harmony_multiplier
+        
+        # Update Angle indicator for subplot
+        self.angle_indicator.lines.roc_angle[0] = roc_angle
+        self.angle_indicator.lines.harmony_angle[0] = harmony_angle
         
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())
@@ -762,10 +801,31 @@ class GEMINIStrategy(bt.Strategy):
                 )
         
         elif self.state == "SCANNING":
-            # Check entry conditions (divergence already calculated)
-            passed, _ = self._check_entry_conditions_internal(dt, threshold_ok, sustained_ok)
-            if passed:
-                self._execute_entry(dt, harmony_value)
+            # === NEW ENTRY SYSTEM ===
+            # Step 1: TRIGGER - Detect KAMA cross
+            if self._detect_kama_cross():
+                self.cross_detected_bar = len(self.primary_data)
+                self.in_cross_window = True
+                if self.p.print_signals:
+                    print(f"[GEMINI] {dt} KAMA CROSS detected - window open for {self.p.cross_window_bars} bars")
+            
+            # Step 2: Check if still in window
+            if self.in_cross_window:
+                if not self._check_cross_window():
+                    # Window expired
+                    self.in_cross_window = False
+                    self.cross_detected_bar = None
+                    if self.p.print_signals:
+                        print(f"[GEMINI] {dt} Window expired - no entry")
+                else:
+                    # Step 3: CONFIRMATION - Check angles
+                    if self._check_angle_conditions(roc_angle, harmony_angle):
+                        # Step 4: FILTERS - Final checks before entry
+                        if self._check_final_filters(dt):
+                            self._execute_entry(dt, harmony_value, roc_angle, harmony_angle)
+                            # Reset window after entry
+                            self.in_cross_window = False
+                            self.cross_detected_bar = None
 
     # =========================================================================
     # STOP - FINAL REPORT (same structure as HELIX)
