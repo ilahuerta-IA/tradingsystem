@@ -1467,8 +1467,10 @@ STRATEGIES_CONFIG = {
             # Step 1: TRIGGER - HL2_EMA crosses above KAMA
             # Step 2: CONFIRMATION - Within N bars, check angles
             'cross_window_bars': 5,         # Window after cross to look for entry (N bars)
-            'entry_roc_angle_min': 20.0,    # Min ROC angle during window (degrees)
-            'entry_harmony_angle_min': 20.0,  # Min Harmony angle during window (degrees)
+            'entry_roc_angle_min': 11.0,    # Min ROC angle during window (degrees)
+            'entry_roc_angle_max': 20.0,    # Max ROC angle (too steep = unreliable)
+            'entry_harmony_angle_min': 0.0,  # Min Harmony angle during window (degrees)
+            'entry_harmony_angle_max': 15.0,  # Max Harmony angle (too steep = unreliable)
             'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
             'harmony_angle_scale': 1.0,     # Scale for Harmony angle calculation
             

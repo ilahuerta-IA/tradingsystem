@@ -134,7 +134,9 @@ class GEMINIStrategy(bt.Strategy):
         # Step 2: CONFIRMATION - Within N bars, check angles
         cross_window_bars=5,            # Window after cross to look for entry (N bars)
         entry_roc_angle_min=10.0,       # Min ROC angle during window (degrees)
+        entry_roc_angle_max=80.0,       # Max ROC angle (too steep = unreliable)
         entry_harmony_angle_min=10.0,   # Min Harmony angle during window (degrees)
+        entry_harmony_angle_max=80.0,   # Max Harmony angle (too steep = unreliable)
         # Angle scales (for plot-scaled values)
         roc_angle_scale=1.0,            # Scale for ROC angle calculation
         harmony_angle_scale=1.0,        # Scale for Harmony angle calculation
@@ -411,7 +413,7 @@ class GEMINIStrategy(bt.Strategy):
             self.trade_report_file.write(f"Cross Window: {self.p.cross_window_bars} bars\n")
             self.trade_report_file.write(f"ROC: primary_period={self.p.roc_period_primary}, reference_period={self.p.roc_period_reference}\n")
             self.trade_report_file.write(f"Harmony Scale: {self.p.harmony_scale}\n")
-            self.trade_report_file.write(f"Entry Angles: ROC >= {self.p.entry_roc_angle_min}°, Harmony >= {self.p.entry_harmony_angle_min}°\n")
+            self.trade_report_file.write(f"Entry Angles: ROC [{self.p.entry_roc_angle_min}°-{self.p.entry_roc_angle_max}°], Harmony [{self.p.entry_harmony_angle_min}°-{self.p.entry_harmony_angle_max}°]\n")
             self.trade_report_file.write(f"ATR: length={self.p.atr_length}, avg_period={self.p.atr_avg_period}\n")
             self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
             self.trade_report_file.write(f"Pip Value: {self.p.pip_value}\n")
@@ -578,12 +580,12 @@ class GEMINIStrategy(bt.Strategy):
     
     def _check_angle_conditions(self, roc_angle: float, harmony_angle: float) -> bool:
         """
-        Check if both angles meet minimum requirements.
+        Check if both angles are within acceptable range.
         
-        Returns: True if both angles >= minimum
+        Returns: True if both angles within [min, max] range
         """
-        roc_ok = roc_angle >= self.p.entry_roc_angle_min
-        harmony_ok = harmony_angle >= self.p.entry_harmony_angle_min
+        roc_ok = self.p.entry_roc_angle_min <= roc_angle <= self.p.entry_roc_angle_max
+        harmony_ok = self.p.entry_harmony_angle_min <= harmony_angle <= self.p.entry_harmony_angle_max
         return roc_ok and harmony_ok
     
     def _check_final_filters(self, dt: datetime) -> bool:
