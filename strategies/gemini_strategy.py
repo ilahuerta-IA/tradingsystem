@@ -160,6 +160,8 @@ class GEMINIStrategy(bt.Strategy):
         # Plot options
         plot_entry_exit_lines=True,
         plot_reference_chart=False,    # Show USDCHF chart in plot
+        plot_roc_multiplier=10000,     # Scale ROC values for visibility (raw ~0.0001)
+        plot_harmony_multiplier=1.0,   # Additional scale for harmony (already scaled by harmony_scale)
     )
 
     def __init__(self):
@@ -664,9 +666,10 @@ class GEMINIStrategy(bt.Strategy):
         harmony_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_harmony()
         
         # Update ROC indicator for subplot (both lines + harmony)
-        self.roc_indicator.lines.roc_primary[0] = roc_primary
-        self.roc_indicator.lines.roc_reference[0] = roc_reference
-        self.roc_indicator.lines.harmony[0] = harmony_value
+        # Apply plot multipliers for visibility (doesn't affect calculations)
+        self.roc_indicator.lines.roc_primary[0] = roc_primary * self.p.plot_roc_multiplier
+        self.roc_indicator.lines.roc_reference[0] = roc_reference * self.p.plot_roc_multiplier
+        self.roc_indicator.lines.harmony[0] = harmony_value * self.p.plot_harmony_multiplier
         
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())

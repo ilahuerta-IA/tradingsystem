@@ -1505,6 +1505,10 @@ STRATEGIES_CONFIG = {
             # Debug & Reporting
             'print_signals': False,  # Enable to see signals during backtest
             'export_reports': True,
+            
+            # Plot options
+            'plot_roc_multiplier': 10000,     # Scale ROC for visibility
+            'plot_harmony_multiplier': 1.0,   # Additional scale for harmony
         }
     },
     
@@ -1575,6 +1579,10 @@ STRATEGIES_CONFIG = {
             # Debug & Reporting
             'print_signals': True,
             'export_reports': True,
+            
+            # Plot options
+            'plot_roc_multiplier': 10000,
+            'plot_harmony_multiplier': 1.0,
         }
     },
 
