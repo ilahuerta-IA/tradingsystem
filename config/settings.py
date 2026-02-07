@@ -1448,8 +1448,8 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
         'reference_symbol': 'USDCHF',
         
-        'from_date': datetime.datetime(2024, 8, 20),
-        'to_date': datetime.datetime(2024, 9, 1),
+        'from_date': datetime.datetime(2024, 4, 20),
+        'to_date': datetime.datetime(2024, 5, 28),
         
         'starting_cash': 100000.0,
         
@@ -1458,11 +1458,12 @@ STRATEGIES_CONFIG = {
         'save_log': True,
         
         'params': {
-            # === ROC DIVERGENCE SETTINGS ===
-            'roc_period_primary': 12,       # ROC period for EURUSD (12 bars = 1h on 5m)
-            'roc_period_reference': 12,     # ROC period for USDCHF (can be different)
-            'divergence_threshold': 0.001,  # Min ROC sum for entry
-            'divergence_bars': 3,           # Divergence must be positive N bars
+            # === HARMONY SCORE SETTINGS ===
+            'roc_period_primary': 11,       # ROC period for EURUSD (12 bars = 1h on 5m)
+            'roc_period_reference': 11,     # ROC period for USDCHF (can be different)
+            'harmony_threshold': 0.0,       # Min harmony score for entry (0 = any positive)
+            'harmony_scale': 500,         # Scale factor for visualization
+            'harmony_bars': 3,              # Harmony must be positive N consecutive bars
             
             # === TREND FILTER ===
             'use_kama_filter': True,
@@ -1471,7 +1472,7 @@ STRATEGIES_CONFIG = {
             'kama_slow': 30,
             
             # === ATR for SL/TP ===
-            'atr_length': 14,
+            'atr_length': 10,
             'atr_sl_multiplier': 3.0,
             'atr_tp_multiplier': 6.0,
             
@@ -1527,11 +1528,12 @@ STRATEGIES_CONFIG = {
         'save_log': True,
         
         'params': {
-            # === ROC DIVERGENCE SETTINGS ===
+            # === HARMONY SCORE SETTINGS ===
             'roc_period_primary': 12,
             'roc_period_reference': 12,
-            'divergence_threshold': 0.001,
-            'divergence_bars': 3,
+            'harmony_threshold': 0.0,
+            'harmony_scale': 10000,
+            'harmony_bars': 3,
             
             # === TREND FILTER ===
             'use_kama_filter': True,

@@ -1,9 +1,9 @@
 # GEMINI Strategy
 
-**Type:** Correlation Divergence Momentum  
-**Assets:** EURUSD (primary) + USDCHF (reference), or vice versa  
+**Type:** Correlation Divergence Momentum (Harmony Score)  
+**Assets:** EURUSD (primary) + USDCHF (reference)  
 **Direction:** Long Only  
-**Concept:** EUR strength confirmed by EURUSD vs USDCHF divergence
+**Concept:** EUR strength confirmed by harmonic ROC divergence
 
 ---
 
@@ -11,11 +11,13 @@
 
 1. [Overview](#overview)
 2. [The Core Insight](#the-core-insight)
-3. [Entry System](#entry-system)
-4. [Indicators](#indicators)
-5. [Configuration Parameters](#configuration-parameters)
-6. [Implementation Details](#implementation-details)
-7. [Validation Criteria](#validation-criteria)
+3. [Harmony Score Formula](#harmony-score-formula)
+4. [Entry System](#entry-system)
+5. [Indicators](#indicators)
+6. [Configuration Parameters](#configuration-parameters)
+7. [Implementation Details](#implementation-details)
+8. [Evolution History](#evolution-history)
+9. [Validation Criteria](#validation-criteria)
 
 ---
 
@@ -31,39 +33,58 @@ EURUSD and USDCHF are inversely correlated (~-0.90) via USD.
 Normal state:    EURUSD up   = USDCHF down   (USD weakness)
                  EURUSD down = USDCHF up     (USD strength)
 
-Divergence:      EURUSD up   > USDCHF_inv up  = EUR INTRINSIC STRENGTH
-                 (EUR is rising more than just USD weakness would explain)
+Harmony Signal:  ROC_EURUSD rising WHILE ROC_USDCHF falling
+                 = Both ROCs separating from zero in opposite directions
+                 = EUR INTRINSIC STRENGTH
 ```
 
 **Key Difference from Mean Reversion:**
 - We're NOT betting on convergence
-- We're CONFIRMING momentum via divergence
+- We're CONFIRMING momentum via harmonic divergence
 - Goes WITH the trend, not against it
 
 ---
 
 ## The Core Insight
 
-### Why Divergence Confirms Momentum
+### Why Harmony Score Works
 
-When EURUSD rises AND USDCHF doesn't fall proportionally:
+The **Harmony Score** measures symmetric divergence between two ROCs:
 
-1. **Normal correlation:** USD weak → EURUSD up, USDCHF down (inverse)
-2. **Divergence:** EURUSD up > expected → EUR has REAL strength
-3. **Signal:** This momentum is driven by EUR, not just USD
+1. **ROC_primary** (EURUSD) measures EUR/USD momentum
+2. **ROC_reference** (USDCHF) measures USD/CHF momentum
+3. **Harmony** = product of opposite movements
 
-### Mathematical Basis
+When both ROCs move away from zero in opposite directions:
+- EURUSD gaining momentum UP
+- USDCHF losing momentum DOWN
+- = EUR has REAL intrinsic strength (not just USD weakness)
+
+---
+
+## Harmony Score Formula
 
 ```python
-# Normalize both to z-scores for comparison
-z_eurusd = (EMA_EURUSD - mean) / std
-z_usdchf_inv = (1/EMA_USDCHF - mean) / std
-
-# Spread = difference
-spread = z_eurusd - z_usdchf_inv
-
-# When spread > threshold AND growing → EUR intrinsic strength
+harmony = ROC_primary × (-ROC_reference) × scale
 ```
+
+### Why Product Works
+
+| ROC_EURUSD | ROC_USDCHF | Harmony | Interpretation |
+|------------|------------|---------|----------------|
+| +0.002 | -0.0015 | **+3.0** | ✅ Harmony - both diverging from 0 |
+| +0.001 | +0.001 | **-1.0** | ❌ No harmony - same direction |
+| +0.004 | -0.0001 | **+0.4** | ⚠️ Asymmetric - one barely moves |
+| +0.002 | -0.002 | **+4.0** | ✅✅ Perfect symmetry |
+
+*(Values shown with scale=10000)*
+
+### Key Properties
+
+- **Positive** when ROCs move in opposite directions
+- **Higher value** = stronger AND more symmetric movement
+- **Negative** = both ROCs same direction (no edge)
+- **Scale factor** makes values visible on chart (raw values ~0.000001)
 
 ---
 
@@ -73,8 +94,9 @@ spread = z_eurusd - z_usdchf_inv
 
 | Condition | Description |
 |-----------|-------------|
-| Spread > threshold | z-score spread above 0.5 (configurable) |
-| Spread momentum | Spread growing for N consecutive bars |
+| Harmony > threshold | Harmony score above minimum |
+| ROC_primary > 0 | Confirms LONG direction makes sense |
+| Harmony sustained | Positive for N consecutive bars |
 | KAMA filter | Price > KAMA (optional trend confirmation) |
 | Filters pass | Time, day, ATR, SL pips filters if enabled |
 
@@ -89,25 +111,26 @@ spread = z_eurusd - z_usdchf_inv
 
 ## Indicators
 
-### SpreadDivergence (Custom)
+### ROCDualIndicator (Custom)
 
 ```python
-class SpreadDivergence(bt.Indicator):
+class ROCDualIndicator(bt.Indicator):
     """
-    Calculates normalized spread between two correlated pairs.
+    Dual ROC indicator with Harmony Score.
     
     Lines:
-    - spread: Raw z-score spread
-    - spread_ema: Smoothed spread
-    - signal: Entry signal markers
+    - roc_primary: ROC of primary pair (blue)
+    - roc_reference: ROC of reference pair (red)
+    - harmony: Scaled harmony score (purple)
+    - zero: Zero reference line
     """
 ```
 
 **Calculation:**
-1. EMA(HL2) for both pairs
-2. Invert reference if needed (1/USDCHF)
-3. Z-score normalize both (50-bar lookback)
-4. Spread = z(primary) - z(reference_inv)
+1. Calculate ROC for primary pair (EURUSD)
+2. Calculate ROC for reference pair (USDCHF)
+3. Harmony = ROC_primary × (-ROC_reference) × scale
+4. Plot all three lines in subplot
 
 ### KAMA (from lib/indicators.py)
 
@@ -117,15 +140,15 @@ Standard Kaufman Adaptive Moving Average for trend filter.
 
 ## Configuration Parameters
 
-### Spread Divergence Settings
+### Harmony Score Settings
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `spread_ema_period` | 20 | EMA period for HL2 |
-| `spread_zscore_period` | 50 | Lookback for z-score calculation |
-| `spread_entry_threshold` | 0.5 | Min spread for entry (z-score) |
-| `spread_momentum_bars` | 3 | Spread must grow N bars |
-| `invert_reference` | True | Invert reference (USDCHF → 1/USDCHF) |
+| `roc_period_primary` | 12 | ROC period for EURUSD (12 bars = 1h on 5m) |
+| `roc_period_reference` | 12 | ROC period for USDCHF |
+| `harmony_threshold` | 0.0 | Min harmony for entry (0 = any positive) |
+| `harmony_scale` | 10000 | Scale factor for visualization |
+| `harmony_bars` | 3 | Harmony must be positive N bars |
 
 ### ATR Settings
 
@@ -133,7 +156,7 @@ Standard Kaufman Adaptive Moving Average for trend filter.
 |-----------|---------|-------------|
 | `atr_length` | 14 | ATR period |
 | `atr_sl_multiplier` | 3.0 | SL = ATR × this |
-| `atr_tp_multiplier` | 8.0 | TP = ATR × this |
+| `atr_tp_multiplier` | 6.0 | TP = ATR × this |
 
 ### Filters
 
@@ -160,25 +183,46 @@ Standard Kaufman Adaptive Moving Average for trend filter.
     'data_path': 'data/EURUSD_5m_5Yea.csv',
     'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
     'reference_symbol': 'USDCHF',
-    ...
+    'params': {
+        'harmony_threshold': 0.0,
+        'harmony_scale': 10000,
+        'harmony_bars': 3,
+        ...
+    }
 }
 ```
-
-### Inversion Logic
-
-For EURUSD_GEMINI (trading EURUSD, reference USDCHF):
-- USDCHF needs inversion (1/price) to compare
-- `invert_reference=True`
-
-For USDCHF_GEMINI (trading USDCHF, reference EURUSD):
-- EURUSD doesn't need inversion
-- `invert_reference=False`
 
 ### Log Format
 
 ```
-datetime,symbol,direction,entry_price,sl,tp,atr,spread,spread_ema,spread_momentum,kama,exit_reason,exit_price,pnl,bars_held
+ENTRY #N
+Time: YYYY-MM-DD HH:MM:SS
+Entry Price: X.XXXXX
+Stop Loss: X.XXXXX
+Take Profit: X.XXXXX
+SL Pips: X.X
+ATR (avg): 0.XXXXXX
+Harmony Score: X.XXXX
 ```
+
+---
+
+## Evolution History
+
+### Phase 1: Z-Score Spread (FAILED)
+- **Approach:** Z-Score of price spread (EMA_EURUSD - EMA_1/USDCHF)
+- **Problem:** Very noisy, constant oscillation, many false entries
+- **Result:** PF 0.83-0.92 (not viable)
+
+### Phase 2: ROC Sum (IMPROVED)
+- **Approach:** ROC_EURUSD + ROC_USDCHF > threshold
+- **Improvement:** Measures momentum, not position
+- **Result:** PF 1.19 with threshold optimization
+
+### Phase 3: Harmony Score (CURRENT)
+- **Approach:** ROC_primary × (-ROC_reference) × scale
+- **Insight:** Product captures symmetric divergence
+- **Status:** Testing and optimization in progress
 
 ---
 
@@ -186,24 +230,19 @@ datetime,symbol,direction,entry_price,sl,tp,atr,spread,spread_ema,spread_momentu
 
 ### Minimum Requirements
 
-| Metric | Minimum | Status |
-|--------|---------|--------|
-| Profit Factor | >= 1.5 | Pending |
-| Sharpe Ratio | >= 0.7 | Pending |
-| Max Drawdown | < 10% | Pending |
-| Trades/year | ~100+ | Pending |
+| Metric | Minimum | Current Status |
+|--------|---------|----------------|
+| Profit Factor | >= 1.5 | 🔄 Optimizing |
+| Sharpe Ratio | >= 0.7 | 🔄 Pending |
+| Max Drawdown | < 10% | ✅ 8.97% |
+| Trades/year | ~100+ | 🔄 Pending |
 
-### Discard Criteria
+### Optimization Targets
 
-If with default parameters:
-- < 100 trades/year with PF > 1.05 → DISCARD
-
-### Next Steps
-
-1. Run initial backtest: `python run_backtest.py EURUSD_GEMINI`
-2. Analyze spread distribution and entry quality
-3. Optimize threshold and momentum parameters
-4. If viable → implement USDCHF_GEMINI variant
+Parameters to tune:
+- `harmony_threshold` - Filter weak harmonic signals
+- `harmony_bars` - Require more sustained divergence
+- `roc_period_*` - Different periods for each pair
 
 ---
 
@@ -220,10 +259,13 @@ If with default parameters:
 
 ## Validation Status
 
-**Current Status:** 🧪 Initial Development - Awaiting First Backtest
+**Current Status:** 🔄 Harmony Score Optimization Phase
 
 ### Change Log
 
 | Date | Change |
 |------|--------|
-| 2026-02-06 | Initial implementation |
+| 2026-02-06 | Initial Z-Score implementation |
+| 2026-02-06 | Pivoted to ROC Sum approach |
+| 2026-02-06 | Evolved to Harmony Score formula |
+| 2026-02-06 | Added harmony visualization (purple line) |

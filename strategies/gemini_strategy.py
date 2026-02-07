@@ -1,24 +1,25 @@
 """
-GEMINI Strategy - Correlation Divergence Momentum (ROC-based)
+GEMINI Strategy - Correlation Divergence Momentum (Harmony Score)
 
 CONCEPT:
 EURUSD and USDCHF are inversely correlated (~-0.90) via USD.
 We measure MOMENTUM (Rate of Change) of each pair, not price levels.
 
-Divergence = ROC_EURUSD + ROC_USDCHF
-(Sum because negative USDCHF ROC = good for EUR)
+Harmony Score = ROC_EURUSD × (-ROC_USDCHF) × scale
+(Product captures symmetric divergence: both ROCs moving apart from zero)
 
-When divergence > threshold sustained for N bars -> LONG EURUSD
+When harmony > threshold AND ROC_primary > 0 sustained for N bars -> LONG EURUSD
 
-This captures ALL scenarios of EUR relative strength:
-- EURUSD rising, USDCHF falling (clear divergence)
-- EURUSD rising, USDCHF ranging (EUR has momentum)
-- EURUSD ranging, USDCHF falling (CHF weak = EUR strong relative)
+This captures SYMMETRIC divergence scenarios:
+- EURUSD rising (+), USDCHF falling (-) -> harmony positive (ideal scenario)
+- Higher value = stronger AND more symmetric movement
+- Negative harmony = both ROCs same direction (no divergence)
 
 ENTRY SYSTEM:
-1. DIVERGENCE: ROC_EURUSD + ROC_USDCHF > threshold
-2. SUSTAINED: Divergence positive for N consecutive bars
-3. TREND: Price > KAMA (optional)
+1. HARMONY: ROC_primary × (-ROC_reference) × scale > threshold
+2. DIRECTION: ROC_primary > 0 (ensures LONG direction makes sense)
+3. SUSTAINED: Harmony positive for N consecutive bars
+4. TREND: Price > KAMA (optional)
 
 EXIT SYSTEM:
 - Stop Loss: Entry - (ATR x SL multiplier)
@@ -65,17 +66,19 @@ class EntryExitLines(bt.Indicator):
 
 
 class ROCDualIndicator(bt.Indicator):
-    """Indicator to plot ROC of primary and reference pairs in same subplot."""
-    lines = ('roc_primary', 'roc_reference', 'zero')
+    """Indicator to plot ROC of primary/reference and Harmony Score."""
+    lines = ('roc_primary', 'roc_reference', 'harmony', 'zero')
     
     plotinfo = dict(
         subplot=True,
-        plotname='ROC (Primary vs Reference)',
-        plotlinelabels=True
+        plotname='ROC & Harmony',
+        plotlinelabels=True,
+        plotheight=2.0,     # Double height for better visibility
     )
     plotlines = dict(
-        roc_primary=dict(color='blue', linewidth=1.5, _name='ROC Primary'),
-        roc_reference=dict(color='red', linewidth=1.5, _name='ROC Reference'),
+        roc_primary=dict(color='blue', linewidth=1.2, _name='ROC Primary'),
+        roc_reference=dict(color='red', linewidth=1.2, _name='ROC Reference'),
+        harmony=dict(color='purple', linewidth=2.0, _name='Harmony'),
         zero=dict(color='gray', linestyle='--', linewidth=0.8),
     )
     
@@ -99,8 +102,11 @@ class GEMINIStrategy(bt.Strategy):
         # === ROC DIVERGENCE SETTINGS ===
         roc_period_primary=12,          # ROC period for primary (12 = 1 hour on 5m)
         roc_period_reference=12,        # ROC period for reference (can be different)
-        divergence_threshold=0.001,     # Min divergence (ROC sum) for entry
-        divergence_bars=3,              # Divergence must be positive N bars
+        
+        # === HARMONY SCORE ===
+        harmony_threshold=0.0,          # Min harmony product for entry (scaled)
+        harmony_scale=10000,            # Multiplier for visualization (raw values ~0.000001)
+        harmony_bars=3,                 # Harmony must be positive N bars
         
         # === KAMA FILTER (optional trend) ===
         use_kama_filter=True,
@@ -153,6 +159,7 @@ class GEMINIStrategy(bt.Strategy):
         
         # Plot options
         plot_entry_exit_lines=True,
+        plot_reference_chart=False,    # Show USDCHF chart in plot
     )
 
     def __init__(self):
@@ -163,6 +170,10 @@ class GEMINIStrategy(bt.Strategy):
         if len(self.datas) > 1:
             self.reference_data = self.datas[1]
             print(f'[GEMINI] Reference data: {self.reference_data._name}')
+            
+            # Hide reference chart from plot if not needed
+            if not self.p.plot_reference_chart:
+                self.reference_data.plotinfo.plot = False
         else:
             raise ValueError('[GEMINI] ERROR: Reference data required (datas[1])')
         
@@ -212,7 +223,7 @@ class GEMINIStrategy(bt.Strategy):
         # History for ROC calculation
         self.primary_close_history = []
         self.reference_close_history = []
-        self.divergence_history = []
+        self.harmony_history = []
         
         # ATR history for averaging
         self.atr_history = []
@@ -233,17 +244,19 @@ class GEMINIStrategy(bt.Strategy):
         self._init_trade_reporting()
 
     # =========================================================================
-    # DIVERGENCE CALCULATION (ROC-based)
+    # HARMONY CALCULATION (ROC-based)
     # =========================================================================
     
-    def _calculate_divergence(self) -> tuple:
+    def _calculate_harmony(self) -> tuple:
         """
-        Calculate momentum divergence using ROC.
+        Calculate Harmony Score from ROC of both pairs.
         
-        divergence = ROC_EURUSD + ROC_USDCHF
-        (Sum because negative USDCHF ROC = good for EUR)
+        Harmony = ROC_primary × (-ROC_reference) × scale
         
-        Returns: (divergence_value, roc_primary, roc_reference, threshold_ok, sustained_ok)
+        High harmony = both ROCs diverging from zero proportionally
+        (primary rising, reference falling = harmonic divergence)
+        
+        Returns: (harmony_scaled, roc_primary, roc_reference, threshold_ok, sustained_ok)
         """
         try:
             # Get current close prices
@@ -261,7 +274,7 @@ class GEMINIStrategy(bt.Strategy):
                 return 0.0, 0.0, 0.0, False, False
             
             # Keep only needed history
-            max_history = max_period + self.p.divergence_bars + 5
+            max_history = max_period + self.p.harmony_bars + 5
             if len(self.primary_close_history) > max_history:
                 self.primary_close_history = self.primary_close_history[-max_history:]
                 self.reference_close_history = self.reference_close_history[-max_history:]
@@ -270,35 +283,36 @@ class GEMINIStrategy(bt.Strategy):
             roc_primary = calculate_roc_from_history(self.primary_close_history, self.p.roc_period_primary)
             roc_reference = calculate_roc_from_history(self.reference_close_history, self.p.roc_period_reference)
             
-            # Divergence = ROC_EURUSD + ROC_USDCHF
-            # (Sum because negative USDCHF = EUR strength)
-            divergence = roc_primary + roc_reference
+            # Harmony = ROC_primary × (-ROC_reference) × scale
+            # Positive when: primary up AND reference down (harmonic divergence)
+            harmony_raw = roc_primary * (-roc_reference)
+            harmony_scaled = harmony_raw * self.p.harmony_scale
             
-            # Store divergence history
-            self.divergence_history.append(divergence)
-            if len(self.divergence_history) > self.p.divergence_bars + 1:
-                self.divergence_history = self.divergence_history[-(self.p.divergence_bars + 1):]
+            # Store harmony history
+            self.harmony_history.append(harmony_scaled)
+            if len(self.harmony_history) > self.p.harmony_bars + 1:
+                self.harmony_history = self.harmony_history[-(self.p.harmony_bars + 1):]
             
-            # Check threshold
-            threshold_ok = divergence >= self.p.divergence_threshold
+            # Check threshold (harmony > threshold AND primary > 0 for LONG)
+            threshold_ok = (harmony_scaled >= self.p.harmony_threshold) and (roc_primary > 0)
             
-            # Check sustained (divergence positive for N bars)
-            sustained_ok = self._check_divergence_sustained()
+            # Check sustained (harmony positive for N bars)
+            sustained_ok = self._check_harmony_sustained()
             
-            return divergence, roc_primary, roc_reference, threshold_ok, sustained_ok
+            return harmony_scaled, roc_primary, roc_reference, threshold_ok, sustained_ok
             
         except Exception as e:
             return 0.0, 0.0, 0.0, False, False
     
-    def _check_divergence_sustained(self) -> bool:
-        """Check if divergence has been positive for N bars."""
-        if len(self.divergence_history) < self.p.divergence_bars:
+    def _check_harmony_sustained(self) -> bool:
+        """Check if harmony has been positive for N bars."""
+        if len(self.harmony_history) < self.p.harmony_bars:
             return False
         
         # Check all recent bars are above threshold
-        recent = self.divergence_history[-self.p.divergence_bars:]
+        recent = self.harmony_history[-self.p.harmony_bars:]
         for val in recent:
-            if val < self.p.divergence_threshold:
+            if val < self.p.harmony_threshold:
                 return False
         return True
 
@@ -327,7 +341,7 @@ class GEMINIStrategy(bt.Strategy):
             else:
                 self.trade_report_file.write("KAMA Filter: DISABLED\n")
             self.trade_report_file.write(f"ROC: primary_period={self.p.roc_period_primary}, reference_period={self.p.roc_period_reference}\n")
-            self.trade_report_file.write(f"Divergence: threshold={self.p.divergence_threshold}, bars={self.p.divergence_bars}\n")
+            self.trade_report_file.write(f"Harmony: threshold={self.p.harmony_threshold}, scale={self.p.harmony_scale}, bars={self.p.harmony_bars}\n")
             self.trade_report_file.write(f"ATR: length={self.p.atr_length}, avg_period={self.p.atr_avg_period}\n")
             self.trade_report_file.write(f"SL: {self.p.atr_sl_multiplier}x ATR | TP: {self.p.atr_tp_multiplier}x ATR\n")
             self.trade_report_file.write(f"Pip Value: {self.p.pip_value}\n")
@@ -357,7 +371,7 @@ class GEMINIStrategy(bt.Strategy):
         except Exception as e:
             print(f"[GEMINI] Trade reporting init failed: {e}")
 
-    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, divergence_value):
+    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, harmony_value):
         """Record entry to trade report file."""
         if not self.trade_report_file:
             return
@@ -367,7 +381,7 @@ class GEMINIStrategy(bt.Strategy):
                 'entry_price': entry_price,
                 'size': size,
                 'atr': atr,
-                'divergence': divergence_value,
+                'harmony': harmony_value,
                 'sl_pips': sl_pips,
                 'stop_level': self.stop_level,
                 'take_level': self.take_level,
@@ -380,7 +394,7 @@ class GEMINIStrategy(bt.Strategy):
             self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
             self.trade_report_file.write(f"SL Pips: {sl_pips:.1f}\n")
             self.trade_report_file.write(f"ATR (avg): {atr:.6f}\n")
-            self.trade_report_file.write(f"Divergence (ROC): {divergence_value:.6f}\n")
+            self.trade_report_file.write(f"Harmony Score: {harmony_value:.4f}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
             self.trade_report_file.flush()
         except Exception as e:
@@ -457,12 +471,12 @@ class GEMINIStrategy(bt.Strategy):
         """
         Check all entry conditions.
         
-        Returns: (passed: bool, divergence_value: float)
+        Returns: (passed: bool, harmony_value: float)
         """
-        # Calculate divergence and check conditions
-        divergence_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_divergence()
+        # Calculate harmony and check conditions
+        harmony_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_harmony()
         passed, _ = self._check_entry_conditions_internal(dt, threshold_ok, sustained_ok)
-        return passed, divergence_value
+        return passed, harmony_value
 
     def _check_entry_conditions_internal(self, dt: datetime, threshold_ok: bool, sustained_ok: bool) -> tuple:
         """
@@ -496,7 +510,7 @@ class GEMINIStrategy(bt.Strategy):
     # ENTRY EXECUTION
     # =========================================================================
     
-    def _execute_entry(self, dt: datetime, divergence_value: float):
+    def _execute_entry(self, dt: datetime, harmony_value: float):
         """Execute market entry."""
         
         entry_price = float(self.primary_data.close[0])
@@ -548,14 +562,14 @@ class GEMINIStrategy(bt.Strategy):
         
         # Record entry
         self._record_trade_entry(
-            dt, entry_price, bt_size, avg_atr, sl_pips, divergence_value
+            dt, entry_price, bt_size, avg_atr, sl_pips, harmony_value
         )
         
         # Update plot lines
         self._update_plot_lines(entry_price, self.stop_level, self.take_level)
         
         if self.p.print_signals:
-            print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | Divergence={divergence_value:.6f} | SL={self.stop_level:.5f} | TP={self.take_level:.5f}")
+            print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | Harmony={harmony_value:.4f} | SL={self.stop_level:.5f} | TP={self.take_level:.5f}")
 
     # =========================================================================
     # EXIT LOGIC
@@ -646,12 +660,13 @@ class GEMINIStrategy(bt.Strategy):
             if len(self.atr_history) > self.p.atr_avg_period * 2:
                 self.atr_history = self.atr_history[-self.p.atr_avg_period * 2:]
         
-        # Calculate divergence every bar (for plotting)
-        divergence_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_divergence()
+        # Calculate harmony every bar (for plotting)
+        harmony_value, roc_primary, roc_reference, threshold_ok, sustained_ok = self._calculate_harmony()
         
-        # Update ROC indicator for subplot (both lines)
+        # Update ROC indicator for subplot (both lines + harmony)
         self.roc_indicator.lines.roc_primary[0] = roc_primary
         self.roc_indicator.lines.roc_reference[0] = roc_reference
+        self.roc_indicator.lines.harmony[0] = harmony_value
         
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())
@@ -682,7 +697,7 @@ class GEMINIStrategy(bt.Strategy):
             # Check entry conditions (divergence already calculated)
             passed, _ = self._check_entry_conditions_internal(dt, threshold_ok, sustained_ok)
             if passed:
-                self._execute_entry(dt, divergence_value)
+                self._execute_entry(dt, harmony_value)
 
     # =========================================================================
     # STOP - FINAL REPORT (same structure as HELIX)

@@ -10,7 +10,7 @@ Usage:
     python analyze_gemini.py --all                     # Analyze all GEMINI logs combined
 
 Key Parameters to Analyze:
-- Divergence (ROC sum) ranges
+- Harmony Score ranges
 - Entry hour (UTC)
 - Day of week
 - SL pips ranges
@@ -85,12 +85,12 @@ def parse_config_header(content: str) -> Dict:
     # KAMA Filter
     config['kama_filter'] = 'ENABLED' in re.search(r'KAMA Filter: (\w+)', content or '').group(1) if re.search(r'KAMA Filter: (\w+)', content) else False
     
-    # Divergence (ROC)
-    match = re.search(r'Divergence: roc_period=(\d+), threshold=([\d.]+), bars=(\d+)', content)
+    # Harmony Score
+    match = re.search(r'Harmony: threshold=([\d.]+), scale=([\d.]+), bars=(\d+)', content)
     if match:
-        config['roc_period'] = int(match.group(1))
-        config['divergence_threshold'] = float(match.group(2))
-        config['divergence_bars'] = int(match.group(3))
+        config['harmony_threshold'] = float(match.group(1))
+        config['harmony_scale'] = float(match.group(2))
+        config['harmony_bars'] = int(match.group(3))
     
     # ATR
     match = re.search(r'ATR: length=(\d+), avg_period=(\d+)', content)
@@ -152,9 +152,9 @@ def print_config(config: Dict):
     if 'kama_period' in config:
         print(f"KAMA: period={config['kama_period']}, fast={config['kama_fast']}, slow={config['kama_slow']}")
     
-    # Divergence
-    if 'roc_period' in config:
-        print(f"Divergence: roc_period={config['roc_period']}, threshold={config['divergence_threshold']}, bars={config['divergence_bars']}")
+    # Harmony
+    if 'harmony_threshold' in config:
+        print(f"Harmony: threshold={config['harmony_threshold']}, scale={config['harmony_scale']}, bars={config['harmony_bars']}")
     
     # ATR
     if 'sl_mult' in config:
@@ -205,7 +205,7 @@ def parse_gemini_log(filepath: str) -> tuple:
         r'Take Profit: ([\d.]+)\s*\n'
         r'SL Pips: ([\d.]+)\s*\n'
         r'ATR \(avg\): ([\d.]+)\s*\n'
-        r'Divergence \(ROC\): ([\d.-]+)',
+        r'Harmony Score: ([\d.-]+)',
         content,
         re.IGNORECASE
     )
@@ -236,7 +236,7 @@ def parse_gemini_log(filepath: str) -> tuple:
             'tp': float(entry[4]),
             'sl_pips': float(entry[5]),
             'atr': float(entry[6]),
-            'divergence': float(entry[7]),
+            'harmony': float(entry[7]),
             'hour': entry_time.hour,
             'day_of_week': entry_time.weekday(),
         }
@@ -290,32 +290,32 @@ def calculate_metrics(trades: List[Dict]) -> Dict:
     }
 
 
-def analyze_by_divergence_range(trades: List[Dict], step: float = 0.0005) -> None:
-    """Analyze performance by divergence (ROC sum) ranges."""
-    print_section('ANALYSIS BY DIVERGENCE (ROC) RANGE')
+def analyze_by_harmony_range(trades: List[Dict], step: float = 0.5) -> None:
+    """Analyze performance by harmony score ranges."""
+    print_section('ANALYSIS BY HARMONY SCORE RANGE')
     
     if not trades:
         print('No trades to analyze')
         return
     
-    # Get divergence range
-    divergences = [t['divergence'] for t in trades]
-    min_div = min(divergences)
-    max_div = max(divergences)
+    # Get harmony range
+    harmonies = [t['harmony'] for t in trades]
+    min_harm = min(harmonies)
+    max_harm = max(harmonies)
     
-    print(f'Divergence range: {min_div:.6f} to {max_div:.6f}')
+    print(f'Harmony range: {min_harm:.4f} to {max_harm:.4f}')
     print(f'\n{"Range":<20} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
     print('-' * 65)
     
     # Analyze by ranges
-    current = round(min_div, 4)
-    while current <= max_div:
+    current = round(min_harm, 1)
+    while current <= max_harm:
         range_max = current + step
-        range_trades = [t for t in trades if current <= t['divergence'] < range_max]
+        range_trades = [t for t in trades if current <= t['harmony'] < range_max]
         
         if range_trades:
             m = calculate_metrics(range_trades)
-            range_str = f'{current:.4f}-{range_max:.4f}'
+            range_str = f'{current:.1f}-{range_max:.1f}'
             print(f'{range_str:<20} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
         
         current += step
@@ -323,10 +323,10 @@ def analyze_by_divergence_range(trades: List[Dict], step: float = 0.0005) -> Non
     # Find optimal range
     best_pf = 0
     best_range = None
-    current = round(min_div, 4)
-    while current <= max_div:
+    current = round(min_harm, 1)
+    while current <= max_harm:
         range_max = current + step
-        range_trades = [t for t in trades if current <= t['divergence'] < range_max]
+        range_trades = [t for t in trades if current <= t['harmony'] < range_max]
         if range_trades:
             m = calculate_metrics(range_trades)
             if m['pf'] > best_pf and m['n'] >= 10:
@@ -335,7 +335,7 @@ def analyze_by_divergence_range(trades: List[Dict], step: float = 0.0005) -> Non
         current += step
     
     if best_range:
-        print(f'\nSuggested: divergence_threshold >= {best_range[0]:.4f} (PF={best_pf:.2f})')
+        print(f'\nSuggested: harmony_threshold >= {best_range[0]:.1f} (PF={best_pf:.2f})')
 
 
 def analyze_by_atr_range(trades: List[Dict], step: float = 0.0001) -> None:
@@ -595,7 +595,7 @@ def main():
     
     # Run all analyses
     print_summary(trades)
-    analyze_by_divergence_range(trades)
+    analyze_by_harmony_range(trades)
     analyze_by_atr_range(trades)
     analyze_by_hour(trades)
     analyze_by_day(trades)
