@@ -1463,7 +1463,15 @@ STRATEGIES_CONFIG = {
             'roc_period_reference': 11,     # ROC period for USDCHF (can be different)
             'harmony_threshold': 0.0,       # Min harmony score for entry (0 = any positive)
             'harmony_scale': 500,         # Scale factor for visualization
-            'harmony_bars': 3,              # Harmony must be positive N consecutive bars
+            'harmony_bars': 5,              # Harmony must be positive N consecutive bars
+            
+            # === SLOPE FILTER (angle of rising ROC and Harmony) ===
+            'use_slope_filter': True,       # Enable slope/angle filter
+            'roc_min_value': 0.0,           # Min ROC_primary value (filters CHF-only moves)
+            'roc_angle_min': 0.0,           # Min angle for ROC slope (degrees)
+            'roc_angle_scale': 10000.0,     # Scale for atan calculation
+            'harmony_angle_min': 0.0,       # Min angle for Harmony slope (degrees)
+            'harmony_angle_scale': 1.0,     # Scale for atan (harmony already scaled)
             
             # === TREND FILTER ===
             'use_kama_filter': True,
@@ -1507,8 +1515,8 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
             
             # Plot options
-            'plot_roc_multiplier': 10000,     # Scale ROC for visibility
-            'plot_harmony_multiplier': 1.0,   # Additional scale for harmony
+            'plot_roc_multiplier': 1000,     # Scale ROC for visibility
+            'plot_harmony_multiplier': 800.0,   # Additional scale for harmony
         }
     },
     

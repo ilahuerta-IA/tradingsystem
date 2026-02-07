@@ -108,6 +108,14 @@ class GEMINIStrategy(bt.Strategy):
         harmony_scale=10000,            # Multiplier for visualization (raw values ~0.000001)
         harmony_bars=3,                 # Harmony must be positive N bars
         
+        # === SLOPE FILTER (angle of rising ROC and Harmony) ===
+        use_slope_filter=True,          # Enable slope/angle filter
+        roc_min_value=0.0,              # Min ROC_primary value (filters CHF-only moves)
+        roc_angle_min=0.0,              # Min angle for ROC slope (degrees)
+        roc_angle_scale=10000.0,        # Scale for atan calculation
+        harmony_angle_min=0.0,          # Min angle for Harmony slope (degrees)
+        harmony_angle_scale=1.0,        # Scale for atan (harmony already scaled)
+        
         # === KAMA FILTER (optional trend) ===
         use_kama_filter=True,
         kama_period=10,
@@ -227,6 +235,10 @@ class GEMINIStrategy(bt.Strategy):
         self.reference_close_history = []
         self.harmony_history = []
         
+        # History for slope/angle calculation
+        self.roc_primary_history = []    # Store ROC values for slope
+        self.harmony_value_history = []  # Store harmony for slope
+        
         # ATR history for averaging
         self.atr_history = []
         
@@ -244,6 +256,25 @@ class GEMINIStrategy(bt.Strategy):
         self.trade_reports = []
         self.trade_report_file = None
         self._init_trade_reporting()
+
+    # =========================================================================
+    # SLOPE/ANGLE CALCULATION (inspired by Ogle)
+    # =========================================================================
+    
+    def _calculate_angle(self, current_val: float, previous_val: float, scale: float) -> float:
+        """
+        Calculate angle of slope in degrees (same formula as Ogle).
+        
+        angle = atan((current - previous) * scale) -> degrees
+        
+        Positive angle = rising, negative = falling
+        45 degrees = moderate rise, 80+ = strong rise
+        """
+        try:
+            rise = (current_val - previous_val) * scale
+            return math.degrees(math.atan(rise))
+        except (ValueError, ZeroDivisionError):
+            return 0.0
 
     # =========================================================================
     # HARMONY CALCULATION (ROC-based)
@@ -290,13 +321,47 @@ class GEMINIStrategy(bt.Strategy):
             harmony_raw = roc_primary * (-roc_reference)
             harmony_scaled = harmony_raw * self.p.harmony_scale
             
-            # Store harmony history
+            # Store values history for slope calculation
+            self.roc_primary_history.append(roc_primary)
+            self.harmony_value_history.append(harmony_scaled)
+            
+            # Keep limited history (2 values enough for slope)
+            if len(self.roc_primary_history) > 5:
+                self.roc_primary_history = self.roc_primary_history[-5:]
+            if len(self.harmony_value_history) > 5:
+                self.harmony_value_history = self.harmony_value_history[-5:]
+            
+            # Store harmony history for sustained check
             self.harmony_history.append(harmony_scaled)
             if len(self.harmony_history) > self.p.harmony_bars + 1:
                 self.harmony_history = self.harmony_history[-(self.p.harmony_bars + 1):]
             
-            # Check threshold (harmony > threshold AND primary > 0 for LONG)
-            threshold_ok = (harmony_scaled >= self.p.harmony_threshold) and (roc_primary > 0)
+            # Check threshold (harmony > threshold AND primary > roc_min_value for LONG)
+            threshold_ok = (harmony_scaled >= self.p.harmony_threshold) and (roc_primary > self.p.roc_min_value)
+            
+            # Check slope filter if enabled
+            slope_ok = True
+            roc_angle = 0.0
+            harmony_angle = 0.0
+            
+            if self.p.use_slope_filter and len(self.roc_primary_history) >= 2 and len(self.harmony_value_history) >= 2:
+                # Calculate angles
+                roc_angle = self._calculate_angle(
+                    self.roc_primary_history[-1], 
+                    self.roc_primary_history[-2],
+                    self.p.roc_angle_scale
+                )
+                harmony_angle = self._calculate_angle(
+                    self.harmony_value_history[-1],
+                    self.harmony_value_history[-2],
+                    self.p.harmony_angle_scale
+                )
+                
+                # Both angles must be above minimum
+                slope_ok = (roc_angle >= self.p.roc_angle_min) and (harmony_angle >= self.p.harmony_angle_min)
+            
+            # Combine all conditions
+            threshold_ok = threshold_ok and slope_ok
             
             # Check sustained (harmony positive for N bars)
             sustained_ok = self._check_harmony_sustained()
