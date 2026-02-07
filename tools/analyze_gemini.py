@@ -186,7 +186,9 @@ def parse_gemini_log(filepath: str) -> tuple:
         Take Profit: X.XXXXX
         SL Pips: XX.X
         ATR (avg): X.XXXXXX
-        Divergence (ROC): X.XXXXXX
+        Cross Bars: N
+        ROC Angle: XX.X
+        Harmony Angle: XX.X
         
         EXIT #N
         Time: YYYY-MM-DD HH:MM:SS
@@ -196,7 +198,7 @@ def parse_gemini_log(filepath: str) -> tuple:
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # Parse entries - pattern for GEMINI log format
+    # Parse entries - pattern for GEMINI log format (with Cross Bars, ROC Angle and Harmony Angle)
     entries = re.findall(
         r'ENTRY #(\d+)\s*\n'
         r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -205,7 +207,9 @@ def parse_gemini_log(filepath: str) -> tuple:
         r'Take Profit: ([\d.]+)\s*\n'
         r'SL Pips: ([\d.]+)\s*\n'
         r'ATR \(avg\): ([\d.]+)\s*\n'
-        r'Harmony Score: ([\d.-]+)',
+        r'Cross Bars: (\d+)\s*\n'
+        r'ROC Angle: ([\d.]+).*\n'
+        r'Harmony Angle: ([\d.]+)',
         content,
         re.IGNORECASE
     )
@@ -236,7 +240,9 @@ def parse_gemini_log(filepath: str) -> tuple:
             'tp': float(entry[4]),
             'sl_pips': float(entry[5]),
             'atr': float(entry[6]),
-            'harmony': float(entry[7]),
+            'cross_bars': int(entry[7]),
+            'roc_angle': float(entry[8]),
+            'harmony_angle': float(entry[9]),
             'hour': entry_time.hour,
             'day_of_week': entry_time.weekday(),
         }
@@ -290,52 +296,140 @@ def calculate_metrics(trades: List[Dict]) -> Dict:
     }
 
 
-def analyze_by_harmony_range(trades: List[Dict], step: float = 0.5) -> None:
-    """Analyze performance by harmony score ranges."""
-    print_section('ANALYSIS BY HARMONY SCORE RANGE')
+def analyze_by_roc_angle(trades: List[Dict], step: float = 5.0) -> None:
+    """Analyze performance by ROC angle ranges."""
+    print_section('ANALYSIS BY ROC ANGLE RANGE (degrees)')
     
     if not trades:
         print('No trades to analyze')
         return
     
-    # Get harmony range
-    harmonies = [t['harmony'] for t in trades]
-    min_harm = min(harmonies)
-    max_harm = max(harmonies)
+    # Get ROC angle range
+    angles = [t['roc_angle'] for t in trades]
+    min_ang = min(angles)
+    max_ang = max(angles)
     
-    print(f'Harmony range: {min_harm:.4f} to {max_harm:.4f}')
-    print(f'\n{"Range":<20} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
-    print('-' * 65)
+    print(f'ROC Angle range: {min_ang:.1f} to {max_ang:.1f} degrees')
+    print(f'\n{"Range":<15} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
+    print('-' * 60)
     
     # Analyze by ranges
-    current = round(min_harm, 1)
-    while current <= max_harm:
+    current = 0
+    while current <= max_ang + step:
         range_max = current + step
-        range_trades = [t for t in trades if current <= t['harmony'] < range_max]
+        range_trades = [t for t in trades if current <= t['roc_angle'] < range_max]
         
         if range_trades:
             m = calculate_metrics(range_trades)
-            range_str = f'{current:.1f}-{range_max:.1f}'
-            print(f'{range_str:<20} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
+            range_str = f'{current:.0f}-{range_max:.0f}'
+            print(f'{range_str:<15} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
         
         current += step
     
-    # Find optimal range
+    # Find optimal range (best PF with min 3 trades)
     best_pf = 0
     best_range = None
-    current = round(min_harm, 1)
-    while current <= max_harm:
+    current = 0
+    while current <= max_ang:
         range_max = current + step
-        range_trades = [t for t in trades if current <= t['harmony'] < range_max]
+        range_trades = [t for t in trades if current <= t['roc_angle'] < range_max]
         if range_trades:
             m = calculate_metrics(range_trades)
-            if m['pf'] > best_pf and m['n'] >= 10:
+            if m['pf'] > best_pf and m['n'] >= 3:
                 best_pf = m['pf']
                 best_range = (current, range_max)
         current += step
     
     if best_range:
-        print(f'\nSuggested: harmony_threshold >= {best_range[0]:.1f} (PF={best_pf:.2f})')
+        print(f'\nBest ROC Angle range: {best_range[0]:.0f}-{best_range[1]:.0f} degrees (PF={best_pf:.2f})')
+
+
+def analyze_by_harmony_angle(trades: List[Dict], step: float = 5.0) -> None:
+    """Analyze performance by Harmony angle ranges."""
+    print_section('ANALYSIS BY HARMONY ANGLE RANGE (degrees)')
+    
+    if not trades:
+        print('No trades to analyze')
+        return
+    
+    # Get Harmony angle range
+    angles = [t['harmony_angle'] for t in trades]
+    min_ang = min(angles)
+    max_ang = max(angles)
+    
+    print(f'Harmony Angle range: {min_ang:.1f} to {max_ang:.1f} degrees')
+    print(f'\n{"Range":<15} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
+    print('-' * 60)
+    
+    # Analyze by ranges
+    current = 0
+    while current <= max_ang + step:
+        range_max = current + step
+        range_trades = [t for t in trades if current <= t['harmony_angle'] < range_max]
+        
+        if range_trades:
+            m = calculate_metrics(range_trades)
+            range_str = f'{current:.0f}-{range_max:.0f}'
+            print(f'{range_str:<15} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
+        
+        current += step
+    
+    # Find optimal range (best PF with min 3 trades)
+    best_pf = 0
+    best_range = None
+    current = 0
+    while current <= max_ang:
+        range_max = current + step
+        range_trades = [t for t in trades if current <= t['harmony_angle'] < range_max]
+        if range_trades:
+            m = calculate_metrics(range_trades)
+            if m['pf'] > best_pf and m['n'] >= 3:
+                best_pf = m['pf']
+                best_range = (current, range_max)
+        current += step
+    
+    if best_range:
+        print(f'\nBest Harmony Angle range: {best_range[0]:.0f}-{best_range[1]:.0f} degrees (PF={best_pf:.2f})')
+
+
+def analyze_by_cross_bars(trades: List[Dict]) -> None:
+    """Analyze performance by cross_bars (bars from KAMA cross to entry)."""
+    print_section('ANALYSIS BY CROSS BARS (bars from KAMA cross to entry)')
+    
+    if not trades:
+        print('No trades to analyze')
+        return
+    
+    # Get cross_bars range
+    cross_bars = [t['cross_bars'] for t in trades]
+    min_bars = min(cross_bars)
+    max_bars = max(cross_bars)
+    
+    print(f'Cross Bars range: {min_bars} to {max_bars}')
+    print(f'\n{"Bars":<10} {"Trades":>8} {"Wins":>6} {"WR%":>8} {"PF":>8} {"Avg PnL":>10}')
+    print('-' * 55)
+    
+    # Analyze by each bar count
+    for bar in range(min_bars, max_bars + 1):
+        bar_trades = [t for t in trades if t['cross_bars'] == bar]
+        
+        if bar_trades:
+            m = calculate_metrics(bar_trades)
+            print(f'{bar:<10} {m["n"]:>8} {m["wins"]:>6} {m["wr"]:>7.1f}% {format_pf(m["pf"]):>8} {m["avg_pnl"]:>+10.1f}')
+    
+    # Find best bar count (best PF with min 3 trades)
+    best_pf = 0
+    best_bar = None
+    for bar in range(min_bars, max_bars + 1):
+        bar_trades = [t for t in trades if t['cross_bars'] == bar]
+        if bar_trades:
+            m = calculate_metrics(bar_trades)
+            if m['pf'] > best_pf and m['n'] >= 3:
+                best_pf = m['pf']
+                best_bar = bar
+    
+    if best_bar is not None:
+        print(f'\nBest Cross Bars: {best_bar} (PF={best_pf:.2f})')
 
 
 def analyze_by_atr_range(trades: List[Dict], step: float = 0.0001) -> None:
@@ -525,10 +619,20 @@ def print_summary(trades: List[Dict]) -> None:
     dates = sorted([t['datetime'] for t in trades])
     print(f'\nDate Range:       {dates[0]} to {dates[-1]}')
     
-    # Divergence (ROC) stats
-    divergences = [t['divergence'] for t in trades]
-    print(f'\nDivergence (ROC) Range: {min(divergences):.6f} to {max(divergences):.6f}')
-    print(f'Divergence (ROC) Avg:   {sum(divergences)/len(divergences):.6f}')
+    # Cross Bars stats
+    cross_bars = [t['cross_bars'] for t in trades]
+    print(f'\nCross Bars Range:    {min(cross_bars)} to {max(cross_bars)} bars')
+    print(f'Cross Bars Avg:      {sum(cross_bars)/len(cross_bars):.1f} bars')
+    
+    # ROC Angle stats
+    roc_angles = [t['roc_angle'] for t in trades]
+    print(f'\nROC Angle Range:     {min(roc_angles):.1f} to {max(roc_angles):.1f} degrees')
+    print(f'ROC Angle Avg:       {sum(roc_angles)/len(roc_angles):.1f} degrees')
+    
+    # Harmony Angle stats
+    harmony_angles = [t['harmony_angle'] for t in trades]
+    print(f'\nHarmony Angle Range: {min(harmony_angles):.1f} to {max(harmony_angles):.1f} degrees')
+    print(f'Harmony Angle Avg:   {sum(harmony_angles)/len(harmony_angles):.1f} degrees')
     
     # Bars held stats
     if 'bars_held' in trades[0]:
@@ -595,11 +699,13 @@ def main():
     
     # Run all analyses
     print_summary(trades)
-    analyze_by_harmony_range(trades)
+    analyze_by_cross_bars(trades)
+    analyze_by_roc_angle(trades)
+    analyze_by_harmony_angle(trades)
     analyze_by_atr_range(trades)
+    analyze_by_sl_pips(trades)
     analyze_by_hour(trades)
     analyze_by_day(trades)
-    analyze_by_sl_pips(trades)
     analyze_by_exit_reason(trades)
 
 

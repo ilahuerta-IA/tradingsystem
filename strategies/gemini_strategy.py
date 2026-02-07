@@ -443,7 +443,7 @@ class GEMINIStrategy(bt.Strategy):
         except Exception as e:
             print(f"[GEMINI] Trade reporting init failed: {e}")
 
-    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, harmony_value, roc_angle, harmony_angle):
+    def _record_trade_entry(self, dt, entry_price, size, atr, sl_pips, harmony_value, roc_angle, harmony_angle, cross_bars):
         """Record entry to trade report file."""
         if not self.trade_report_file:
             return
@@ -459,6 +459,7 @@ class GEMINIStrategy(bt.Strategy):
                 'sl_pips': sl_pips,
                 'stop_level': self.stop_level,
                 'take_level': self.take_level,
+                'cross_bars': cross_bars,
             }
             self.trade_reports.append(entry)
             self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
@@ -468,9 +469,9 @@ class GEMINIStrategy(bt.Strategy):
             self.trade_report_file.write(f"Take Profit: {self.take_level:.5f}\n")
             self.trade_report_file.write(f"SL Pips: {sl_pips:.1f}\n")
             self.trade_report_file.write(f"ATR (avg): {atr:.6f}\n")
-            self.trade_report_file.write(f"ROC Angle: {roc_angle:.1f}°\n")
-            self.trade_report_file.write(f"Harmony Angle: {harmony_angle:.1f}°\n")
-            self.trade_report_file.write(f"Harmony Score: {harmony_value:.4f}\n")
+            self.trade_report_file.write(f"Cross Bars: {cross_bars}\n")
+            self.trade_report_file.write(f"ROC Angle: {roc_angle:.1f}\n")
+            self.trade_report_file.write(f"Harmony Angle: {harmony_angle:.1f}\n")
             self.trade_report_file.write("-" * 50 + "\n\n")
             self.trade_report_file.flush()
         except Exception as e:
@@ -611,7 +612,7 @@ class GEMINIStrategy(bt.Strategy):
     # ENTRY EXECUTION
     # =========================================================================
     
-    def _execute_entry(self, dt: datetime, harmony_value: float, roc_angle: float, harmony_angle: float):
+    def _execute_entry(self, dt: datetime, harmony_value: float, roc_angle: float, harmony_angle: float, cross_bars: int):
         """Execute market entry after KAMA cross + angle confirmation."""
         
         entry_price = float(self.primary_data.close[0])
@@ -663,7 +664,7 @@ class GEMINIStrategy(bt.Strategy):
         
         # Record entry
         self._record_trade_entry(
-            dt, entry_price, bt_size, avg_atr, sl_pips, harmony_value, roc_angle, harmony_angle
+            dt, entry_price, bt_size, avg_atr, sl_pips, harmony_value, roc_angle, harmony_angle, cross_bars
         )
         
         # Update plot lines
@@ -821,7 +822,9 @@ class GEMINIStrategy(bt.Strategy):
                     if self._check_angle_conditions(roc_angle, harmony_angle):
                         # Step 4: FILTERS - Final checks before entry
                         if self._check_final_filters(dt):
-                            self._execute_entry(dt, harmony_value, roc_angle, harmony_angle)
+                            # Calculate bars since cross
+                            cross_bars = len(self.primary_data) - self.cross_detected_bar
+                            self._execute_entry(dt, harmony_value, roc_angle, harmony_angle, cross_bars)
                             # Reset window after entry
                             self.in_cross_window = False
                             self.cross_detected_bar = None

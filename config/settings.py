@@ -1448,12 +1448,12 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
         'reference_symbol': 'USDCHF',
         
-        'from_date': datetime.datetime(2024, 4, 20),
-        'to_date': datetime.datetime(2024, 5, 28),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -1466,11 +1466,11 @@ STRATEGIES_CONFIG = {
             # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
             # Step 1: TRIGGER - HL2_EMA crosses above KAMA
             # Step 2: CONFIRMATION - Within N bars, check angles
-            'cross_window_bars': 5,         # Window after cross to look for entry (N bars)
-            'entry_roc_angle_min': 11.0,    # Min ROC angle during window (degrees)
-            'entry_roc_angle_max': 20.0,    # Max ROC angle (too steep = unreliable)
+            'cross_window_bars': 11,         # Window after cross to look for entry (N bars)
+            'entry_roc_angle_min': 00.0,    # Min ROC angle during window (degrees)
+            'entry_roc_angle_max': 25.0,    # Max ROC angle (too steep = unreliable)
             'entry_harmony_angle_min': 0.0,  # Min Harmony angle during window (degrees)
-            'entry_harmony_angle_max': 15.0,  # Max Harmony angle (too steep = unreliable)
+            'entry_harmony_angle_max': 25.0,  # Max Harmony angle (too steep = unreliable)
             'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
             'harmony_angle_scale': 1.0,     # Scale for Harmony angle calculation
             
