@@ -132,7 +132,7 @@ class GEMINIStrategy(bt.Strategy):
         # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
         # Step 1: TRIGGER - HL2_EMA crosses above KAMA
         # Step 2: CONFIRMATION - Within N bars, check angles
-        cross_window_bars=5,            # Window after cross to look for entry (N bars)
+        allowed_cross_bars=(),          # Allowed bars since cross for entry. Empty=all, e.g. (0,1,4,5)
         entry_roc_angle_min=10.0,       # Min ROC angle during window (degrees)
         entry_roc_angle_max=80.0,       # Max ROC angle (too steep = unreliable)
         entry_harmony_angle_min=10.0,   # Min Harmony angle during window (degrees)
@@ -410,7 +410,8 @@ class GEMINIStrategy(bt.Strategy):
             self.trade_report_file.write("=== CONFIGURATION ===\n")
             self.trade_report_file.write(f"KAMA: period={self.p.kama_period}, fast={self.p.kama_fast}, slow={self.p.kama_slow}\n")
             self.trade_report_file.write(f"Entry System: KAMA Cross + Angle Confirmation\n")
-            self.trade_report_file.write(f"Cross Window: {self.p.cross_window_bars} bars\n")
+            allowed_str = 'ALL' if not self.p.allowed_cross_bars else str(list(self.p.allowed_cross_bars))
+            self.trade_report_file.write(f"Allowed Cross Bars: {allowed_str}\n")
             self.trade_report_file.write(f"ROC: primary_period={self.p.roc_period_primary}, reference_period={self.p.roc_period_reference}\n")
             self.trade_report_file.write(f"Harmony Scale: {self.p.harmony_scale}\n")
             self.trade_report_file.write(f"Entry Angles: ROC [{self.p.entry_roc_angle_min}°-{self.p.entry_roc_angle_max}°], Harmony [{self.p.entry_harmony_angle_min}°-{self.p.entry_harmony_angle_max}°]\n")
@@ -568,6 +569,7 @@ class GEMINIStrategy(bt.Strategy):
     def _check_cross_window(self) -> bool:
         """
         Check if we're still within the entry window after a cross.
+        Window stays open until max of allowed_cross_bars (or 20 if empty).
         
         Returns: True if within window
         """
@@ -577,7 +579,23 @@ class GEMINIStrategy(bt.Strategy):
         current_bar = len(self.primary_data)
         bars_since_cross = current_bar - self.cross_detected_bar
         
-        return bars_since_cross <= self.p.cross_window_bars
+        # Determine max window from allowed_cross_bars
+        if self.p.allowed_cross_bars:
+            max_window = max(self.p.allowed_cross_bars)
+        else:
+            max_window = 20  # Default if empty (all allowed up to 20)
+        
+        return bars_since_cross <= max_window
+    
+    def _is_cross_bars_allowed(self, cross_bars: int) -> bool:
+        """
+        Check if the current cross_bars value is in the allowed list.
+        
+        Returns: True if allowed (or if list is empty = all allowed)
+        """
+        if not self.p.allowed_cross_bars:
+            return True  # Empty list = all allowed
+        return cross_bars in self.p.allowed_cross_bars
     
     def _check_angle_conditions(self, roc_angle: float, harmony_angle: float) -> bool:
         """
@@ -807,7 +825,8 @@ class GEMINIStrategy(bt.Strategy):
                 self.cross_detected_bar = len(self.primary_data)
                 self.in_cross_window = True
                 if self.p.print_signals:
-                    print(f"[GEMINI] {dt} KAMA CROSS detected - window open for {self.p.cross_window_bars} bars")
+                    allowed_str = 'ALL' if not self.p.allowed_cross_bars else str(list(self.p.allowed_cross_bars))
+                    print(f"[GEMINI] {dt} KAMA CROSS detected - allowed bars: {allowed_str}")
             
             # Step 2: Check if still in window
             if self.in_cross_window:
@@ -818,12 +837,16 @@ class GEMINIStrategy(bt.Strategy):
                     if self.p.print_signals:
                         print(f"[GEMINI] {dt} Window expired - no entry")
                 else:
-                    # Step 3: CONFIRMATION - Check angles
-                    if self._check_angle_conditions(roc_angle, harmony_angle):
-                        # Step 4: FILTERS - Final checks before entry
+                    # Calculate bars since cross
+                    cross_bars = len(self.primary_data) - self.cross_detected_bar
+                    
+                    # Step 3: Check if this cross_bars value is allowed
+                    if not self._is_cross_bars_allowed(cross_bars):
+                        pass  # Skip this bar, but keep window open
+                    # Step 4: CONFIRMATION - Check angles
+                    elif self._check_angle_conditions(roc_angle, harmony_angle):
+                        # Step 5: FILTERS - Final checks before entry
                         if self._check_final_filters(dt):
-                            # Calculate bars since cross
-                            cross_bars = len(self.primary_data) - self.cross_detected_bar
                             self._execute_entry(dt, harmony_value, roc_angle, harmony_angle, cross_bars)
                             # Reset window after entry
                             self.in_cross_window = False

@@ -1466,8 +1466,8 @@ STRATEGIES_CONFIG = {
             # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
             # Step 1: TRIGGER - HL2_EMA crosses above KAMA
             # Step 2: CONFIRMATION - Within N bars, check angles
-            'cross_window_bars': 2,         # Window after cross to look for entry (N bars)
-            'entry_roc_angle_min': 30.0,    # Min ROC angle during window (degrees)
+            'allowed_cross_bars': [0, 1],   # Allowed bars since cross. Empty=all. Analysis showed 0-1 are profitable
+            'entry_roc_angle_min': 10.0,    # Min ROC angle during window (degrees)
             'entry_roc_angle_max': 40.0,    # Max ROC angle (too steep = unreliable)
             'entry_harmony_angle_min': 10.0,  # Min Harmony angle during window (degrees)
             'entry_harmony_angle_max': 25.0,  # Max Harmony angle (too steep = unreliable)
@@ -1481,7 +1481,7 @@ STRATEGIES_CONFIG = {
             
             # === ATR for SL/TP ===
             'atr_length': 10,
-            'atr_sl_multiplier': 3.0,
+            'atr_sl_multiplier': 5.0,
             'atr_tp_multiplier': 10.0,
             
             # === FILTERS (applied after angle confirmation) ===
@@ -1492,7 +1492,7 @@ STRATEGIES_CONFIG = {
             'allowed_days': [0, 1, 2, 3, 4],
             
             'use_sl_pips_filter': True,
-            'sl_pips_min': 10,
+            'sl_pips_min': 15,
             'sl_pips_max': 300,
             
             'use_atr_filter': False,
