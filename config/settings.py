@@ -1521,7 +1521,7 @@ STRATEGIES_CONFIG = {
     },
     
     'USDCHF_GEMINI': {
-        'active': False,  # Start with EURUSD first
+        'active': True,  
         'strategy_name': 'GEMINI',
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
@@ -1530,48 +1530,56 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/EURUSD_5m_5Yea.csv',
         'reference_symbol': 'EURUSD',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
         'params': {
-            # === HARMONY SCORE SETTINGS ===
-            'roc_period_primary': 12,
-            'roc_period_reference': 12,
-            'harmony_threshold': 0.0,
-            'harmony_scale': 10000,
-            'harmony_bars': 3,
+            # === ROC SETTINGS ===
+            'roc_period_primary': 5,       # ROC period for EURUSD (12 bars = 1h on 5m)
+            'roc_period_reference': 5,     # ROC period for USDCHF
+            'harmony_scale': 10000,         # Scale factor for harmony calculation
             
-            # === TREND FILTER ===
-            'use_kama_filter': True,
+            # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
+            # Step 1: TRIGGER - HL2_EMA crosses above KAMA
+            # Step 2: CONFIRMATION - Within N bars, check angles
+            'allowed_cross_bars': [0,3, 5, 6, 7, 8, 9, 10 ,11, 12, 13, 14 ],   # Allowed bars since cross. Empty=all. Analysis showed 0-1 are profitable
+            'entry_roc_angle_min': 25.0,    # Min ROC angle during window (degrees)
+            'entry_roc_angle_max': 40.0,    # Max ROC angle (too steep = unreliable)
+            'entry_harmony_angle_min': 15.0,  # Min Harmony angle during window (degrees)
+            'entry_harmony_angle_max': 40.0,  # Max Harmony angle (too steep = unreliable)
+            'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
+            'harmony_angle_scale': 1.0,     # Scale for Harmony angle calculation
+            
+            # === KAMA SETTINGS ===
             'kama_period': 10,
             'kama_fast': 2,
             'kama_slow': 30,
             
             # === ATR for SL/TP ===
-            'atr_length': 14,
-            'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 8.0,
+            'atr_length': 10,
+            'atr_sl_multiplier': 4.0,
+            'atr_tp_multiplier': 10.0,
             
-            # === FILTERS ===
+            # === FILTERS (applied after angle confirmation) ===
             'use_time_filter': False,
             'allowed_hours': [],
             
             'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'allowed_days': [0, 1, 2, 3],
             
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 10,
-            'sl_pips_max': 30,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 25,
+            'sl_pips_max': 40,
             
             'use_atr_filter': False,
             'atr_min': 0.0002,
-            'atr_max': 0.0006,
+            'atr_max': 0.0007,
             'atr_avg_period': 20,
             
             # Asset config
@@ -1585,12 +1593,12 @@ STRATEGIES_CONFIG = {
             'risk_percent': 0.01,
             
             # Debug & Reporting
-            'print_signals': True,
+            'print_signals': False,  # Enable to see KAMA cross and entries
             'export_reports': True,
             
             # Plot options
-            'plot_roc_multiplier': 10000,
-            'plot_harmony_multiplier': 1.0,
+            'plot_roc_multiplier': 500,    # Scale ROC for visibility
+            'plot_harmony_multiplier': 20.0,  # Scale for harmony
         }
     },
 
