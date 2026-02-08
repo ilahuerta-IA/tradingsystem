@@ -750,7 +750,14 @@ class GEMINIStrategy(bt.Strategy):
         pnl = trade.pnl  # Real P&L from Backtrader
         
         self.trades += 1
-        self._trade_pnls.append(pnl)
+        
+        # Store for yearly stats (same format as sunset_ogle)
+        self._trade_pnls.append({
+            'date': dt,
+            'year': dt.year,
+            'pnl': pnl,
+            'is_winner': pnl > 0,
+        })
         
         if pnl > 0:
             self.wins += 1
@@ -939,9 +946,11 @@ class GEMINIStrategy(bt.Strategy):
         monte_carlo_dd_95 = 0.0
         monte_carlo_dd_99 = 0.0
         if len(self._trade_pnls) >= 30:
+            # Extract PnL values from dict list
+            pnl_values = np.array([t['pnl'] for t in self._trade_pnls])
             monte_carlo_dds = []
             for _ in range(10000):
-                shuffled_pnls = np.random.choice(self._trade_pnls, size=len(self._trade_pnls), replace=True)
+                shuffled_pnls = np.random.choice(pnl_values, size=len(pnl_values), replace=True)
                 cumsum = np.cumsum(shuffled_pnls)
                 running_max = np.maximum.accumulate(cumsum + self._starting_cash)
                 drawdowns = (running_max - (cumsum + self._starting_cash)) / running_max * 100

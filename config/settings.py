@@ -1448,8 +1448,8 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/USDCHF_5m_5Yea.csv',
         'reference_symbol': 'USDCHF',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -1466,11 +1466,11 @@ STRATEGIES_CONFIG = {
             # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
             # Step 1: TRIGGER - HL2_EMA crosses above KAMA
             # Step 2: CONFIRMATION - Within N bars, check angles
-            'allowed_cross_bars': [0, 1],   # Allowed bars since cross. Empty=all. Analysis showed 0-1 are profitable
+            'allowed_cross_bars': [10, 11, 12, 14],   # Allowed bars since cross. Empty=all. Analysis showed 0-1 are profitable
             'entry_roc_angle_min': 10.0,    # Min ROC angle during window (degrees)
-            'entry_roc_angle_max': 40.0,    # Max ROC angle (too steep = unreliable)
+            'entry_roc_angle_max': 30.0,    # Max ROC angle (too steep = unreliable)
             'entry_harmony_angle_min': 10.0,  # Min Harmony angle during window (degrees)
-            'entry_harmony_angle_max': 25.0,  # Max Harmony angle (too steep = unreliable)
+            'entry_harmony_angle_max': 20.0,  # Max Harmony angle (too steep = unreliable)
             'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
             'harmony_angle_scale': 1.0,     # Scale for Harmony angle calculation
             
@@ -1482,18 +1482,18 @@ STRATEGIES_CONFIG = {
             # === ATR for SL/TP ===
             'atr_length': 10,
             'atr_sl_multiplier': 5.0,
-            'atr_tp_multiplier': 10.0,
+            'atr_tp_multiplier': 15.0,
             
             # === FILTERS (applied after angle confirmation) ===
             'use_time_filter': False,
             'allowed_hours': [],
             
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3],
             
             'use_sl_pips_filter': True,
             'sl_pips_min': 15,
-            'sl_pips_max': 300,
+            'sl_pips_max': 40,
             
             'use_atr_filter': False,
             'atr_min': 0.0002,

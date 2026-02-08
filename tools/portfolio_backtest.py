@@ -32,6 +32,7 @@ from config.settings import STRATEGIES_CONFIG, BROKER_CONFIG
 from strategies.sunset_ogle import SunsetOgleStrategy
 from strategies.koi_strategy import KOIStrategy
 from strategies.sedna_strategy import SEDNAStrategy
+from strategies.gemini_strategy import GEMINIStrategy
 from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
@@ -43,6 +44,7 @@ STRATEGY_REGISTRY = {
     'SunsetOgle': SunsetOgleStrategy,
     'KOI': KOIStrategy,
     'SEDNA': SEDNAStrategy,
+    'GEMINI': GEMINIStrategy,
 }
 
 
@@ -80,6 +82,14 @@ def run_single_backtest(config_name, config, silent=False):
         data = bt.feeds.GenericCSVData(**feed_kwargs)
     
     cerebro.adddata(data, name=asset_name)
+    
+    # GEMINI needs a second data feed (reference pair)
+    if config['strategy_name'] == 'GEMINI' and 'reference_data_path' in config:
+        ref_path = Path(config['reference_data_path'])
+        ref_kwargs = feed_kwargs.copy()
+        ref_kwargs['dataname'] = str(ref_path)
+        ref_data = bt.feeds.GenericCSVData(**ref_kwargs)
+        cerebro.adddata(ref_data, name=config.get('reference_symbol', 'REF'))
     
     # Get strategy class and add with params
     strategy_class = STRATEGY_REGISTRY.get(config['strategy_name'])
