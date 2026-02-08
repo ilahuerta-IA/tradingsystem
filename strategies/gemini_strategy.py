@@ -841,22 +841,24 @@ class GEMINIStrategy(bt.Strategy):
         total_pnl = self.gross_profit - self.gross_loss
         final_value = self.broker.get_value()
         
-        # Calculate advanced metrics
+        # Calculate advanced metrics (same as sunset_ogle)
         sharpe_ratio = 0.0
         sortino_ratio = 0.0
-        if len(self._trade_pnls) > 1:
-            pnl_array = np.array(self._trade_pnls)
-            mean_pnl = np.mean(pnl_array)
-            std_pnl = np.std(pnl_array)
+        
+        # Sharpe Ratio - based on per-bar returns
+        if len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
             
-            if std_pnl > 0:
-                sharpe_ratio = (mean_pnl / std_pnl) * np.sqrt(len(pnl_array))
-            
-            negative_pnls = pnl_array[pnl_array < 0]
-            if len(negative_pnls) > 0:
-                downside_std = np.std(negative_pnls)
-                if downside_std > 0:
-                    sortino_ratio = (mean_pnl / downside_std) * np.sqrt(len(pnl_array))
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                std_return = np.std(returns_array)
+                periods_per_year = 252 * 24 * 12  # 5-minute periods per year
+                if std_return > 0:
+                    sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
         # Max Drawdown
         max_drawdown_pct = 0.0
@@ -869,12 +871,43 @@ class GEMINIStrategy(bt.Strategy):
                 if dd > max_drawdown_pct:
                     max_drawdown_pct = dd
         
-        # CAGR
+        # CAGR - use actual dates from trades
         cagr = 0.0
-        if len(self._portfolio_values) > 252:  # ~1 year of trading days
-            years = len(self._portfolio_values) / 252
-            if self._starting_cash > 0 and final_value > 0:
-                cagr = ((final_value / self._starting_cash) ** (1 / years) - 1) * 100
+        if len(self._portfolio_values) > 1 and self._starting_cash > 0:
+            total_return = final_value / self._starting_cash
+            if self.trade_reports and len(self.trade_reports) > 0:
+                # Use trade dates for accurate year calculation
+                first_date = self.trade_reports[0].get('exit_time') or self.trade_reports[0].get('entry_time')
+                last_date = self.trade_reports[-1].get('exit_time') or self.trade_reports[-1].get('entry_time')
+                if first_date and last_date:
+                    days = (last_date - first_date).days
+                    years = max(days / 365.25, 0.1)
+                else:
+                    years = len(self._portfolio_values) / (252 * 24 * 12)  # Fallback
+                    years = max(years, 0.1)
+            else:
+                years = len(self._portfolio_values) / (252 * 24 * 12)
+                years = max(years, 0.1)
+            
+            if total_return > 0:
+                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
+        
+        # Sortino Ratio - based on per-bar returns
+        if len(self._portfolio_values) > 10:
+            returns = []
+            for i in range(1, len(self._portfolio_values)):
+                ret = (self._portfolio_values[i] - self._portfolio_values[i-1]) / self._portfolio_values[i-1]
+                returns.append(ret)
+            
+            if len(returns) > 0:
+                returns_array = np.array(returns)
+                mean_return = np.mean(returns_array)
+                negative_returns = returns_array[returns_array < 0]
+                if len(negative_returns) > 0:
+                    downside_dev = np.std(negative_returns)
+                    periods_per_year = 252 * 24 * 12
+                    if downside_dev > 0:
+                        sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
         
         # Calmar Ratio
         calmar_ratio = cagr / max_drawdown_pct if max_drawdown_pct > 0 else 0

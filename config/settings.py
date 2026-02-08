@@ -1466,10 +1466,10 @@ STRATEGIES_CONFIG = {
             # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
             # Step 1: TRIGGER - HL2_EMA crosses above KAMA
             # Step 2: CONFIRMATION - Within N bars, check angles
-            'cross_window_bars': 11,         # Window after cross to look for entry (N bars)
-            'entry_roc_angle_min': 00.0,    # Min ROC angle during window (degrees)
-            'entry_roc_angle_max': 25.0,    # Max ROC angle (too steep = unreliable)
-            'entry_harmony_angle_min': 0.0,  # Min Harmony angle during window (degrees)
+            'cross_window_bars': 2,         # Window after cross to look for entry (N bars)
+            'entry_roc_angle_min': 30.0,    # Min ROC angle during window (degrees)
+            'entry_roc_angle_max': 40.0,    # Max ROC angle (too steep = unreliable)
+            'entry_harmony_angle_min': 10.0,  # Min Harmony angle during window (degrees)
             'entry_harmony_angle_max': 25.0,  # Max Harmony angle (too steep = unreliable)
             'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
             'harmony_angle_scale': 1.0,     # Scale for Harmony angle calculation
@@ -1482,7 +1482,7 @@ STRATEGIES_CONFIG = {
             # === ATR for SL/TP ===
             'atr_length': 10,
             'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 6.0,
+            'atr_tp_multiplier': 10.0,
             
             # === FILTERS (applied after angle confirmation) ===
             'use_time_filter': False,
@@ -1491,13 +1491,13 @@ STRATEGIES_CONFIG = {
             'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
             
-            'use_sl_pips_filter': False,
+            'use_sl_pips_filter': True,
             'sl_pips_min': 10,
-            'sl_pips_max': 30,
+            'sl_pips_max': 300,
             
             'use_atr_filter': False,
             'atr_min': 0.0002,
-            'atr_max': 0.0006,
+            'atr_max': 0.0007,
             'atr_avg_period': 20,
             
             # Asset config
