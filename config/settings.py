@@ -1530,8 +1530,8 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/EURUSD_5m_5Yea.csv',
         'reference_symbol': 'EURUSD',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2022, 1, 1),
+        'to_date': datetime.datetime(2022, 12, 30),
         
         'starting_cash': 100000.0,
         
