@@ -10,7 +10,7 @@ from .sunset_ogle_checker import SunsetOgleChecker
 from .koi_checker import KOIChecker
 from .sedna_checker import SEDNAChecker
 from .gliese_checker import GLIESEChecker
-from .helix_checker import HELIXChecker
+from .gemini_checker import GEMINIChecker
 
 # Registry for dynamic instantiation
 CHECKER_REGISTRY = {
@@ -18,7 +18,8 @@ CHECKER_REGISTRY = {
     "KOI": KOIChecker,
     "SEDNA": SEDNAChecker,
     "GLIESE": GLIESEChecker,
-    "HELIX": HELIXChecker,
+    "GEMINI": GEMINIChecker,
+    # "HELIX": HELIXChecker,  # In development - not ready for live
 }
 
 

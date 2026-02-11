@@ -265,6 +265,12 @@ class MultiStrategyMonitor:
                     self.active_symbols[symbol] = []
                 self.active_symbols[symbol].append(config_name)
                 
+                # Track reference symbol for dual-feed strategies (GEMINI)
+                reference_symbol = config.get("reference_symbol")
+                if reference_symbol and reference_symbol not in self.active_symbols:
+                    self.active_symbols[reference_symbol] = []
+                    # Note: reference symbol doesn't map to config, just needs data fetching
+                
                 enabled_count += 1
                 self.logger.info(
                     f"[OK] {config_name}: {strategy_type} on {symbol}"
@@ -649,8 +655,12 @@ class MultiStrategyMonitor:
             
             bars = symbol_data[symbol]
             
+            # Get reference data for dual-feed strategies (GEMINI)
+            reference_symbol = config.get("reference_symbol")
+            reference_bars = symbol_data.get(reference_symbol) if reference_symbol else None
+            
             try:
-                self._check_and_execute(config_name, checker, symbol, bars)
+                self._check_and_execute(config_name, checker, symbol, bars, reference_bars)
             except Exception as e:
                 self.stats.errors_count += 1
                 self.logger.error(f"[{config_name}] Error: {e}")
@@ -665,7 +675,8 @@ class MultiStrategyMonitor:
         config_name: str,
         checker: BaseChecker,
         symbol: str,
-        bars: Any
+        bars: Any,
+        reference_bars: Any = None
     ):
         """
         Check signal and execute if valid.
@@ -675,9 +686,13 @@ class MultiStrategyMonitor:
             checker: Strategy checker instance
             symbol: Trading symbol
             bars: OHLCV DataFrame
+            reference_bars: Reference symbol DataFrame (for GEMINI dual-feed)
         """
-        # Check for signal
-        signal = checker.check_signal(bars)
+        # Check for signal (pass reference_bars for dual-feed strategies)
+        if reference_bars is not None:
+            signal = checker.check_signal(bars, reference_bars)
+        else:
+            signal = checker.check_signal(bars)
         
         if not signal.valid:
             self.logger.debug(f"[{config_name}] No signal: {signal.reason}")

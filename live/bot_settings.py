@@ -31,6 +31,10 @@ ENABLED_CONFIGS = {
     "USDJPY_SEDNA": True,
     "EURJPY_SEDNA": True,
     
+    # GEMINI strategy (correlation divergence EURUSD/USDCHF)
+    "EURUSD_GEMINI": True,
+    "USDCHF_GEMINI": True,
+    
     # KOI strategy (ETFs) - disabled until broker availability confirmed
     "DIA_KOI": False,
     "TLT_KOI": False,
@@ -59,6 +63,9 @@ STRATEGY_TYPES = {
     "USDJPY_SEDNA": "SEDNA",
     "EURJPY_SEDNA": "SEDNA",
     "DIA_SEDNA": "SEDNA",
+    # GEMINI
+    "EURUSD_GEMINI": "GEMINI",
+    "USDCHF_GEMINI": "GEMINI",
 }
 
 
