@@ -22,6 +22,7 @@ import numpy as np
 
 from lib.filters import (
     check_time_filter,
+    check_day_filter,
     check_atr_filter,
     check_sl_pips_filter,
 )
@@ -62,6 +63,10 @@ class KOIStrategy(bt.Strategy):
         # Time Filter
         use_time_filter=False,
         allowed_hours=[],
+        
+        # Day Filter (0=Monday, 6=Sunday)
+        use_day_filter=False,
+        allowed_days=[0, 1, 2, 3, 4],
         
         # SL Pips Filter
         use_sl_pips_filter=False,
@@ -279,6 +284,9 @@ class KOIStrategy(bt.Strategy):
             return False
         
         if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
+            return False
+        
+        if not check_day_filter(dt, self.p.allowed_days, self.p.use_day_filter):
             return False
         
         if not self._check_bullish_engulfing():
@@ -707,11 +715,13 @@ class KOIStrategy(bt.Strategy):
         print(f"{'='*70}")
         if self.p.use_time_filter:
             print(f"  Time Filter: hours {list(self.p.allowed_hours)}")
+        if self.p.use_day_filter:
+            print(f"  Day Filter: days {list(self.p.allowed_days)}")
         if self.p.use_sl_pips_filter:
             print(f"  SL Pips Filter: {self.p.sl_pips_min}-{self.p.sl_pips_max}")
         if self.p.use_atr_filter:
             print(f"  ATR Filter: {self.p.atr_min}-{self.p.atr_max}")
-        if not any([self.p.use_time_filter, self.p.use_sl_pips_filter, self.p.use_atr_filter]):
+        if not any([self.p.use_time_filter, self.p.use_day_filter, self.p.use_sl_pips_filter, self.p.use_atr_filter]):
             print("  No filters active")
         print("=" * 70)
         

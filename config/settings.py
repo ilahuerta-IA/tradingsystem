@@ -52,6 +52,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [5, 6, 7, 8, 9, 12, 13, 15, 16, 17],
             
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
             # SL pips filter
             'use_sl_pips_filter': False,
             'sl_pips_min': 20.0,
@@ -117,6 +121,10 @@ STRATEGIES_CONFIG = {
             # Time filter - EXACT from original (22:00-08:00 UTC)
             'use_time_filter': True,
             'allowed_hours': [22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8],
+            
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
             
             # SL pips filter - DISABLED
             'use_sl_pips_filter': False,
@@ -184,6 +192,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
             
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
             # SL pips filter - DISABLED
             'use_sl_pips_filter': False,
             'sl_pips_min': 9.0,
@@ -249,6 +261,10 @@ STRATEGIES_CONFIG = {
             # Time filter 
             'use_time_filter': True,
             'allowed_hours': [3, 6, 7, 9, 10, 11, 12, 13, 17, 20],
+            
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
             
             # SL pips filter - DISABLED
             'use_sl_pips_filter': False,
@@ -316,6 +332,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [0, 1, 2, 3, 4, 10, 11, 12],
             
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
             # SL pips filter
             'use_sl_pips_filter': True,
             'sl_pips_min': 4.0,
@@ -381,6 +401,10 @@ STRATEGIES_CONFIG = {
             # Time filter 
             'use_time_filter': True,
             'allowed_hours': [14, 15, 16, 18, 19, 20],
+            
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
             
             # SL pips filter - DISABLED
             'use_sl_pips_filter': False,
@@ -450,6 +474,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [14, 15, 16, 18, 19],
             
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
             # SL pips filter - DISABLED
             'use_sl_pips_filter': True,
             'sl_pips_min': 20.0,
@@ -517,6 +545,10 @@ STRATEGIES_CONFIG = {
             # Time Filter
             'use_time_filter': True,
             'allowed_hours': [0, 4, 5, 7, 8, 10, 11, 12, 13, 14, 16, 18, 22, 23],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
@@ -586,6 +618,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [1, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17],
             
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
             # SL Pips Filter
             'use_sl_pips_filter': True,
             'sl_pips_min': 10.0,
@@ -653,6 +689,10 @@ STRATEGIES_CONFIG = {
             # Time Filter
             'use_time_filter': True,
             'allowed_hours': [0,1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
@@ -722,6 +762,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [0,1,2,3,4,5,6,7,10,11,13,15,16,17,18,19,20,21],
             
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
             # SL Pips Filter
             'use_sl_pips_filter': True,
             'sl_pips_min': 15.0,
@@ -789,6 +833,10 @@ STRATEGIES_CONFIG = {
             # Time Filter
             'use_time_filter': True,
             'allowed_hours': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 19],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
@@ -862,6 +910,10 @@ STRATEGIES_CONFIG = {
             'use_time_filter': True,
             'allowed_hours': [14, 15, 16, 17, 18, 19],
             
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            
             # SL Pips Filter (disabled - ETF uses ATR filter)
             'use_sl_pips_filter': False,
             'sl_pips_min': 60,   # $1 min (pip_value=0.01 -> 100 pips)
@@ -931,6 +983,10 @@ STRATEGIES_CONFIG = {
             # Time Filter 
             'use_time_filter': False,
             'allowed_hours': [14, 15, 16, 17, 18, 19],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
             
             # SL Pips Filter (disabled - ETF uses ATR filter)
             'use_sl_pips_filter': False,

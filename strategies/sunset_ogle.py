@@ -27,6 +27,7 @@ import backtrader as bt
 
 from lib.filters import (
     check_time_filter,
+    check_day_filter,
     check_atr_filter,
     check_angle_filter,
     check_sl_pips_filter,
@@ -74,6 +75,10 @@ class SunsetOgleStrategy(bt.Strategy):
         # Time filter
         use_time_filter=True,
         allowed_hours=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+        
+        # Day filter (0=Monday, 6=Sunday)
+        use_day_filter=False,
+        allowed_days=[0, 1, 2, 3, 4],  # Default: Monday-Friday
         
         # SL pips filter
         use_sl_pips_filter=False,
@@ -558,13 +563,14 @@ class SunsetOgleStrategy(bt.Strategy):
         self.trades += 1
         angle = self._angle()
         
-        print('')
-        print(f'{dt} [{self.data._name}] ENTRY #{self.trades}')
-        print(f'{dt} [{self.data._name}] Time: {dt}')
-        print(f'{dt} [{self.data._name}] Direction: LONG')
-        print(f'{dt} [{self.data._name}] Price: {entry_price:.3f} | SL: {self.stop_level:.3f} | TP: {self.take_level:.3f}')
-        print(f'{dt} [{self.data._name}] ATR: {atr:.5f} | Angle: {angle:.1f} | SL Pips: {sl_pips:.1f}')
-        print('-' * 40)
+        if self.p.print_signals:
+            print('')
+            print(f'{dt} [{self.data._name}] ENTRY #{self.trades}')
+            print(f'{dt} [{self.data._name}] Time: {dt}')
+            print(f'{dt} [{self.data._name}] Direction: LONG')
+            print(f'{dt} [{self.data._name}] Price: {entry_price:.3f} | SL: {self.stop_level:.3f} | TP: {self.take_level:.3f}')
+            print(f'{dt} [{self.data._name}] ATR: {atr:.5f} | Angle: {angle:.1f} | SL Pips: {sl_pips:.1f}')
+            print('-' * 40)
         
         # Record entry for reporting (pass sl_pips)
         self._record_trade_entry(dt, entry_price, atr, angle, sl_pips)
@@ -630,6 +636,11 @@ class SunsetOgleStrategy(bt.Strategy):
                     self._reset_state()
                     return
                 
+                # Day filter check
+                if not check_day_filter(dt, self.p.allowed_days, self.p.use_day_filter):
+                    self._reset_state()
+                    return
+                
                 # Validate filters at breakout
                 if not self._validate_entry():
                     self._reset_state()
@@ -647,7 +658,8 @@ class SunsetOgleStrategy(bt.Strategy):
             
             if order == self.order:
                 if order.isbuy():
-                    print(f'{dt} [{self.data._name}] === BUY EXEC @ {order.executed.price:.5f} | Comm: {order.executed.comm:.2f} ===')
+                    if self.p.print_signals:
+                        print(f'{dt} [{self.data._name}] === BUY EXEC @ {order.executed.price:.5f} | Comm: {order.executed.comm:.2f} ===')
                     
                     # Place protective orders
                     if self.stop_level and self.take_level:
@@ -666,7 +678,8 @@ class SunsetOgleStrategy(bt.Strategy):
             
             else:
                 # Exit order completed
-                print(f'{dt} [{self.data._name}] === SELL EXEC @ {order.executed.price:.5f} | Comm: {order.executed.comm:.2f} ===')
+                if self.p.print_signals:
+                    print(f'{dt} [{self.data._name}] === SELL EXEC @ {order.executed.price:.5f} | Comm: {order.executed.comm:.2f} ===')
                 
                 # Determine exit reason
                 if order == self.stop_order:
@@ -730,7 +743,8 @@ class SunsetOgleStrategy(bt.Strategy):
         else:
             exit_price = float(self.data.close[0])
         
-        print(f'{dt} [{self.data._name}] === TRADE CLOSED | Net P&L: {pnl:.2f} ===')
+        if self.p.print_signals:
+            print(f'{dt} [{self.data._name}] === TRADE CLOSED | Net P&L: {pnl:.2f} ===')
         
         # Record exit
         self._record_trade_exit(dt, exit_price, pnl, self.last_exit_reason)
