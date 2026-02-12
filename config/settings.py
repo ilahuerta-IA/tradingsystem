@@ -220,8 +220,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -295,7 +295,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -310,17 +310,17 @@ STRATEGIES_CONFIG = {
             
             # ATR settings
             'atr_length': 10,
-            'atr_min': 0.030,
-            'atr_max': 0.045,
+            'atr_min': 0.040,
+            'atr_max': 0.070,
             
             # Angle Filter
             'use_angle_filter': True,
-            'angle_min': 45.0,
+            'angle_min': 60.0,
             'angle_max': 90.0,
             'angle_scale': 100.0,
             
             # SL/TP multipliers
-            'sl_mult': 1.5,
+            'sl_mult': 3.5,
             'tp_mult': 15.0,
             
             # Pullback settings
@@ -328,18 +328,18 @@ STRATEGIES_CONFIG = {
             'window_periods': 2,
             'price_offset_mult': 0.01,
             
-            # Time filter - EXACT from original (1:00-15:00 UTC)
+            # Time filter 
             'use_time_filter': True,
-            'allowed_hours': [0, 1, 2, 3, 4, 10, 11, 12],
+            'allowed_hours': [0, 7, 16, 19, 22, 23],
             
             # Day filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [1, 3, 4],
             
             # SL pips filter
             'use_sl_pips_filter': True,
-            'sl_pips_min': 4.0,
-            'sl_pips_max': 11.0,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 30.0,
             
             # Risk management
             'risk_percent': 0.01,
@@ -575,7 +575,7 @@ STRATEGIES_CONFIG = {
     },
 
     'USDCAD_KOI': {
-        'active': True,
+        'active': False,
         'strategy_name': 'KOI',
         'asset_name': 'USDCAD',
         'data_path': 'data/USDCAD_5m_5Yea.csv',
