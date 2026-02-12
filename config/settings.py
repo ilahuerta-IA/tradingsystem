@@ -15,7 +15,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -30,8 +30,8 @@ STRATEGIES_CONFIG = {
             
             # ATR settings
             'atr_length': 10,
-            'atr_min': 0.040,
-            'atr_max': 0.090,
+            'atr_min': 0.040, 
+            'atr_max': 0.070, #Changed from 0.00090 to 0.070
             
             # Angle Filter
             'use_angle_filter': True,
@@ -57,9 +57,9 @@ STRATEGIES_CONFIG = {
             'allowed_days': [0, 1, 2, 3, 4],
             
             # SL pips filter
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 20.0,
-            'sl_pips_max': 50.0,
+            'use_sl_pips_filter': True, # changed from False to True
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 500.0,
             
             # Risk management
             'risk_percent': 0.01,
@@ -81,7 +81,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/EURUSD_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -91,47 +91,47 @@ STRATEGIES_CONFIG = {
         'debug_mode': False,
         
         'params': {
-            # EMA settings - EXACT from original sunrise_ogle_eurusd_pro.py
+            # EMA settings 
             'ema_fast_length': 24,
             'ema_medium_length': 24,
             'ema_slow_length': 24,
             'ema_confirm_length': 1,
             'ema_filter_price_length': 60,
             
-            # ATR settings - EXACT from original
+            # ATR settings 
             'atr_length': 10,
             'atr_min': 0.00020,
             'atr_max': 0.00040,
             
-            # Angle Filter - DISABLED for EURUSD (original has no angle filter)
+            # Angle Filter 
             'use_angle_filter': False,
             'angle_min': 20.0,
             'angle_max': 85.0,
             'angle_scale': 10000.0,
             
-            # SL/TP multipliers - EXACT from original
+            # SL/TP multipliers
             'sl_mult': 3.0,
             'tp_mult': 15.0,
             
-            # Pullback settings - EXACT from original
+            # Pullback settings
             'pullback_candles': 2,
             'window_periods': 1,
             'price_offset_mult': 0.01,
             
-            # Time filter - EXACT from original (22:00-08:00 UTC)
+            # Time filter 
             'use_time_filter': True,
-            'allowed_hours': [22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8],
+            'allowed_hours': [0, 1, 2, 3, 7, 8, 11, 13, 19, 20, 21, 22, 23],
             
             # Day filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 3, 4],
             
             # SL pips filter - DISABLED
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 9.0,
-            'sl_pips_max': 21.0,
+            'use_sl_pips_filter': True, #changed from False to True
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 50.0,
             
-            # Risk management - EXACT from original
+            # Risk management 
             'risk_percent': 0.01,
             'lot_size': 100000,
             
@@ -143,9 +143,9 @@ STRATEGIES_CONFIG = {
             'print_signals': False,
         }
     },
-
+    # KO
     'USDCAD_PRO': {
-        'active': True,  # Set to False to skip this config when running
+        'active': False,  # Set to False to skip this config when running
         'strategy_name': 'SunsetOgle',
         'asset_name': 'USDCAD',
         'data_path': 'data/USDCAD_5m_5Yea.csv',
@@ -155,7 +155,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -170,12 +170,12 @@ STRATEGIES_CONFIG = {
             
             # ATR settings 
             'atr_length': 10,
-            'atr_min': -1.00020,
-            'atr_max': 1.00040,
+            'atr_min': 0.00025,
+            'atr_max': 0.00050,
             
             # Angle Filter 
-            'use_angle_filter': True,
-            'angle_min': 45.0,
+            'use_angle_filter': False,
+            'angle_min': 15.0,
             'angle_max': 75.0,
             'angle_scale': 10000.0,
             
@@ -188,18 +188,18 @@ STRATEGIES_CONFIG = {
             'window_periods': 1,
             'price_offset_mult': 0.01,
             
-            # Time filter - EXACT from original (18:00-12:00 UTC)
+            # Time filter 
             'use_time_filter': True,
-            'allowed_hours': [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            'allowed_hours': [0, 1, 2, 3, 7, 14, 18, 19], 
             
             # Day filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [1, 2, 3],
             
             # SL pips filter - DISABLED
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 9.0,
-            'sl_pips_max': 18.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 20.0,
             
             # Risk management - EXACT from original
             'risk_percent': 0.01,
@@ -225,7 +225,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -240,8 +240,8 @@ STRATEGIES_CONFIG = {
             
             # ATR settings 
             'atr_length': 10,
-            'atr_min': 0.0003,
-            'atr_max': 0.0009,
+            'atr_min': 0.00035,
+            'atr_max': 0.00090,
             
             # Angle Filter 
             'use_angle_filter': False,
@@ -260,16 +260,16 @@ STRATEGIES_CONFIG = {
             
             # Time filter 
             'use_time_filter': True,
-            'allowed_hours': [3, 6, 7, 9, 10, 11, 12, 13, 17, 20],
+            'allowed_hours': [2, 6, 7, 8, 10, 11, 17],
             
             # Day filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 3, 4],
             
             # SL pips filter - DISABLED
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 7.0,
-            'sl_pips_max': 21.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 50.0,
             
             # Risk management
             'risk_percent': 0.01,
