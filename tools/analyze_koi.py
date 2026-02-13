@@ -248,18 +248,46 @@ def main():
         str
     )
     
-    # By SL Pips ranges
+    # By SL Pips ranges (dynamic based on actual data)
     print_section('ANALYSIS BY SL PIPS')
-    sl_ranges = [(15, 18), (18, 21), (21, 24), (24, 27), (27, 30), (30, 35), (35, 50)]
-    analyze_by_range(trades, lambda t: t['sl_pips'], sl_ranges, 'SL Pips')
+    sl_vals = [t['sl_pips'] for t in trades if 'pnl' in t]
+    if sl_vals:
+        sl_min_r = int(min(sl_vals))
+        sl_max_r = int(max(sl_vals)) + 3
+        sl_step = 3
+        sl_ranges = [(i, i + sl_step) for i in range(sl_min_r, sl_max_r, sl_step)]
+        analyze_by_range(trades, lambda t: t['sl_pips'], sl_ranges, 'SL Pips')
     
-    # By ATR ranges (adjusted for KOI typical values)
+    # By ATR ranges (dynamic based on actual data)
     print_section('ANALYSIS BY ATR')
-    atr_ranges = [
-        (0.04, 0.05), (0.05, 0.06), (0.06, 0.07), (0.07, 0.08), 
-        (0.08, 0.09), (0.09, 0.10), (0.10, 0.12)
-    ]
-    analyze_by_range(trades, lambda t: t['atr'], atr_ranges, 'ATR Range', decimals=2)
+    atr_vals = [t['atr'] for t in trades if 'pnl' in t]
+    if atr_vals:
+        atr_min_r = min(atr_vals)
+        atr_max_r = max(atr_vals)
+        # Determine step based on magnitude
+        atr_range_span = atr_max_r - atr_min_r
+        if atr_range_span < 0.01:
+            # Forex pairs like EURUSD (ATR ~0.0005-0.001)
+            atr_step = 0.0001
+            decimals_atr = 4
+        elif atr_range_span < 0.1:
+            # Medium volatility
+            atr_step = 0.005
+            decimals_atr = 3
+        else:
+            # JPY pairs or high volatility
+            atr_step = 0.01
+            decimals_atr = 2
+        # Build ranges from floor to ceiling
+        import math
+        start = math.floor(atr_min_r / atr_step) * atr_step
+        end = math.ceil(atr_max_r / atr_step) * atr_step + atr_step
+        atr_ranges = []
+        current = start
+        while current < end:
+            atr_ranges.append((round(current, 5), round(current + atr_step, 5)))
+            current = round(current + atr_step, 5)
+        analyze_by_range(trades, lambda t: t['atr'], atr_ranges, 'ATR Range', decimals=decimals_atr)
     
     # By CCI ranges
     print_section('ANALYSIS BY CCI')

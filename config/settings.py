@@ -508,8 +508,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURUSD',
         'data_path': 'data/EURUSD_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
@@ -528,7 +528,7 @@ STRATEGIES_CONFIG = {
             # CCI
             'cci_period': 20,
             'cci_threshold': 110,
-            'cci_max_threshold': 999,
+            'cci_max_threshold': 200,
             
             # ATR
             'atr_length': 10,
@@ -544,15 +544,15 @@ STRATEGIES_CONFIG = {
             
             # Time Filter
             'use_time_filter': True,
-            'allowed_hours': [0, 4, 5, 7, 8, 10, 11, 12, 13, 14, 16, 18, 22, 23],
+            'allowed_hours': [0, 4, 7, 8, 10, 11, 13, 14, 15, 16, 17, 18, 19, 22, 23],
             
             # Day Filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3],
             
             # SL Pips Filter
-            'use_sl_pips_filter': True,
-            'sl_pips_min': 8.0,
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10.0,
             'sl_pips_max': 14.0,
             
             # ATR Filter
