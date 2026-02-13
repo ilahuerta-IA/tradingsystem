@@ -10,6 +10,7 @@ import json
 import time
 import signal
 import sys
+import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -157,6 +158,11 @@ class MultiStrategyMonitor:
         # Track open positions for close detection {ticket: {config, symbol, entry, sl, tp, open_time}}
         self.open_positions: Dict[int, Dict[str, Any]] = {}
         
+        # Heartbeat tracking for dead-bot detection
+        self._heartbeat_counter: int = 0
+        self._last_heartbeat_time: Optional[datetime] = None
+        self.HEARTBEAT_INTERVAL_CANDLES = 12  # Log heartbeat every ~1 hour (12 × 5min)
+        
         # Trade log file (JSON lines format)
         self.trade_log_path = self.log_dir / f"trades_multi_{datetime.now().strftime('%Y%m%d')}.jsonl"
     
@@ -178,7 +184,9 @@ class MultiStrategyMonitor:
         ))
         self.logger.addHandler(console)
         
-        # File handler (detailed, broker time)
+        # File handler (detailed, broker time) - FLUSH EVERY WRITE
+        # Critical: if bot crashes (C extension, OOM, etc), unbuffered logs
+        # are the only way to know what happened before death
         log_file = self.log_dir / f"monitor_multi_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.DEBUG)
@@ -186,6 +194,22 @@ class MultiStrategyMonitor:
             "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
         ))
         self.logger.addHandler(file_handler)
+        
+        # Force flush on every log write to prevent data loss on crash
+        for handler in self.logger.handlers:
+            if hasattr(handler, 'stream'):
+                handler.stream.reconfigure(write_through=True) if hasattr(handler.stream, 'reconfigure') else None
+            # Use a flush-on-emit wrapper
+            original_emit = handler.emit
+            def make_flushing_emit(orig_emit, h):
+                def flushing_emit(record):
+                    orig_emit(record)
+                    try:
+                        h.flush()
+                    except Exception:
+                        pass
+                return flushing_emit
+            handler.emit = make_flushing_emit(original_emit, handler)
     
     def _log_event(self, event_type: str, data: Dict[str, Any]):
         """Log event in JSON format for analysis."""
@@ -547,7 +571,7 @@ class MultiStrategyMonitor:
                 del self.open_positions[ticket]
                 
         except Exception as e:
-            self.logger.error(f"Error checking closed positions: {e}")
+            self.logger.error(f"Error checking closed positions: {e}\n{traceback.format_exc()}")
     
     def _wait_for_candle_close(self) -> bool:
         """
@@ -607,7 +631,7 @@ class MultiStrategyMonitor:
             self.running = False
             return False
         except Exception as e:
-            self.logger.error(f"Error during candle wait: {e}")
+            self.logger.error(f"Error during candle wait: {e}\n{traceback.format_exc()}")
             return False
         
         return self.running
@@ -645,6 +669,25 @@ class MultiStrategyMonitor:
         self.stats.candles_processed += 1
         self.stats.last_candle_time = datetime.now()
         
+        # Heartbeat: periodic "I'm alive" log for dead-bot detection
+        self._heartbeat_counter += 1
+        if self._heartbeat_counter >= self.HEARTBEAT_INTERVAL_CANDLES:
+            self._heartbeat_counter = 0
+            self._last_heartbeat_time = datetime.now()
+            runtime_hrs = (datetime.now() - self.stats.start_time).total_seconds() / 3600
+            self.logger.info(
+                f"HEARTBEAT | alive {runtime_hrs:.1f}h | "
+                f"candles={self.stats.candles_processed} | "
+                f"signals={self.stats.signals_detected} | "
+                f"trades={self.stats.trades_executed} | "
+                f"errors={self.stats.errors_count} | "
+                f"positions={len(self.open_positions)}"
+            )
+            self._log_event("HEARTBEAT", {
+                "runtime_hours": round(runtime_hrs, 2),
+                **self.stats.to_dict()
+            })
+        
         # Check each checker
         for config_name, checker in self.checkers.items():
             config = STRATEGIES_CONFIG.get(config_name, {})
@@ -659,14 +702,25 @@ class MultiStrategyMonitor:
             reference_symbol = config.get("reference_symbol")
             reference_bars = symbol_data.get(reference_symbol) if reference_symbol else None
             
+            # Guard: warn if dual-feed strategy has no reference data
+            if reference_symbol and reference_bars is None:
+                self.logger.warning(
+                    f"[{config_name}] Reference data missing for {reference_symbol} "
+                    f"(dual-feed strategy requires both feeds)"
+                )
+            
             try:
                 self._check_and_execute(config_name, checker, symbol, bars, reference_bars)
             except Exception as e:
                 self.stats.errors_count += 1
-                self.logger.error(f"[{config_name}] Error: {e}")
+                self.logger.error(
+                    f"[{config_name}] Error in check_and_execute: {e}\n"
+                    f"{traceback.format_exc()}"
+                )
                 self._log_event("ERROR", {
                     "config": config_name,
                     "error": str(e),
+                    "traceback": traceback.format_exc(),
                     "phase": "check_and_execute"
                 })
     
@@ -872,7 +926,7 @@ class MultiStrategyMonitor:
         self.logger.info("Entering main trading loop")
         
         consecutive_errors = 0
-        max_consecutive_errors = 5
+        max_consecutive_errors = 10  # Increased from 5 — more resilient before giving up
         
         try:
             while self.running:
@@ -908,11 +962,17 @@ class MultiStrategyMonitor:
                     # Brief pause before next cycle
                     time.sleep(1)
                     
+                except KeyboardInterrupt:
+                    raise  # Re-raise to outer handler
                 except Exception as e:
                     consecutive_errors += 1
-                    self.logger.error(f"Error in main loop iteration: {e}")
+                    tb = traceback.format_exc()
+                    self.logger.error(
+                        f"Error in main loop iteration ({consecutive_errors}/{max_consecutive_errors}): {e}\n{tb}"
+                    )
                     self._log_event("ITERATION_ERROR", {
                         "error": str(e),
+                        "traceback": tb,
                         "consecutive_errors": consecutive_errors
                     })
                     
@@ -925,9 +985,15 @@ class MultiStrategyMonitor:
                 
         except KeyboardInterrupt:
             self.logger.info("Keyboard interrupt received")
-        except Exception as e:
-            self.logger.error(f"Fatal error in main loop: {e}")
-            self._log_event("FATAL_ERROR", {"error": str(e)})
+        except BaseException as e:
+            # Catch EVERYTHING — including SystemExit, MT5 C extension crashes, etc.
+            tb = traceback.format_exc()
+            self.logger.error(f"FATAL error in main loop: {type(e).__name__}: {e}\n{tb}")
+            self._log_event("FATAL_ERROR", {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": tb,
+            })
         finally:
             self.stop()
     

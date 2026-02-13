@@ -119,6 +119,8 @@ class GEMINIChecker(BaseChecker):
         self.roc_primary_history = []
         self.harmony_history = []
         self.atr_history = []
+        # Reset KAMA internal state (was missing — could carry stale values)
+        self._kama_value = None
     
     def get_state_info(self) -> Dict[str, Any]:
         """Get current state machine info for logging."""
