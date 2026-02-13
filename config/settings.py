@@ -10,8 +10,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURJPY',
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
@@ -50,16 +50,16 @@ STRATEGIES_CONFIG = {
             
             # Time filter
             'use_time_filter': True,
-            'allowed_hours': [5, 6, 7, 8, 9, 12, 13, 15, 16, 17],
+            'allowed_hours': [6, 7, 8, 9, 11, 13, 15, 22, 23],
             
             # Day filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 3, 4],
             
             # SL pips filter
             'use_sl_pips_filter': True, # changed from False to True
             'sl_pips_min': 10.0,
-            'sl_pips_max': 500.0,
+            'sl_pips_max': 50.0,
             
             # Risk management
             'risk_percent': 0.01,
