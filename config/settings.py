@@ -508,8 +508,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURUSD',
         'data_path': 'data/EURUSD_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -528,7 +528,7 @@ STRATEGIES_CONFIG = {
             # CCI
             'cci_period': 20,
             'cci_threshold': 110,
-            'cci_max_threshold': 200,
+            'cci_max_threshold': 180,
             
             # ATR
             'atr_length': 10,
@@ -544,21 +544,21 @@ STRATEGIES_CONFIG = {
             
             # Time Filter
             'use_time_filter': True,
-            'allowed_hours': [0, 4, 7, 8, 10, 11, 13, 14, 15, 16, 17, 18, 19, 22, 23],
+            'allowed_hours': [1, 4, 7, 11, 13, 14, 15, 16, 17, 18, 22],
             
             # Day Filter (0=Monday, 6=Sunday)
             'use_day_filter': True,
-            'allowed_days': [0, 1, 2, 3],
+            'allowed_days': [0, 1, 2],
             
             # SL Pips Filter
-            'use_sl_pips_filter': False,
+            'use_sl_pips_filter': True,
             'sl_pips_min': 10.0,
-            'sl_pips_max': 14.0,
+            'sl_pips_max': 19.0,
             
             # ATR Filter
             'use_atr_filter': True,
             'atr_min': 0.00050,
-            'atr_max': 0.00100,
+            'atr_max': 0.00090,
             
             # Asset config
             'pip_value': 0.0001,
@@ -573,7 +573,7 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
-
+    #KO
     'USDCAD_KOI': {
         'active': False,
         'strategy_name': 'KOI',
@@ -652,12 +652,12 @@ STRATEGIES_CONFIG = {
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -672,7 +672,7 @@ STRATEGIES_CONFIG = {
             # CCI
             'cci_period': 20,
             'cci_threshold': 100,
-            'cci_max_threshold': 150,
+            'cci_max_threshold': 180,
             
             # ATR
             'atr_length': 10,
@@ -688,16 +688,16 @@ STRATEGIES_CONFIG = {
             
             # Time Filter
             'use_time_filter': True,
-            'allowed_hours': [0,1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23],
+            'allowed_hours': [7, 8, 11, 13, 15, 17, 19, 23],
             
             # Day Filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3],
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
-            'sl_pips_min': 10.5,
-            'sl_pips_max': 14.5,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 16.0,
             
             # ATR Filter
             'use_atr_filter': False,
@@ -729,7 +729,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -744,12 +744,12 @@ STRATEGIES_CONFIG = {
             # CCI
             'cci_period': 14,
             'cci_threshold': 120,
-            'cci_max_threshold': 300,
+            'cci_max_threshold': 180,
             
             # ATR
             'atr_length': 10,
             'atr_sl_multiplier': 3.5,
-            'atr_tp_multiplier': 10.0,
+            'atr_tp_multiplier': 15.0,
             
             # Breakout Window
             'use_breakout_window': True,
@@ -760,21 +760,21 @@ STRATEGIES_CONFIG = {
             
             # Time Filter
             'use_time_filter': True,
-            'allowed_hours': [0,1,2,3,4,5,6,7,10,11,13,15,16,17,18,19,20,21],
+            'allowed_hours': [0, 1, 3, 4, 8, 11, 13, 16, 17, 23],
             
             # Day Filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 2, 3, 4],
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
-            'sl_pips_min': 15.0,
-            'sl_pips_max': 30.0,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 27.0,
             
             # ATR Filter
             'use_atr_filter': True,
-            'atr_min': 0.05,
-            'atr_max': 0.10,
+            'atr_min': 0.035,
+            'atr_max': 0.065,
             
             # Asset config (JPY pair)
             'pip_value': 0.01,
@@ -782,7 +782,7 @@ STRATEGIES_CONFIG = {
             'jpy_rate': 150.0,
             
             # Risk
-            'risk_percent': 0.005,
+            'risk_percent': 0.01,
             
             # Debug & Reporting
             'print_signals': False,
@@ -801,7 +801,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -820,7 +820,7 @@ STRATEGIES_CONFIG = {
             
             # ATR
             'atr_length': 10,
-            'atr_sl_multiplier': 2.5,
+            'atr_sl_multiplier': 3.5,
             'atr_tp_multiplier': 12.0,
             
             # Breakout Window
@@ -832,21 +832,21 @@ STRATEGIES_CONFIG = {
             
             # Time Filter
             'use_time_filter': True,
-            'allowed_hours': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 19],
+            'allowed_hours': [1, 2, 3, 7, 8, 10, 13, 15, 16],
             
             # Day Filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 4],
             
             # SL Pips Filter
             'use_sl_pips_filter': True,
-            'sl_pips_min': 18.0,
-            'sl_pips_max': 28.0,
+            'sl_pips_min': 20.0,
+            'sl_pips_max': 32.0,
             
             # ATR Filter
             'use_atr_filter': True,
-            'atr_min': 0.074,
-            'atr_max': 0.095,
+            'atr_min': 0.07,
+            'atr_max': 0.15,
             
             # Asset config
             'pip_value': 0.0001,
@@ -854,7 +854,7 @@ STRATEGIES_CONFIG = {
             'jpy_rate': 150.0,
             
             # Risk
-            'risk_percent': 0.005,
+            'risk_percent': 0.01,
             
             # Debug & Reporting
             'print_signals': False,
@@ -1126,7 +1126,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
