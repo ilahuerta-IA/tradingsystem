@@ -1167,7 +1167,7 @@ STRATEGIES_CONFIG = {
             'sl_pips_max': 28,
             
             'use_atr_filter': False,
-            'atr_min': 0.03,
+            'atr_min': 0.05,
             'atr_max': 0.15,
             'atr_avg_period': 20,
             
@@ -1212,7 +1212,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -1241,7 +1241,7 @@ STRATEGIES_CONFIG = {
             
             # === FILTERS ===
             'use_time_filter': True,
-            'allowed_hours': [0, 1, 2, 5, 7, 8, 9, 12, 14, 15, 16, 17, 18, 20, 21],
+            'allowed_hours': [1, 6, 7, 8, 12, 14, 15],
             
             # Day Filter (0=Monday, 6=Sunday)
             'use_day_filter': True,
@@ -1541,8 +1541,8 @@ STRATEGIES_CONFIG = {
             'atr_tp_multiplier': 15.0,
             
             # === FILTERS (applied after angle confirmation) ===
-            'use_time_filter': False,
-            'allowed_hours': [],
+            'use_time_filter': True,
+            'allowed_hours': [6, 7, 8, 10, 11, 13, 14, 16, 19],
             
             'use_day_filter': True,
             'allowed_days': [0, 1, 2, 3],
@@ -1606,7 +1606,7 @@ STRATEGIES_CONFIG = {
             # Step 2: CONFIRMATION - Within N bars, check angles
             'allowed_cross_bars': [0, 3, 5, 6, 7, 8, 9, 10 ,11, 12, 13, 14 ],   # Allowed bars since cross. Empty=all. Analysis showed 0-1 are profitable
             'entry_roc_angle_min': 25.0,    # Min ROC angle during window (degrees)
-            'entry_roc_angle_max': 40.0,    # Max ROC angle (too steep = unreliable)
+            'entry_roc_angle_max': 35.0,    # Max ROC angle (too steep = unreliable)
             'entry_harmony_angle_min': 15.0,  # Min Harmony angle during window (degrees)
             'entry_harmony_angle_max': 40.0,  # Max Harmony angle (too steep = unreliable)
             'roc_angle_scale': 1.0,         # Scale for ROC angle calculation
@@ -1623,8 +1623,8 @@ STRATEGIES_CONFIG = {
             'atr_tp_multiplier': 10.0,
             
             # === FILTERS (applied after angle confirmation) ===
-            'use_time_filter': False,
-            'allowed_hours': [],
+            'use_time_filter': True,
+            'allowed_hours': [8, 13, 14, 17, 18, 19],
             
             'use_day_filter': True,
             'allowed_days': [1, 2, 3],
