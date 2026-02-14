@@ -10,8 +10,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'EURJPY',
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -81,7 +81,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/EURUSD_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -652,8 +652,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'USDCHF',
         'data_path': 'data/USDCHF_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -1029,7 +1029,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         

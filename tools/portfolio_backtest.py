@@ -53,12 +53,17 @@ STRATEGY_REGISTRY = {
 # =============================================================================
 # Total portfolio capital (shared account). Each config gets a fraction.
 # allocation: fraction of total capital assigned to this config (must sum ~1.0)
-# risk_pct:   risk per trade as % of THIS config's allocated capital
+# risk_pct:   risk per trade as % of TOTAL capital (not sub-account)
 #
-# Tier A (best PF + lowest DD): risk 1.00%
-# Tier B (strong PF or Calmar): risk 0.75%
-# Tier C (solid but higher DD):  risk 0.65%
-# Tier D (weakest metrics):      risk 0.50%
+# Based on Kelly/Chan/Dalio research (see CONTEXT.md):
+# - Kelly full = 22.2%, portfolio-adjusted = 9.1%
+# - Sweet spot = 1.0-1.5% of total capital per trade
+# - Max concurrent ~6 trades -> 6 x 1.0% = 6% < 10% DD target
+#
+# Tier A (best PF + lowest DD): risk 1.50% of $50K = $750/trade
+# Tier B (strong PF or Calmar): risk 1.00% of $50K = $500/trade
+# Tier C (solid but higher DD):  risk 0.75% of $50K = $375/trade
+# Tier D (weakest metrics):      risk 0.50% of $50K = $250/trade
 #
 # Scoring: PF x Calmar / (MC95 / 10%)
 # =============================================================================
@@ -66,21 +71,21 @@ PORTFOLIO_TOTAL_CAPITAL = 50_000  # EUR (demo account)
 
 PORTFOLIO_ALLOCATION = {
     # --- Tier A: PF > 2.8, DD < 8%, MC95 < 9% ---
-    'USDCHF_PRO':    {'allocation': 0.10, 'risk_pct': 1.00},  # PF 2.86, DD 7.4%, MC95 8.6%
-    'USDCHF_GEMINI': {'allocation': 0.10, 'risk_pct': 1.00},  # PF 2.83, DD 7.3%, MC95 6.9%
+    'USDCHF_PRO':    {'allocation': 0.10, 'risk_pct': 1.50},  # PF 2.86, DD 7.4%, MC95 8.6%
+    'USDCHF_GEMINI': {'allocation': 0.10, 'risk_pct': 1.50},  # PF 2.83, DD 7.3%, MC95 6.9%
 
     # --- Tier B: PF > 2.3 or Calmar > 1.2 ---
-    'EURUSD_PRO':    {'allocation': 0.09, 'risk_pct': 0.75},  # PF 2.70, DD 9.4%, MC95 11.2%
-    'USDCHF_KOI':   {'allocation': 0.09, 'risk_pct': 0.75},  # PF 2.62, DD 10.4%, MC95 11.3%
-    'EURJPY_PRO':    {'allocation': 0.09, 'risk_pct': 0.75},  # PF 2.38, DD 11.6%, MC95 13.8%
+    'EURUSD_PRO':    {'allocation': 0.09, 'risk_pct': 1.00},  # PF 2.70, DD 9.4%, MC95 11.2%
+    'USDCHF_KOI':   {'allocation': 0.09, 'risk_pct': 1.00},  # PF 2.62, DD 10.4%, MC95 11.3%
+    'EURJPY_PRO':    {'allocation': 0.09, 'risk_pct': 1.00},  # PF 2.38, DD 11.6%, MC95 13.8%
 
     # --- Tier C: Solid, PF > 2.0 ---
-    'EURUSD_KOI':    {'allocation': 0.08, 'risk_pct': 0.65},  # PF 2.15, DD 11.6%, MC95 11.8%
-    'EURJPY_KOI':    {'allocation': 0.07, 'risk_pct': 0.65},  # PF 2.09, DD 11.0%, MC95 13.9%
-    'USDJPY_KOI':    {'allocation': 0.07, 'risk_pct': 0.65},  # PF 2.09, DD 9.3%, MC95 15.4%
-    'USDJPY_SEDNA':  {'allocation': 0.07, 'risk_pct': 0.65},  # PF 2.07, DD 10.7%, MC95 12.3%
-    'USDJPY_PRO':    {'allocation': 0.07, 'risk_pct': 0.65},  # PF 2.07, DD 11.5%, MC95 15.7%
-    'EURUSD_GEMINI': {'allocation': 0.07, 'risk_pct': 0.65},  # PF 2.04, DD 10.1%, MC95 12.0%
+    'EURUSD_KOI':    {'allocation': 0.08, 'risk_pct': 0.75},  # PF 2.15, DD 11.6%, MC95 11.8%
+    'EURJPY_KOI':    {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.09, DD 11.0%, MC95 13.9%
+    'USDJPY_KOI':    {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.09, DD 9.3%, MC95 15.4%
+    'USDJPY_SEDNA':  {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.07, DD 10.7%, MC95 12.3%
+    'USDJPY_PRO':    {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.07, DD 11.5%, MC95 15.7%
+    'EURUSD_GEMINI': {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.04, DD 10.1%, MC95 12.0%
 
     # --- Tier D: Weakest ---
     'EURJPY_SEDNA':  {'allocation': 0.10, 'risk_pct': 0.50},  # PF 1.70, DD 14.5%, MC95 17.5%
@@ -88,18 +93,28 @@ PORTFOLIO_ALLOCATION = {
 
 
 def _get_portfolio_cash(config_name):
-    """Get starting cash for a config based on portfolio allocation."""
-    alloc = PORTFOLIO_ALLOCATION.get(config_name)
-    if alloc:
-        return PORTFOLIO_TOTAL_CAPITAL * alloc['allocation']
-    return PORTFOLIO_TOTAL_CAPITAL / 12  # Default equal weight
+    """Get starting cash for a config in portfolio mode.
+    
+    All configs get the full $50K. In reality all strategies trade on
+    the same account. Risk per trade is controlled by risk_percent
+    override (tier-based), not by varying capital.
+    """
+    return PORTFOLIO_TOTAL_CAPITAL
 
 
 def _get_portfolio_risk(config_name):
-    """Get risk_percent override for a config based on portfolio tier."""
+    """Get risk_percent override for a config based on portfolio tier.
+    
+    Directly returns risk_pct from PORTFOLIO_ALLOCATION as a decimal.
+    Example: Tier A 1.50% -> 0.015.
+    
+    The strategy calculates: equity * risk_percent = $50K * 1.5% = $750.
+    No strategy files are modified - we only pass a different risk_percent
+    value via params (same as lot_size override).
+    """
     alloc = PORTFOLIO_ALLOCATION.get(config_name)
     if alloc:
-        return alloc['risk_pct'] / 100.0  # Convert 0.75% -> 0.0075
+        return alloc['risk_pct'] / 100.0  # 1.50 -> 0.015
     return 0.01  # Default 1%
 
 
@@ -179,8 +194,9 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
     if use_portfolio:
         params['risk_percent'] = _get_portfolio_risk(config_name)
         # Use micro lots (0.01 lot = 1,000 units) for forex in portfolio mode.
-        # With small sub-accounts ($3.5K-$5K), standard lots (100K) force
-        # min 1 lot = massive over-risk. Darwinex supports micro lots.
+        # With risk_pcts of 0.50-1.50%, positions are small enough that
+        # standard lots (100K) would force min 1 lot = over-risk.
+        # Darwinex supports micro lots (0.01 lot).
         if not is_etf:
             params['lot_size'] = 1000
     
@@ -261,6 +277,7 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
         'profit_factor': getattr(strategy, 'gross_profit', 0) / getattr(strategy, 'gross_loss', 1) if getattr(strategy, 'gross_loss', 0) > 0 else float('inf'),
         'max_drawdown_pct': max_drawdown_pct,
         'yearly_stats': yearly_stats,
+        'portfolio_mode': use_portfolio,
     }
 
 
@@ -354,11 +371,21 @@ def print_portfolio_summary(results):
     print("-" * len(header))
     
     # Portfolio totals
-    total_starting = sum(r['starting_cash'] for r in results)
-    total_final = sum(r['final_value'] for r in results)
+    # In portfolio mode, each config gets the full $50K, so we can't just
+    # sum starting_cash (that would be N * $50K). Instead, use total capital
+    # and sum net PnLs.
+    is_portfolio = any(r.get('portfolio_mode', False) for r in results)
+    if is_portfolio:
+        total_starting = PORTFOLIO_TOTAL_CAPITAL
+        total_net_pnl = sum(r['net_pnl'] for r in results)
+        total_final = total_starting + total_net_pnl
+    else:
+        total_starting = sum(r['starting_cash'] for r in results)
+        total_final = sum(r['final_value'] for r in results)
+        total_net_pnl = total_final - total_starting
     total_trades = sum(r['total_trades'] for r in results)
     total_wins = sum(r['wins'] for r in results)
-    total_return = (total_final - total_starting) / total_starting * 100
+    total_return = total_net_pnl / total_starting * 100
     avg_annual_return = total_return / len(all_years) if all_years else 0
     
     print(f"\n{'='*80}")
@@ -369,15 +396,22 @@ def print_portfolio_summary(results):
     print(f"  Total Wins:           {total_wins} ({total_wins/total_trades*100:.1f}%)" if total_trades > 0 else "  Total Wins:           0")
     print(f"  Starting Capital:     ${total_starting:,.0f}")
     print(f"  Final Capital:        ${total_final:,.0f}")
-    print(f"  Net P&L:              ${total_final - total_starting:,.0f}")
-    # Weighted max drawdown (by allocation)
-    total_allocation = sum(r['starting_cash'] for r in results)
-    weighted_dd = sum(r['max_drawdown_pct'] * r['starting_cash'] for r in results) / total_allocation if total_allocation > 0 else 0
+    print(f"  Net P&L:              ${total_net_pnl:,.0f}")
+    # Weighted max drawdown: each config's DD weighted by allocation
+    if is_portfolio:
+        weighted_dd = 0.0
+        for r in results:
+            alloc = PORTFOLIO_ALLOCATION.get(r['config_name'], {})
+            weight = alloc.get('allocation', 1.0 / len(results))
+            weighted_dd += r['max_drawdown_pct'] * weight
+        avg_dd = weighted_dd
+    else:
+        avg_dd = sum(r['max_drawdown_pct'] for r in results) / len(results) if results else 0
     worst_dd = max(r['max_drawdown_pct'] for r in results) if results else 0
     worst_dd_name = max(results, key=lambda r: r['max_drawdown_pct'])['config_name'] if results else 'N/A'
     print(f"  Total Return:         {total_return:.2f}%")
     print(f"  Avg Annual Return:    {avg_annual_return:.2f}%")
-    print(f"  Weighted Max DD:      {weighted_dd:.2f}%")
+    print(f"  Weighted Max DD:      {avg_dd:.2f}%")
     print(f"  Worst Individual DD:  {worst_dd:.2f}% ({worst_dd_name})")
     print(f"{'='*80}\n")
 
@@ -509,10 +543,9 @@ Examples:
         cfg = configs_to_run[name]
         alloc = PORTFOLIO_ALLOCATION.get(name, {})
         if args.portfolio and alloc:
-            cash = PORTFOLIO_TOTAL_CAPITAL * alloc['allocation']
             risk = alloc['risk_pct']
             print(f"    . {name} ({cfg['asset_name']} - {cfg['strategy_name']}) "
-                  f"[${cash:,.0f} | risk {risk:.2f}%]")
+                  f"[${PORTFOLIO_TOTAL_CAPITAL:,.0f} | risk {risk:.2f}%]")
         else:
             print(f"    . {name} ({cfg['asset_name']} - {cfg['strategy_name']})")
     
