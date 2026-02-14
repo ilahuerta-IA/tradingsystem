@@ -173,9 +173,14 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False):
     else:
         params['pip_value'] = params.get('pip_value', 0.0001)
     
-    # Portfolio mode: override risk_percent before adding strategy
+    # Portfolio mode: override risk_percent and use micro lots for proper sizing
     if use_portfolio:
         params['risk_percent'] = _get_portfolio_risk(config_name)
+        # Use micro lots (0.01 lot = 1,000 units) for forex in portfolio mode.
+        # With small sub-accounts ($3.5K-$5K), standard lots (100K) force
+        # min 1 lot = massive over-risk. Darwinex supports micro lots.
+        if not is_etf:
+            params['lot_size'] = 1000
     
     cerebro.addstrategy(strategy_class, **params)
     
