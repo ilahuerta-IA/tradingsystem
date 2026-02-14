@@ -103,11 +103,13 @@ def _get_portfolio_risk(config_name):
     return 0.01  # Default 1%
 
 
-def run_single_backtest(config_name, config, silent=False, use_portfolio=False):
+def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
+                        from_date=None, to_date=None):
     """Run a single backtest and return results.
     
     If use_portfolio=True, overrides starting_cash and risk_percent
     from PORTFOLIO_ALLOCATION config.
+    If from_date/to_date provided, overrides config date range.
     """
     # Initialize Cerebro
     cerebro = bt.Cerebro(stdstats=False)
@@ -129,8 +131,8 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False):
         close=5,
         volume=6,
         openinterest=-1,
-        fromdate=config['from_date'],
-        todate=config['to_date'],
+        fromdate=from_date if from_date else config['from_date'],
+        todate=to_date if to_date else config['to_date'],
     )
     
     if is_etf:
@@ -432,9 +434,21 @@ Examples:
                         help='Use PORTFOLIO_ALLOCATION for capital and risk sizing')
     parser.add_argument('--quiet', '-q', action='store_true',
                         help='Only show final summary, not individual results')
+    parser.add_argument('--from-date', metavar='YYYY-MM-DD',
+                        help='Override start date for all configs (e.g., 2025-12-01)')
+    parser.add_argument('--to-date', metavar='YYYY-MM-DD',
+                        help='Override end date for all configs (e.g., 2026-02-14)')
     
     args = parser.parse_args()
     
+    # Parse date overrides
+    date_from = None
+    date_to = None
+    if args.from_date:
+        date_from = datetime.strptime(args.from_date, '%Y-%m-%d')
+    if args.to_date:
+        date_to = datetime.strptime(args.to_date, '%Y-%m-%d')
+
     # List mode
     if args.list:
         list_configs()
@@ -485,6 +499,10 @@ Examples:
         print(f"  Mode: PORTFOLIO (capital: ${PORTFOLIO_TOTAL_CAPITAL:,.0f}, tiered risk)")
     else:
         print(f"  Mode: INDIVIDUAL (each config uses its own starting_cash & risk)")
+    if date_from or date_to:
+        fr = date_from.strftime('%Y-%m-%d') if date_from else 'config default'
+        to = date_to.strftime('%Y-%m-%d') if date_to else 'config default'
+        print(f"  Date range: {fr} -> {to}")
     print("=" * 80)
     
     for name in sorted(configs_to_run.keys()):
@@ -510,7 +528,9 @@ Examples:
         
         try:
             result = run_single_backtest(name, cfg, silent=args.quiet,
-                                         use_portfolio=args.portfolio)
+                                         use_portfolio=args.portfolio,
+                                         from_date=date_from,
+                                         to_date=date_to)
             results.append(result)
             
             if not args.quiet:
