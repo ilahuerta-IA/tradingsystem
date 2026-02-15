@@ -21,6 +21,7 @@ import pandas as pd
 from .base_checker import BaseChecker, Signal, SignalDirection
 from lib.filters import (
     check_time_filter,
+    check_day_filter,
     check_atr_filter,
     check_angle_filter,
     check_ema_price_filter,
@@ -268,6 +269,15 @@ class SunsetOgleChecker(BaseChecker):
                     allowed_hours = self.params.get("allowed_hours", [])
                     if not check_time_filter(current_dt_utc, allowed_hours, True):
                         reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
+                        self.logger.info(f"[{self.config_name}] {reason}")
+                        return self._create_no_signal(reason)
+                
+                # Day filter — matches backtest sunset_ogle.py L640
+                if self.params.get("use_day_filter", False):
+                    allowed_days = self.params.get("allowed_days", [0, 1, 2, 3, 4])
+                    if not check_day_filter(current_dt_utc, allowed_days, True):
+                        day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                        reason = f"Day filter: {day_names[current_dt_utc.weekday()]} not in {[day_names[d] for d in allowed_days]}"
                         self.logger.info(f"[{self.config_name}] {reason}")
                         return self._create_no_signal(reason)
                 

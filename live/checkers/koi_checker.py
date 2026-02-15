@@ -16,7 +16,7 @@ from enum import Enum
 import pandas as pd
 
 from .base_checker import BaseChecker, Signal, SignalDirection
-from lib.filters import check_time_filter, check_sl_pips_filter, check_atr_filter
+from lib.filters import check_time_filter, check_day_filter, check_sl_pips_filter, check_atr_filter
 from live.timezone import broker_to_utc
 
 
@@ -225,7 +225,10 @@ class KOIChecker(BaseChecker):
         # STATE MACHINE
         # ========================================
         
-        # Convert to UTC for time filter and logging
+        # Convert to UTC for time/day filters and logging
+        # IMPORTANT: allowed_hours and allowed_days in settings.py are in UTC
+        # (optimized on Dukascopy CSV data which is UTC)
+        # Broker time (MT5) is UTC+2 winter / UTC+3 summer → broker_to_utc() subtracts offset
         current_dt_utc = broker_to_utc(current_dt)
         
         # --- SCANNING STATE ---
@@ -236,6 +239,14 @@ class KOIChecker(BaseChecker):
                 allowed_hours = self.params.get("allowed_hours", [])
                 if not check_time_filter(current_dt_utc, allowed_hours, True):
                     reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
+                    return self._create_no_signal(reason)
+            
+            # Day filter (optional) — matches backtest koi_strategy.py L289
+            if self.params.get("use_day_filter", False):
+                allowed_days = self.params.get("allowed_days", [0, 1, 2, 3, 4])
+                if not check_day_filter(current_dt_utc, allowed_days, True):
+                    day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                    reason = f"Day filter: {day_names[current_dt_utc.weekday()]} not in {[day_names[d] for d in allowed_days]}"
                     return self._create_no_signal(reason)
             
             # Check Bullish Engulfing

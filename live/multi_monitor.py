@@ -33,6 +33,7 @@ from .bot_settings import (
 from .connector import MT5Connector
 from .data_provider import DataProvider, Timeframe
 from .executor import OrderExecutor
+from .timezone import broker_to_utc, get_broker_utc_offset
 from .checkers import get_checker, BaseChecker, Signal, SignalDirection
 from .timezone import utc_to_broker
 
@@ -668,6 +669,25 @@ class MultiStrategyMonitor:
         
         self.stats.candles_processed += 1
         self.stats.last_candle_time = datetime.now()
+        
+        # UTC VALIDATION: Log timezone info on first candle for debugging
+        # This catches bugs where broker_time is wrong (e.g. df.index vs df["time"])
+        if self.stats.candles_processed == 1:
+            offset = get_broker_utc_offset()
+            self.logger.info(
+                f"=== UTC VALIDATION (first candle) === "
+                f"Broker UTC offset: +{offset}h | System time: {datetime.now():%H:%M:%S}"
+            )
+            for sym, bars_df in symbol_data.items():
+                if "time" in bars_df.columns:
+                    last_bar_time = bars_df["time"].iloc[-1]
+                    utc_bar = broker_to_utc(last_bar_time)
+                    self.logger.info(
+                        f"  {sym}: last_bar broker={last_bar_time}, "
+                        f"UTC={utc_bar}, index[-1]={bars_df.index[-1]} (should be int)"
+                    )
+                else:
+                    self.logger.warning(f"  {sym}: NO 'time' column in DataFrame!")
         
         # Heartbeat: periodic "I'm alive" log for dead-bot detection
         self._heartbeat_counter += 1

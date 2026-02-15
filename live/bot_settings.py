@@ -72,6 +72,31 @@ STRATEGY_TYPES = {
 # =============================================================================
 # BROKER TIMEZONE
 # =============================================================================
+# 
+# UTC ARCHITECTURE — READ THIS BEFORE TOUCHING ANY TIME/DAY FILTER
+#
+# Data flow:
+#   1. MT5 copy_rates_from_pos() → timestamps in BROKER TIME (UTC+2 winter / UTC+3 summer)
+#   2. data_provider.get_bars() → DataFrame with "time" column = broker time, index = int (0..N)
+#   3. Checkers: broker_time = df["time"].iloc[-1]  (⚠️ NEVER use df.index[-1], it's an integer!)
+#   4. broker_to_utc(broker_time) → subtracts BROKER_UTC_OFFSET hours → UTC
+#   5. Filters allowed_hours/allowed_days are applied on UTC (optimized on Dukascopy CSV data which is UTC)
+#
+# Rules:
+#   - allowed_hours in settings.py = UTC HOURS (optimized on Dukascopy UTC data)
+#   - allowed_days in settings.py = UTC DAYS (weekday() on UTC datetime)
+#   - Checkers MUST use df["time"].iloc[-1], NEVER df.index[-1]
+#   - broker_to_utc() uses BROKER_UTC_OFFSET below + automatic DST
+#   - Logs show "Broker: HH:MM, UTC: HH:MM" for verification
+#   - On first candle, multi_monitor logs UTC VALIDATION with real timestamps
+#
+# Historical bug (2026-02-15):
+#   gemini_checker.py used df.index[-1] (integer 199) instead of df["time"].iloc[-1]
+#   This produced broker_time = pd.Timestamp(199) = 1970-01-01 00:00:00
+#   And utc_time.hour = 22 always, regardless of actual time.
+#   Did not affect trades because use_time_filter=False in v0.5.2 for GEMINI.
+#   Fixed in v0.5.3.
+#
 
 # Current broker UTC offset (hours)
 # - Darwinex/ICMarkets: UTC+2 (winter) / UTC+3 (summer)
@@ -79,6 +104,8 @@ STRATEGY_TYPES = {
 BROKER_UTC_OFFSET = 2
 
 # Does broker follow EET daylight saving time?
+# If True: March last Sunday → October last Sunday = UTC+3 (summer)
+#          Rest of year = UTC+2 (winter)  
 BROKER_FOLLOWS_DST = True
 
 

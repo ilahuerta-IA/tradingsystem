@@ -305,7 +305,16 @@ class GEMINIChecker(BaseChecker):
             return self._create_no_signal("Insufficient data")
         
         # Get timestamps for analysis
-        broker_time = df.index[-1] if hasattr(df.index[-1], 'hour') else pd.Timestamp(df.index[-1])
+        # CRITICAL: Use df["time"] column, NOT df.index (which is numeric after reset_index)
+        # data_provider.get_bars() returns: time as COLUMN, index = 0,1,...,N (integers)
+        # df.index[-1] would be an integer (e.g. 199), NOT a datetime → produces wrong UTC hours
+        if "time" in df.columns:
+            broker_time = df["time"].iloc[-1]
+            if isinstance(broker_time, pd.Timestamp):
+                broker_time = broker_time.to_pydatetime()
+        else:
+            broker_time = datetime.now()
+            self.logger.warning(f"[{self.config_name}] No 'time' column in DataFrame, using system time")
         utc_time = broker_to_utc(broker_time)
         
         # Get current values

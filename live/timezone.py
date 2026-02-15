@@ -2,6 +2,17 @@
 Timezone utilities for live trading.
 
 Handles broker timezone conversions to align with UTC-based backtesting data.
+
+ARCHITECTURE:
+  - Dukascopy CSV data (backtest): timestamps in UTC
+  - MT5 copy_rates_from_pos (live): timestamps in BROKER TIME (UTC+2/+3)
+  - allowed_hours/allowed_days in settings.py: optimized on UTC data
+  - Live checkers: convert broker_time → UTC before applying filters
+
+USAGE IN CHECKERS:
+  broker_time = df["time"].iloc[-1]    # ⚠️ NEVER df.index[-1] (it's an integer!)
+  utc_time = broker_to_utc(broker_time) # Subtracts offset
+  # Apply filters on utc_time.hour / utc_time.weekday()
 """
 
 from datetime import datetime, timedelta
