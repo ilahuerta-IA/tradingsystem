@@ -44,6 +44,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from lib.position_sizing import calculate_position_size
 from config.settings import STRATEGIES_CONFIG
 from .connector import MT5Connector
+from .bot_settings import RISK_OVERRIDES
 
 
 class OrderType(Enum):
@@ -305,7 +306,12 @@ class OrderExecutor:
             return 0.01
         
         equity = account.equity
-        risk_percent = self.params.get('risk_percent', 0.01)
+
+        # Risk override: bot_settings.RISK_OVERRIDES > settings.py params
+        if self.config_name in RISK_OVERRIDES:
+            risk_percent = RISK_OVERRIDES[self.config_name]
+        else:
+            risk_percent = self.params.get('risk_percent', 0.01)
         
         # Get symbol info from broker (critical for correct calculation)
         symbol_info = self.connector.get_symbol_info(symbol)

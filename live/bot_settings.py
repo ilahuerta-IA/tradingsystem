@@ -144,6 +144,39 @@ LOG_BACKUP_COUNT = 5
 
 
 # =============================================================================
+# RISK OVERRIDES (live position sizing)
+# =============================================================================
+# Tiered risk_percent per config for live trading.
+# Overrides the 1% default in config/settings.py.
+# Executor reads from here first; falls back to settings.py params if missing.
+#
+# Tiers (from portfolio walk-forward validation):
+#   A = 1.50%  (best risk-adjusted returns)
+#   B = 1.00%  (strong performers)
+#   C = 0.75%  (solid but moderate)
+#   D = 0.50%  (weaker edge, conservative)
+
+RISK_OVERRIDES = {
+    # Tier A — 1.50%
+    "USDCHF_PRO":    0.015,
+    "USDCHF_GEMINI": 0.015,
+    # Tier B — 1.00%
+    "EURUSD_PRO":    0.010,
+    "USDCHF_KOI":    0.010,
+    "EURJPY_PRO":    0.010,
+    # Tier C — 0.75%
+    "EURUSD_KOI":    0.0075,
+    "EURJPY_KOI":    0.0075,
+    "USDJPY_KOI":    0.0075,
+    "USDJPY_SEDNA":  0.0075,
+    "USDJPY_PRO":    0.0075,
+    "EURUSD_GEMINI": 0.0075,
+    # Tier D — 0.50%
+    "EURJPY_SEDNA":  0.005,
+}
+
+
+# =============================================================================
 # SAFETY
 # =============================================================================
 
