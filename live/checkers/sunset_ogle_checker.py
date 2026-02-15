@@ -25,6 +25,7 @@ from lib.filters import (
     check_atr_filter,
     check_angle_filter,
     check_ema_price_filter,
+    check_sl_pips_filter,
 )
 from live.timezone import broker_to_utc
 
@@ -286,9 +287,17 @@ class SunsetOgleChecker(BaseChecker):
                 stop_loss = current_low - (current_atr * self.params["sl_mult"])
                 take_profit = current_high + (current_atr * self.params["tp_mult"])
                 
-                # Calculate SL pips for logging
+                # SL pips filter — matches backtest sunset_ogle.py L550
                 pip_value = self.params.get("pip_value", 0.0001)
                 sl_pips = abs(entry_price - stop_loss) / pip_value
+                
+                use_sl_pips_filter = self.params.get("use_sl_pips_filter", False)
+                sl_pips_min = self.params.get("sl_pips_min", 0)
+                sl_pips_max = self.params.get("sl_pips_max", 999)
+                if not check_sl_pips_filter(sl_pips, sl_pips_min, sl_pips_max, use_sl_pips_filter):
+                    reason = f"SL pips filter: {sl_pips:.1f} not in [{sl_pips_min}-{sl_pips_max}]"
+                    self.logger.info(f"[{self.config_name}] {reason}")
+                    return self._create_no_signal(reason)
                 
                 self.logger.info(
                     f"[{self.config_name}] SIGNAL LONG | "
