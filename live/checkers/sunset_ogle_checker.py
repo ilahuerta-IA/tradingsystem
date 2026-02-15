@@ -282,6 +282,20 @@ class SunsetOgleChecker(BaseChecker):
                         self.logger.info(f"[{self.config_name}] {reason}")
                         return self._create_no_signal(reason)
                 
+                # Re-validate price and angle at breakout — matches backtest _validate_entry() L505
+                if current_close <= ema_filter_value:
+                    reason = f"Price filter at breakout: {current_close:.5f} <= EMA({ema_filter_value:.5f})"
+                    self.logger.info(f"[{self.config_name}] {reason}")
+                    self.reset_state()
+                    return self._create_no_signal(reason)
+                
+                if self.params.get("use_angle_filter", False):
+                    if not check_angle_filter(current_angle, self.params["angle_min"], self.params["angle_max"]):
+                        reason = f"Angle filter at breakout: {current_angle:.1f} not in [{self.params['angle_min']}-{self.params['angle_max']}]"
+                        self.logger.info(f"[{self.config_name}] {reason}")
+                        self.reset_state()
+                        return self._create_no_signal(reason)
+                
                 # Calculate SL/TP
                 entry_price = self.window_top
                 stop_loss = current_low - (current_atr * self.params["sl_mult"])

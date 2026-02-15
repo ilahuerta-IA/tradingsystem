@@ -397,9 +397,9 @@ class GEMINIChecker(BaseChecker):
             if self.allowed_cross_bars and bars_since_cross not in self.allowed_cross_bars:
                 return self._create_no_signal(f"Bar {bars_since_cross} not in allowed_cross_bars {self.allowed_cross_bars}")
             
-            # Check angle conditions
-            roc_ok = self.entry_roc_angle_min <= abs(roc_angle) <= self.entry_roc_angle_max
-            harmony_ok = self.entry_harmony_angle_min <= abs(harmony_angle) <= self.entry_harmony_angle_max
+            # Check angle conditions — raw values, NOT abs() (matches backtest _check_angle_conditions)
+            roc_ok = self.entry_roc_angle_min <= roc_angle <= self.entry_roc_angle_max
+            harmony_ok = self.entry_harmony_angle_min <= harmony_angle <= self.entry_harmony_angle_max
             
             if not roc_ok:
                 return self._create_no_signal(
