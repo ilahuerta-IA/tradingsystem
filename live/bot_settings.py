@@ -99,7 +99,7 @@ STRATEGY_TYPES = {
 #
 
 # Current broker UTC offset (hours)
-# - Darwinex/ICMarkets: UTC+2 (winter) / UTC+3 (summer)
+# - FOREX.comGLOBAL: UTC+2 (winter) / UTC+3 (summer)
 # - OANDA: UTC+0
 BROKER_UTC_OFFSET = 2
 

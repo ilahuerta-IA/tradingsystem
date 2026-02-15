@@ -12,6 +12,7 @@ Usage:
     python tools/portfolio_backtest.py --strategies KOI SEDNA
     python tools/portfolio_backtest.py --assets USDJPY EURJPY
     python tools/portfolio_backtest.py --exclude TLT_KOI DIA_KOI
+    python tools/portfolio_backtest.py -p -q --from-date 2025-12-01 --to-date 2026-02-14  # Walk-forward
 """
 import sys
 import os
