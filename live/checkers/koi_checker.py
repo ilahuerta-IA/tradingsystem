@@ -55,12 +55,14 @@ class KOIChecker(BaseChecker):
         self.pattern_cci: Optional[float] = None
         
         # EMA periods for KOI
+        # Key names MUST match settings.py: ema_1_period, ema_2_period, etc.
+        # (backtest koi_strategy.py uses the same naming: self.p.ema_1_period)
         self.ema_periods = [
-            params.get("ema_period_1", 10),
-            params.get("ema_period_2", 20),
-            params.get("ema_period_3", 40),
-            params.get("ema_period_4", 80),
-            params.get("ema_period_5", 120),
+            params.get("ema_1_period", 10),
+            params.get("ema_2_period", 20),
+            params.get("ema_3_period", 40),
+            params.get("ema_4_period", 80),
+            params.get("ema_5_period", 120),
         ]
         
         self.logger.info(f"[{self.config_name}] Checker initialized")

@@ -848,8 +848,8 @@ STRATEGIES_CONFIG = {
             'atr_min': 0.07,
             'atr_max': 0.15,
             
-            # Asset config
-            'pip_value': 0.0001,
+            # Asset config (JPY pair)
+            'pip_value': 0.01,
             'lot_size': 100000,
             'jpy_rate': 150.0,
             
