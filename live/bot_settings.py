@@ -181,6 +181,13 @@ RISK_OVERRIDES = {
 # =============================================================================
 
 DEMO_ONLY = True
+
+# TODO: These safety caps are DEFINED but NOT YET enforced in executor.py.
+# Currently the lot calculation and trade frequency are self-limiting
+# (low signal volume ~3-4 trades/week, risk_percent controls lot size).
+# Wire these into executor.py before switching to real money:
+#   - MAX_POSITION_SIZE_LOTS: clamp calculated lots to this maximum
+#   - MAX_DAILY_TRADES: reject new trades if daily count reached (0 = unlimited)
 MAX_POSITION_SIZE_LOTS = 1.0
 MAX_DAILY_TRADES = 0
 EMERGENCY_STOP = False
