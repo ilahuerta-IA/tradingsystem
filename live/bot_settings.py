@@ -73,13 +73,13 @@ STRATEGY_TYPES = {
 # BROKER TIMEZONE
 # =============================================================================
 # 
-# UTC ARCHITECTURE — READ THIS BEFORE TOUCHING ANY TIME/DAY FILTER
+# UTC ARCHITECTURE -- READ THIS BEFORE TOUCHING ANY TIME/DAY FILTER
 #
 # Data flow:
-#   1. MT5 copy_rates_from_pos() → timestamps in BROKER TIME (UTC+2 winter / UTC+3 summer)
-#   2. data_provider.get_bars() → DataFrame with "time" column = broker time, index = int (0..N)
-#   3. Checkers: broker_time = df["time"].iloc[-1]  (⚠️ NEVER use df.index[-1], it's an integer!)
-#   4. broker_to_utc(broker_time) → subtracts BROKER_UTC_OFFSET hours → UTC
+#   1. MT5 copy_rates_from_pos() -> timestamps in BROKER TIME (UTC+2 winter / UTC+3 summer)
+#   2. data_provider.get_bars() -> DataFrame with "time" column = broker time, index = int (0..N)
+#   3. Checkers: broker_time = df["time"].iloc[-1]  (WARNING: NEVER use df.index[-1], it's an integer!)
+#   4. broker_to_utc(broker_time) -> subtracts BROKER_UTC_OFFSET hours -> UTC
 #   5. Filters allowed_hours/allowed_days are applied on UTC (optimized on Dukascopy CSV data which is UTC)
 #
 # Rules:
@@ -104,7 +104,7 @@ STRATEGY_TYPES = {
 BROKER_UTC_OFFSET = 2
 
 # Does broker follow EET daylight saving time?
-# If True: March last Sunday → October last Sunday = UTC+3 (summer)
+# If True: March last Sunday -> October last Sunday = UTC+3 (summer)
 #          Rest of year = UTC+2 (winter)  
 BROKER_FOLLOWS_DST = True
 
@@ -157,21 +157,21 @@ LOG_BACKUP_COUNT = 5
 #   D = 0.50%  (weaker edge, conservative)
 
 RISK_OVERRIDES = {
-    # Tier A — 1.50%
+    # Tier A -- 1.50%
     "USDCHF_PRO":    0.015,
     "USDCHF_GEMINI": 0.015,
-    # Tier B — 1.00%
+    # Tier B -- 1.00%
     "EURUSD_PRO":    0.010,
     "USDCHF_KOI":    0.010,
     "EURJPY_PRO":    0.010,
-    # Tier C — 0.75%
+    # Tier C -- 0.75%
     "EURUSD_KOI":    0.0075,
     "EURJPY_KOI":    0.0075,
     "USDJPY_KOI":    0.0075,
     "USDJPY_SEDNA":  0.0075,
     "USDJPY_PRO":    0.0075,
     "EURUSD_GEMINI": 0.0075,
-    # Tier D — 0.50%
+    # Tier D -- 0.50%
     "EURJPY_SEDNA":  0.005,
 }
 

@@ -162,7 +162,7 @@ class MultiStrategyMonitor:
         # Heartbeat tracking for dead-bot detection
         self._heartbeat_counter: int = 0
         self._last_heartbeat_time: Optional[datetime] = None
-        self.HEARTBEAT_INTERVAL_CANDLES = 12  # Log heartbeat every ~1 hour (12 × 5min)
+        self.HEARTBEAT_INTERVAL_CANDLES = 12  # Log heartbeat every ~1 hour (12 * 5min)
         
         # Trade log file (JSON lines format)
         self.trade_log_path = self.log_dir / f"trades_multi_{datetime.now().strftime('%Y%m%d')}.jsonl"
@@ -946,7 +946,7 @@ class MultiStrategyMonitor:
         self.logger.info("Entering main trading loop")
         
         consecutive_errors = 0
-        max_consecutive_errors = 10  # Increased from 5 — more resilient before giving up
+        max_consecutive_errors = 10  # Increased from 5 -- more resilient before giving up
         
         try:
             while self.running:
@@ -1006,7 +1006,7 @@ class MultiStrategyMonitor:
         except KeyboardInterrupt:
             self.logger.info("Keyboard interrupt received")
         except BaseException as e:
-            # Catch EVERYTHING — including SystemExit, MT5 C extension crashes, etc.
+            # Catch EVERYTHING -- including SystemExit, MT5 C extension crashes, etc.
             tb = traceback.format_exc()
             self.logger.error(f"FATAL error in main loop: {type(e).__name__}: {e}\n{tb}")
             self._log_event("FATAL_ERROR", {

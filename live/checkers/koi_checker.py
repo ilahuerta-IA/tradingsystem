@@ -228,7 +228,7 @@ class KOIChecker(BaseChecker):
         # Convert to UTC for time/day filters and logging
         # IMPORTANT: allowed_hours and allowed_days in settings.py are in UTC
         # (optimized on Dukascopy CSV data which is UTC)
-        # Broker time (MT5) is UTC+2 winter / UTC+3 summer → broker_to_utc() subtracts offset
+        # Broker time (MT5) is UTC+2 winter / UTC+3 summer -> broker_to_utc() subtracts offset
         current_dt_utc = broker_to_utc(current_dt)
         
         # --- SCANNING STATE ---
@@ -241,7 +241,7 @@ class KOIChecker(BaseChecker):
                     reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
                     return self._create_no_signal(reason)
             
-            # Day filter (optional) — matches backtest koi_strategy.py L289
+            # Day filter (optional) -- matches backtest koi_strategy.py L289
             if self.params.get("use_day_filter", False):
                 allowed_days = self.params.get("allowed_days", [0, 1, 2, 3, 4])
                 if not check_day_filter(current_dt_utc, allowed_days, True):

@@ -273,7 +273,7 @@ class SunsetOgleChecker(BaseChecker):
                         self.logger.info(f"[{self.config_name}] {reason}")
                         return self._create_no_signal(reason)
                 
-                # Day filter — matches backtest sunset_ogle.py L640
+                # Day filter -- matches backtest sunset_ogle.py L640
                 if self.params.get("use_day_filter", False):
                     allowed_days = self.params.get("allowed_days", [0, 1, 2, 3, 4])
                     if not check_day_filter(current_dt_utc, allowed_days, True):
@@ -282,7 +282,7 @@ class SunsetOgleChecker(BaseChecker):
                         self.logger.info(f"[{self.config_name}] {reason}")
                         return self._create_no_signal(reason)
                 
-                # Re-validate price and angle at breakout — matches backtest _validate_entry() L505
+                # Re-validate price and angle at breakout -- matches backtest _validate_entry() L505
                 if current_close <= ema_filter_value:
                     reason = f"Price filter at breakout: {current_close:.5f} <= EMA({ema_filter_value:.5f})"
                     self.logger.info(f"[{self.config_name}] {reason}")
@@ -301,7 +301,7 @@ class SunsetOgleChecker(BaseChecker):
                 stop_loss = current_low - (current_atr * self.params["sl_mult"])
                 take_profit = current_high + (current_atr * self.params["tp_mult"])
                 
-                # SL pips filter — matches backtest sunset_ogle.py L550
+                # SL pips filter -- matches backtest sunset_ogle.py L550
                 pip_value = self.params.get("pip_value", 0.0001)
                 sl_pips = abs(entry_price - stop_loss) / pip_value
                 

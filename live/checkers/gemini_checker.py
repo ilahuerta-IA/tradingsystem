@@ -8,7 +8,7 @@ Entry System (2-phase):
 1. TRIGGER: HL2_EMA crosses above KAMA (bullish cross)
 2. CONFIRM: Within allowed_cross_bars window, ROC and Harmony angles in range
 
-Harmony Score = ROC_primary × (-ROC_reference) × scale
+Harmony Score = ROC_primary * (-ROC_reference) * scale
 - Positive when primary rises AND reference falls (harmonic divergence)
 - Used to confirm genuine momentum, not just noise
 
@@ -119,7 +119,7 @@ class GEMINIChecker(BaseChecker):
         self.roc_primary_history = []
         self.harmony_history = []
         self.atr_history = []
-        # Reset KAMA internal state (was missing — could carry stale values)
+        # Reset KAMA internal state (was missing -- could carry stale values)
         self._kama_value = None
     
     def get_state_info(self) -> Dict[str, Any]:
@@ -235,7 +235,7 @@ class GEMINIChecker(BaseChecker):
         roc_primary = self._calculate_roc(primary_closes, self.roc_period_primary)
         roc_reference = self._calculate_roc(reference_closes, self.roc_period_reference)
         
-        # Harmony = ROC_primary × (-ROC_reference) × scale
+        # Harmony = ROC_primary * (-ROC_reference) * scale
         harmony_raw = roc_primary * (-roc_reference)
         harmony_scaled = harmony_raw * self.harmony_scale
         
@@ -307,7 +307,7 @@ class GEMINIChecker(BaseChecker):
         # Get timestamps for analysis
         # CRITICAL: Use df["time"] column, NOT df.index (which is numeric after reset_index)
         # data_provider.get_bars() returns: time as COLUMN, index = 0,1,...,N (integers)
-        # df.index[-1] would be an integer (e.g. 199), NOT a datetime → produces wrong UTC hours
+        # df.index[-1] would be an integer (e.g. 199), NOT a datetime -> produces wrong UTC hours
         if "time" in df.columns:
             broker_time = df["time"].iloc[-1]
             if isinstance(broker_time, pd.Timestamp):
@@ -397,7 +397,7 @@ class GEMINIChecker(BaseChecker):
             if self.allowed_cross_bars and bars_since_cross not in self.allowed_cross_bars:
                 return self._create_no_signal(f"Bar {bars_since_cross} not in allowed_cross_bars {self.allowed_cross_bars}")
             
-            # Check angle conditions — raw values, NOT abs() (matches backtest _check_angle_conditions)
+            # Check angle conditions -- raw values, NOT abs() (matches backtest _check_angle_conditions)
             roc_ok = self.entry_roc_angle_min <= roc_angle <= self.entry_roc_angle_max
             harmony_ok = self.entry_harmony_angle_min <= harmony_angle <= self.entry_harmony_angle_max
             
