@@ -283,6 +283,8 @@ class GEMINIStrategy(bt.Strategy):
         self._portfolio_values = []
         self._trade_pnls = []
         self._starting_cash = self.broker.get_cash()
+        self._first_bar_dt = None
+        self._last_bar_dt = None
         
         # Trade reporting
         self.trade_reports = []
@@ -803,6 +805,12 @@ class GEMINIStrategy(bt.Strategy):
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())
         
+        # Track date range for data-driven annualization
+        dt_track = self._get_datetime()
+        if self._first_bar_dt is None:
+            self._first_bar_dt = dt_track
+        self._last_bar_dt = dt_track
+        
         # Skip if order pending
         if self.order:
             return
@@ -871,6 +879,14 @@ class GEMINIStrategy(bt.Strategy):
         total_pnl = self.gross_profit - self.gross_loss
         final_value = self.broker.get_value()
         
+        # Compute data-driven periods_per_year from actual bar dates
+        if self._first_bar_dt and self._last_bar_dt:
+            data_days = (self._last_bar_dt - self._first_bar_dt).days
+            data_years_ppy = max(data_days / 365.25, 0.1)
+            periods_per_year = len(self._portfolio_values) / data_years_ppy
+        else:
+            periods_per_year = 252 * 24 * 12  # Fallback: forex 5-min
+        
         # Calculate advanced metrics (same as sunset_ogle)
         sharpe_ratio = 0.0
         sortino_ratio = 0.0
@@ -886,7 +902,6 @@ class GEMINIStrategy(bt.Strategy):
                 returns_array = np.array(returns)
                 mean_return = np.mean(returns_array)
                 std_return = np.std(returns_array)
-                periods_per_year = 252 * 24 * 12  # 5-minute periods per year
                 if std_return > 0:
                     sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
@@ -913,10 +928,10 @@ class GEMINIStrategy(bt.Strategy):
                     days = (last_date - first_date).days
                     years = max(days / 365.25, 0.1)
                 else:
-                    years = len(self._portfolio_values) / (252 * 24 * 12)  # Fallback
+                    years = len(self._portfolio_values) / periods_per_year
                     years = max(years, 0.1)
             else:
-                years = len(self._portfolio_values) / (252 * 24 * 12)
+                years = len(self._portfolio_values) / periods_per_year
                 years = max(years, 0.1)
             
             if total_return > 0:
@@ -935,7 +950,6 @@ class GEMINIStrategy(bt.Strategy):
                 negative_returns = returns_array[returns_array < 0]
                 if len(negative_returns) > 0:
                     downside_dev = np.std(negative_returns)
-                    periods_per_year = 252 * 24 * 12
                     if downside_dev > 0:
                         sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
         

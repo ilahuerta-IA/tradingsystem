@@ -248,6 +248,8 @@ class SEDNAStrategy(bt.Strategy):
         self._portfolio_values = []
         self._trade_pnls = []
         self._starting_cash = self.broker.get_cash()
+        self._first_bar_dt = None
+        self._last_bar_dt = None
         
         # Trade reporting
         self.trade_reports = []
@@ -713,6 +715,11 @@ class SEDNAStrategy(bt.Strategy):
         self._update_price_history()
         
         dt = self._get_datetime()
+        
+        # Track date range for data-driven annualization
+        if self._first_bar_dt is None:
+            self._first_bar_dt = dt
+        self._last_bar_dt = dt
         current_bar = len(self)
         
         if self.order:
@@ -917,6 +924,14 @@ class SEDNAStrategy(bt.Strategy):
                 if drawdown > max_drawdown_pct:
                     max_drawdown_pct = drawdown
         
+        # Compute data-driven periods_per_year from actual bar dates
+        if self._first_bar_dt and self._last_bar_dt:
+            data_days = (self._last_bar_dt - self._first_bar_dt).days
+            data_years = max(data_days / 365.25, 0.1)
+            periods_per_year = len(self._portfolio_values) / data_years
+        else:
+            periods_per_year = 252 * 24 * 12  # Fallback: forex 5-min
+        
         # Sharpe Ratio
         sharpe_ratio = 0.0
         if len(self._portfolio_values) > 10:
@@ -929,7 +944,6 @@ class SEDNAStrategy(bt.Strategy):
                 returns_array = np.array(returns)
                 mean_return = np.mean(returns_array)
                 std_return = np.std(returns_array)
-                periods_per_year = 252 * 24 * 12
                 if std_return > 0:
                     sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
@@ -947,7 +961,6 @@ class SEDNAStrategy(bt.Strategy):
                 negative_returns = returns_array[returns_array < 0]
                 if len(negative_returns) > 0:
                     downside_dev = np.std(negative_returns)
-                    periods_per_year = 252 * 24 * 12
                     if downside_dev > 0:
                         sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
         

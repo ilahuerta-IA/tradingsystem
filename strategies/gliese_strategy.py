@@ -233,6 +233,8 @@ class GLIESEStrategy(bt.Strategy):
         self.gross_loss = 0.0
         self._portfolio_values = []
         self._trade_pnls = []
+        self._first_bar_dt = None
+        self._last_bar_dt = None
         self.last_exit_reason = None
         
         # ATR history for averaging
@@ -276,6 +278,12 @@ class GLIESEStrategy(bt.Strategy):
         """Main strategy logic - called on each bar."""
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())
+        
+        # Track date range for data-driven annualization
+        dt_track = self.datas[0].datetime.datetime(0)
+        if self._first_bar_dt is None:
+            self._first_bar_dt = dt_track
+        self._last_bar_dt = dt_track
         
         # Track ATR history
         if len(self.atr) > 0 and not np.isnan(self.atr[0]):
@@ -787,6 +795,14 @@ class GLIESEStrategy(bt.Strategy):
                     max_drawdown_pct = drawdown
         
         # Sharpe Ratio
+        # Compute data-driven periods_per_year from actual bar dates
+        if self._first_bar_dt and self._last_bar_dt:
+            data_days = (self._last_bar_dt - self._first_bar_dt).days
+            data_years_ppy = max(data_days / 365.25, 0.1)
+            periods_per_year = len(self._portfolio_values) / data_years_ppy
+        else:
+            periods_per_year = 252 * 24 * 12  # Fallback: forex 5-min
+        
         sharpe_ratio = 0.0
         if len(self._portfolio_values) > 10:
             returns = []
@@ -798,7 +814,6 @@ class GLIESEStrategy(bt.Strategy):
                 returns_array = np.array(returns)
                 mean_return = np.mean(returns_array)
                 std_return = np.std(returns_array)
-                periods_per_year = 252 * 24 * 12
                 if std_return > 0:
                     sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
@@ -816,7 +831,6 @@ class GLIESEStrategy(bt.Strategy):
                 negative_returns = returns_array[returns_array < 0]
                 if len(negative_returns) > 0:
                     downside_dev = np.std(negative_returns)
-                    periods_per_year = 252 * 24 * 12
                     if downside_dev > 0:
                         sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
         

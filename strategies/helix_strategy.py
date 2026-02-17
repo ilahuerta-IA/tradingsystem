@@ -260,6 +260,8 @@ class HELIXStrategy(bt.Strategy):
         self._portfolio_values = []
         self._trade_pnls = []
         self._starting_cash = self.broker.get_cash()
+        self._first_bar_dt = None
+        self._last_bar_dt = None
         
         # SE history for external plotting
         self._se_history = []  # List of (datetime, se_value)
@@ -754,6 +756,12 @@ class HELIXStrategy(bt.Strategy):
         # Record portfolio value
         self._portfolio_values.append(self.broker.getvalue())
         
+        # Track date range for data-driven annualization
+        dt_track = self.datas[0].datetime.datetime(0)
+        if self._first_bar_dt is None:
+            self._first_bar_dt = dt_track
+        self._last_bar_dt = dt_track
+        
         # Update plot lines if in position
         if self.position:
             self._update_plot_lines(self.last_entry_price, self.stop_level, self.take_level)
@@ -894,6 +902,14 @@ class HELIXStrategy(bt.Strategy):
                 if drawdown > max_drawdown_pct:
                     max_drawdown_pct = drawdown
         
+        # Compute data-driven periods_per_year from actual bar dates
+        if self._first_bar_dt and self._last_bar_dt:
+            data_days = (self._last_bar_dt - self._first_bar_dt).days
+            data_years_ppy = max(data_days / 365.25, 0.1)
+            periods_per_year = len(self._portfolio_values) / data_years_ppy
+        else:
+            periods_per_year = 252 * 24 * 12  # Fallback: forex 5-min
+        
         if len(self._portfolio_values) > 10:
             returns = []
             for i in range(1, len(self._portfolio_values)):
@@ -904,7 +920,6 @@ class HELIXStrategy(bt.Strategy):
                 returns_array = np.array(returns)
                 mean_return = np.mean(returns_array)
                 std_return = np.std(returns_array)
-                periods_per_year = 252 * 24 * 12  # 5-minute periods per year
                 if std_return > 0:
                     sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
@@ -920,8 +935,8 @@ class HELIXStrategy(bt.Strategy):
         # Calculate CAGR
         if len(self._portfolio_values) > 1 and initial_cash > 0:
             total_return = final_value / initial_cash
-            # Estimate years from data length
-            years = len(self._portfolio_values) / (252 * 24 * 12)
+            # Use data-driven years
+            years = len(self._portfolio_values) / periods_per_year
             years = max(years, 0.1)
             
             if total_return > 0:
@@ -940,7 +955,6 @@ class HELIXStrategy(bt.Strategy):
                 negative_returns = returns_array[returns_array < 0]
                 if len(negative_returns) > 0:
                     downside_dev = np.std(negative_returns)
-                    periods_per_year = 252 * 24 * 12
                     if downside_dev > 0:
                         sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
         

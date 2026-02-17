@@ -365,7 +365,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,

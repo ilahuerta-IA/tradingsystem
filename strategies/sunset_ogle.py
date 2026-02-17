@@ -154,6 +154,8 @@ class SunsetOgleStrategy(bt.Strategy):
         self._trade_pnls = []
         self._initial_cash = None
         self._portfolio_values = []  # Track equity curve for advanced metrics
+        self._first_bar_dt = None
+        self._last_bar_dt = None
         
         # Detailed trade reports
         self.trade_reports = []
@@ -595,6 +597,11 @@ class SunsetOgleStrategy(bt.Strategy):
         
         dt = self.datas[0].datetime.datetime(0)
         
+        # Track date range for data-driven annualization
+        if self._first_bar_dt is None:
+            self._first_bar_dt = dt
+        self._last_bar_dt = dt
+        
         # Wait for pending entry orders (KOI pattern - simple wait, no cancellation)
         if self.order:
             return
@@ -791,6 +798,16 @@ class SunsetOgleStrategy(bt.Strategy):
                 if drawdown > max_drawdown_pct:
                     max_drawdown_pct = drawdown
         
+        # Compute data-driven periods_per_year from actual bar dates
+        if self._first_bar_dt and self._last_bar_dt:
+            data_days = (self._last_bar_dt - self._first_bar_dt).days
+            data_years = max(data_days / 365.25, 0.1)
+            periods_per_year = len(self._portfolio_values) / data_years
+        else:
+            periods_per_year = 252 * 24 * 12  # Fallback: forex 5-min
+            data_years = len(self._portfolio_values) / periods_per_year
+            data_years = max(data_years, 0.1)
+        
         if len(self._portfolio_values) > 10:
             returns = []
             for i in range(1, len(self._portfolio_values)):
@@ -801,7 +818,6 @@ class SunsetOgleStrategy(bt.Strategy):
                 returns_array = np.array(returns)
                 mean_return = np.mean(returns_array)
                 std_return = np.std(returns_array)
-                periods_per_year = 252 * 24 * 12  # 5-minute periods per year
                 if std_return > 0:
                     sharpe_ratio = (mean_return * periods_per_year) / (std_return * np.sqrt(periods_per_year))
         
@@ -823,8 +839,7 @@ class SunsetOgleStrategy(bt.Strategy):
                 days = (last_date - first_date).days
                 years = max(days / 365.25, 0.1)
             else:
-                years = len(self._portfolio_values) / (252 * 24 * 12)
-                years = max(years, 0.1)
+                years = data_years
             
             if total_return > 0:
                 cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
@@ -842,7 +857,6 @@ class SunsetOgleStrategy(bt.Strategy):
                 negative_returns = returns_array[returns_array < 0]
                 if len(negative_returns) > 0:
                     downside_dev = np.std(negative_returns)
-                    periods_per_year = 252 * 24 * 12
                     if downside_dev > 0:
                         sortino_ratio = (mean_return * periods_per_year) / (downside_dev * np.sqrt(periods_per_year))
         
