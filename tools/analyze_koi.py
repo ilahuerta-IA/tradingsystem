@@ -295,54 +295,29 @@ def main():
         str
     )
     
-    # By SL Pips ranges (dynamic based on actual data)
+    # By SL Pips ranges (adaptive bins)
     print_section('ANALYSIS BY SL PIPS')
     sl_vals = [t['sl_pips'] for t in trades if 'pnl' in t]
     if sl_vals:
-        sl_min_r = int(min(sl_vals))
-        sl_max_r = int(max(sl_vals)) + 3
-        sl_step = 3
-        sl_ranges = [(i, i + sl_step) for i in range(sl_min_r, sl_max_r, sl_step)]
+        sl_ranges = _auto_ranges(sl_vals)
         analyze_by_range(trades, lambda t: t['sl_pips'], sl_ranges, 'SL Pips')
     
-    # By ATR ranges (dynamic based on actual data)
+    # By ATR ranges (adaptive bins)
     print_section('ANALYSIS BY ATR')
     atr_vals = [t['atr'] for t in trades if 'pnl' in t]
     if atr_vals:
-        atr_min_r = min(atr_vals)
-        atr_max_r = max(atr_vals)
-        # Determine step based on magnitude
-        atr_range_span = atr_max_r - atr_min_r
-        if atr_range_span < 0.01:
-            # Forex pairs like EURUSD (ATR ~0.0005-0.001)
-            atr_step = 0.0001
-            decimals_atr = 4
-        elif atr_range_span < 0.1:
-            # Medium volatility
-            atr_step = 0.005
-            decimals_atr = 3
-        else:
-            # JPY pairs or high volatility
-            atr_step = 0.01
-            decimals_atr = 2
-        # Build ranges from floor to ceiling
-        import math
-        start = math.floor(atr_min_r / atr_step) * atr_step
-        end = math.ceil(atr_max_r / atr_step) * atr_step + atr_step
-        atr_ranges = []
-        current = start
-        while current < end:
-            atr_ranges.append((round(current, 5), round(current + atr_step, 5)))
-            current = round(current + atr_step, 5)
+        atr_ranges = _auto_ranges(atr_vals)
+        # Auto-detect decimal places from step size
+        step = atr_ranges[0][1] - atr_ranges[0][0] if atr_ranges else 0.01
+        decimals_atr = max(0, -math.floor(math.log10(step))) + 1 if step > 0 else 2
         analyze_by_range(trades, lambda t: t['atr'], atr_ranges, 'ATR Range', decimals=decimals_atr)
     
-    # By CCI ranges
+    # By CCI ranges (adaptive bins)
     print_section('ANALYSIS BY CCI')
-    cci_ranges = [
-        (120, 140), (140, 160), (160, 180), (180, 200), 
-        (200, 250), (250, 300), (300, 500)
-    ]
-    analyze_by_range(trades, lambda t: t['cci'], cci_ranges, 'CCI Range')
+    cci_vals = [t['cci'] for t in trades if 'pnl' in t and 'cci' in t]
+    if cci_vals:
+        cci_ranges = _auto_ranges(cci_vals)
+        analyze_by_range(trades, lambda t: t['cci'], cci_ranges, 'CCI Range')
     
     # By Exit Reason
     print_section('ANALYSIS BY EXIT REASON')

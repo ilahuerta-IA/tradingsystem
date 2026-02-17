@@ -400,16 +400,16 @@ STRATEGIES_CONFIG = {
             
             # Time filter 
             'use_time_filter': True,
-            'allowed_hours': [14, 15, 16, 18, 19, 20],
+            'allowed_hours': [14, 15, 16, 18, 19],
             
             # Day filter (0=Monday, 6=Sunday)
             'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'allowed_days': [1, 2, 3, 4],
             
             # SL pips filter - DISABLED
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 7.0,
-            'sl_pips_max': 21.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 100.0,
+            'sl_pips_max': 700.0,
             
             # Risk management
             'risk_percent': 0.01,
@@ -867,7 +867,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
     
     'DIA_KOI': {
-        'active': True,
+        'active': False,
         'strategy_name': 'KOI',
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
@@ -877,7 +877,7 @@ STRATEGIES_CONFIG = {
         
         'starting_cash': 100000.0,
         
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         
@@ -892,7 +892,7 @@ STRATEGIES_CONFIG = {
             # CCI
             'cci_period': 20,
             'cci_threshold': 100,
-            'cci_max_threshold': 999,
+            'cci_max_threshold': 250,
             
             # ATR
             'atr_length': 10,
@@ -907,22 +907,22 @@ STRATEGIES_CONFIG = {
             # === FILTERS ===
             
             # Time Filter 
-            'use_time_filter': True,
+            'use_time_filter': False,
             'allowed_hours': [14, 15, 16, 17, 18, 19],
             
             # Day Filter (0=Monday, 6=Sunday)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 3, 4],
             
             # SL Pips Filter (disabled - ETF uses ATR filter)
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 60,   # $1 min (pip_value=0.01 -> 100 pips)
-            'sl_pips_max': 75,  # $20 max
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 50,   # $1 min (pip_value=0.01 -> 100 pips)
+            'sl_pips_max': 90,  # $20 max
             
             # ATR Filter (optimized for DIA)
             'use_atr_filter': True,
-            'atr_min': 0.30,  # $0.30 ATR min
-            'atr_max': 0.40,  # $0.40 ATR max
+            'atr_min': 0.25,  # $0.30 ATR min
+            'atr_max': 0.50,  # $0.40 ATR max
             
             # ETF Asset config
             'pip_value': 0.01,   # ETF: 2 decimal places
@@ -932,7 +932,7 @@ STRATEGIES_CONFIG = {
             'margin_pct': 20.0,  # 20% margin (5:1 leverage)
             
             # Risk
-            'risk_percent': 0.005,
+            'risk_percent': 0.01,
             
             # Debug & Reporting
             'print_signals': False,
