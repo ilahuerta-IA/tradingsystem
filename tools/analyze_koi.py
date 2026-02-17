@@ -16,16 +16,56 @@ Usage:
 import re
 import os
 import sys
+import math
 from datetime import datetime
 from collections import defaultdict
 
 
-def find_latest_log(log_dir):
-    """Find the most recent KOI log file."""
+def _auto_ranges(values, num_bins=8):
+    """Generate adaptive range bins based on actual data distribution."""
+    if not values:
+        return []
+    lo, hi = min(values), max(values)
+    if lo == hi:
+        return [(lo, lo + 1)]
+    spread = hi - lo
+    raw_step = spread / num_bins
+    magnitude = 10 ** math.floor(math.log10(raw_step))
+    residual = raw_step / magnitude
+    if residual <= 1.0:
+        nice = 1.0
+    elif residual <= 2.0:
+        nice = 2.0
+    elif residual <= 2.5:
+        nice = 2.5
+    elif residual <= 5.0:
+        nice = 5.0
+    else:
+        nice = 10.0
+    step = nice * magnitude
+    bin_lo = math.floor(lo / step) * step
+    bins = []
+    while bin_lo < hi:
+        bin_hi = bin_lo + step
+        bins.append((bin_lo, bin_hi))
+        bin_lo = bin_hi
+    return bins
+
+
+def find_latest_log(log_dir, asset_filter=None):
+    """Find the most recent KOI log file by modification time.
+
+    Args:
+        log_dir: Directory containing log files.
+        asset_filter: Optional asset name (e.g. 'USDJPY') to filter.
+    """
     logs = [f for f in os.listdir(log_dir) if f.startswith('KOI_trades_') and f.endswith('.txt')]
+    if asset_filter:
+        logs = [f for f in logs if f'KOI_trades_{asset_filter}' in f]
     if not logs:
         return None
-    return max(logs)
+    logs.sort(key=lambda f: os.path.getmtime(os.path.join(log_dir, f)), reverse=True)
+    return logs[0]
 
 
 def parse_log(filepath):
@@ -149,7 +189,14 @@ def main():
     
     # Get log file
     if len(sys.argv) > 1:
-        log_file = sys.argv[1]
+        arg = sys.argv[1]
+        if arg.endswith('.txt'):
+            log_file = arg
+        else:
+            log_file = find_latest_log(log_dir, asset_filter=arg.upper())
+            if not log_file:
+                print(f'No KOI log files found for asset "{arg}" in {log_dir}')
+                return
     else:
         log_file = find_latest_log(log_dir)
         if not log_file:

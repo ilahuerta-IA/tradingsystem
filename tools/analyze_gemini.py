@@ -57,11 +57,14 @@ def format_pf(pf: float) -> str:
 # =============================================================================
 
 def find_latest_log(log_dir: str, prefix: str = 'GEMINI_trades_') -> Optional[str]:
-    """Find the most recent log file with given prefix."""
+    """Find the most recent log file with given prefix, by modification time."""
     if not os.path.exists(log_dir):
         return None
     logs = [f for f in os.listdir(log_dir) if f.startswith(prefix) and f.endswith('.txt')]
-    return max(logs) if logs else None
+    if not logs:
+        return None
+    logs.sort(key=lambda f: os.path.getmtime(os.path.join(log_dir, f)), reverse=True)
+    return logs[0]
 
 
 def find_all_logs(log_dir: str, prefix: str = 'GEMINI_trades_') -> List[str]:

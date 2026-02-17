@@ -22,12 +22,44 @@ Version: 1.0.0
 import os
 import sys
 import re
+import math
 import numpy as np
 import pandas as pd
 from datetime import datetime
 from collections import defaultdict
 from typing import List, Dict, Optional, Tuple
 import argparse
+
+
+def _auto_ranges(values, num_bins=8):
+    """Generate adaptive range bins based on actual data distribution."""
+    if not values:
+        return []
+    lo, hi = min(values), max(values)
+    if lo == hi:
+        return [(lo, lo + 1)]
+    spread = hi - lo
+    raw_step = spread / num_bins
+    magnitude = 10 ** math.floor(math.log10(raw_step))
+    residual = raw_step / magnitude
+    if residual <= 1.0:
+        nice = 1.0
+    elif residual <= 2.0:
+        nice = 2.0
+    elif residual <= 2.5:
+        nice = 2.5
+    elif residual <= 5.0:
+        nice = 5.0
+    else:
+        nice = 10.0
+    step = nice * magnitude
+    bin_lo = math.floor(lo / step) * step
+    bins = []
+    while bin_lo < hi:
+        bin_hi = bin_lo + step
+        bins.append((bin_lo, bin_hi))
+        bin_lo = bin_hi
+    return bins
 
 
 # =============================================================================
@@ -61,11 +93,14 @@ def format_pf(pf: float) -> str:
 # =============================================================================
 
 def find_latest_log(log_dir: str, prefix: str = 'GLIESE_trades_') -> Optional[str]:
-    """Find the most recent log file with given prefix."""
+    """Find the most recent log file with given prefix, by modification time."""
     if not os.path.exists(log_dir):
         return None
     logs = [f for f in os.listdir(log_dir) if f.startswith(prefix) and f.endswith('.txt')]
-    return max(logs) if logs else None
+    if not logs:
+        return None
+    logs.sort(key=lambda f: os.path.getmtime(os.path.join(log_dir, f)), reverse=True)
+    return logs[0]
 
 
 def parse_gliese_log(filepath: str) -> List[Dict]:
@@ -268,10 +303,14 @@ def analyze_by_day(trades: List[Dict]):
 
 
 def analyze_by_sl_pips(trades: List[Dict]):
-    """Analyze trades by SL pips ranges."""
+    """Analyze trades by SL pips ranges (auto-adaptive)."""
     print_section('ANALYSIS BY SL PIPS')
     
-    ranges = [(0, 10), (10, 15), (15, 20), (20, 30), (30, 50), (50, 100)]
+    sl_values = [t['sl_pips'] for t in trades if 'sl_pips' in t and 'pnl' in t]
+    if not sl_values:
+        print('No SL pips data available.')
+        return
+    ranges = _auto_ranges(sl_values)
     
     print(f'{"SL Pips":>12} | {"Trades":>6} | {"Win%":>5} | {"PF":>5} | {"Net P&L":>12}')
     print('-' * 50)
@@ -280,7 +319,7 @@ def analyze_by_sl_pips(trades: List[Dict]):
         filtered = [t for t in trades if 'pnl' in t and 'sl_pips' in t and low <= t['sl_pips'] < high]
         if filtered:
             stats = calculate_stats(filtered)
-            label = f'{low:>3}-{high:<3}'
+            label = f'{low:>3.0f}-{high:<3.0f}'
             print(f'{label:>12} | {stats["total"]:>6} | {stats["win_rate"]:>4.0f}% | '
                   f'{format_pf(stats["profit_factor"]):>5} | ${stats["net_pnl"]:>10,.0f}')
 
