@@ -86,6 +86,10 @@ class KOIStrategy(bt.Strategy):
         is_etf=False,
         margin_pct=3.33,
         
+        # EOD Close (ETFs only) - force close before market close
+        eod_close_hour=None,
+        eod_close_minute=None,
+        
         # Risk
         risk_percent=0.005,
         
@@ -280,6 +284,44 @@ class KOIStrategy(bt.Strategy):
         except:
             return False
 
+    def _check_eod_close(self, dt):
+        """
+        Check if position should be force-closed at end of day (ETFs only).
+        
+        Returns True if position was closed, False otherwise.
+        """
+        if self.p.eod_close_hour is None or self.p.eod_close_minute is None:
+            return False
+        
+        current_minutes = dt.hour * 60 + dt.minute
+        eod_minutes = self.p.eod_close_hour * 60 + self.p.eod_close_minute
+        
+        if current_minutes >= eod_minutes:
+            # Set exit reason before close so notify_order picks it up
+            self.last_exit_reason = "EOD_CLOSE"
+            
+            # Cancel protective orders
+            if self.stop_order:
+                self.cancel(self.stop_order)
+                self.stop_order = None
+            if self.limit_order:
+                self.cancel(self.limit_order)
+                self.limit_order = None
+            
+            # Force close at market
+            self.close()
+            
+            if self.p.print_signals:
+                print(
+                    f'{dt} [{self.data._name}] === EOD CLOSE @ '
+                    f'{self.data.close[0]:.2f} (forced {self.p.eod_close_hour}:'
+                    f'{self.p.eod_close_minute:02d} UTC) ==='
+                )
+            
+            return True
+        
+        return False
+
     def _check_entry_conditions(self, dt: datetime) -> bool:
         """Check all entry conditions."""
         if self.position or self.order:
@@ -385,6 +427,8 @@ class KOIStrategy(bt.Strategy):
             return
         
         if self.position:
+            if self._check_eod_close(dt):
+                return
             if self.state != "SCANNING":
                 self._reset_breakout_state()
             return
@@ -465,7 +509,9 @@ class KOIStrategy(bt.Strategy):
                 elif order.exectype == bt.Order.Limit:
                     exit_reason = "TAKE_PROFIT"
                 
-                self.last_exit_reason = exit_reason
+                # Preserve EOD_CLOSE reason if already set by _check_eod_close
+                if self.last_exit_reason != "EOD_CLOSE":
+                    self.last_exit_reason = exit_reason
                 
                 if self.p.print_signals:
                     print(f"[EXIT] at {order.executed.price:.5f} reason={exit_reason}")
