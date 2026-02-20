@@ -98,6 +98,10 @@ class SunsetOgleStrategy(bt.Strategy):
         is_etf=False,
         margin_pct=20.0,
         
+        # EOD close for ETFs (UTC hour/minute - None=disabled)
+        eod_close_hour=None,
+        eod_close_minute=None,
+        
         # Debug and reporting
         print_signals=True,
         export_report=False,
@@ -252,6 +256,44 @@ class SunsetOgleStrategy(bt.Strategy):
         self.window_expiry = None
         self.window_start = None
         self.entry_window_start = None
+    
+    def _check_eod_close(self, dt):
+        """
+        Check if position should be force-closed at end of day (ETFs only).
+        
+        Returns True if position was closed, False otherwise.
+        """
+        if self.p.eod_close_hour is None or self.p.eod_close_minute is None:
+            return False
+        
+        current_minutes = dt.hour * 60 + dt.minute
+        eod_minutes = self.p.eod_close_hour * 60 + self.p.eod_close_minute
+        
+        if current_minutes >= eod_minutes:
+            # Set exit reason before close so notify_order picks it up
+            self.last_exit_reason = "EOD_CLOSE"
+            
+            # Cancel protective orders
+            if self.stop_order:
+                self.cancel(self.stop_order)
+                self.stop_order = None
+            if self.limit_order:
+                self.cancel(self.limit_order)
+                self.limit_order = None
+            
+            # Force close at market
+            self.close()
+            
+            if self.p.print_signals:
+                print(
+                    f'{dt} [{self.data._name}] === EOD CLOSE @ '
+                    f'{self.data.close[0]:.2f} (forced {self.p.eod_close_hour}:'
+                    f'{self.p.eod_close_minute:02d} UTC) ==='
+                )
+            
+            return True
+        
+        return False
     
     def _check_signal(self):
         """Phase 1: Check for valid EMA crossover signal."""
@@ -606,6 +648,10 @@ class SunsetOgleStrategy(bt.Strategy):
         if self.order:
             return
         
+        # EOD forced close for ETFs
+        if self.position and self._check_eod_close(dt):
+            return
+        
         # Skip entry logic if in position
         if self.position:
             return
@@ -693,7 +739,7 @@ class SunsetOgleStrategy(bt.Strategy):
                     self.last_exit_reason = "STOP_LOSS"
                 elif order == self.limit_order:
                     self.last_exit_reason = "TAKE_PROFIT"
-                else:
+                elif self.last_exit_reason != "EOD_CLOSE":
                     self.last_exit_reason = "UNKNOWN"
                 
                 # Cancel remaining protective order

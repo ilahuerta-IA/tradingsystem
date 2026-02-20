@@ -421,6 +421,10 @@ STRATEGIES_CONFIG = {
             'is_etf': True,
             'margin_pct': 20.0,  # 20% margin (5:1 leverage)
             
+            # EOD close (UTC) - close open positions before market close
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+            
             # Debug
             'print_signals': False,
         }
@@ -492,6 +496,86 @@ STRATEGIES_CONFIG = {
             'jpy_rate': 1.0,     # Not used for ETF
             'is_etf': True,
             'margin_pct': 20.0,  # 20% margin (5:1 leverage)
+            
+            # EOD close (UTC) - close open positions before market close
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+            
+            # Debug
+            'print_signals': False,
+        }
+    },
+
+    'GLD_PRO': {
+        'active': True,
+        'strategy_name': 'SunsetOgle',
+        'asset_name': 'GLD',
+        'data_path': 'data/GLD_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+        
+        'params': {
+            # EMA settings
+            'ema_fast_length': 9,
+            'ema_medium_length': 11,
+            'ema_slow_length': 24,
+            'ema_confirm_length': 1,
+            'ema_filter_price_length': 100,
+            
+            # ATR settings
+            'atr_length': 10,
+            'atr_min': 0.10,
+            'atr_max': 0.50,
+            
+            # Angle Filter
+            'use_angle_filter': False,
+            'angle_min': 45.0,
+            'angle_max': 75.0,
+            'angle_scale': 10000.0,
+            
+            # SL/TP multipliers
+            'sl_mult': 3.0,
+            'tp_mult': 8.0,
+            
+            # Pullback settings
+            'pullback_candles': 3,
+            'window_periods': 10,
+            'price_offset_mult': 0.01,
+            
+            # Time filter
+            'use_time_filter': False,
+            'allowed_hours': [14, 15, 16, 18, 19],
+            
+            # Day filter (0=Monday, 6=Sunday)
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 3, 4],
+            
+            # SL pips filter
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 900.0,
+            
+            # Risk management
+            'risk_percent': 0.01,
+            
+            # ETF Asset config
+            'pip_value': 0.01,   # ETF: 2 decimal places
+            'lot_size': 1,       # ETF: 1 share per contract
+            'jpy_rate': 1.0,     # Not used for ETF
+            'is_etf': True,
+            'margin_pct': 20.0,  # 20% margin (5:1 leverage)
+            
+            # EOD close (UTC) - close open positions before market close
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
             
             # Debug
             'print_signals': False,
