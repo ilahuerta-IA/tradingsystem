@@ -39,7 +39,7 @@ from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
 # ETF symbols list
-ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM']
+ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV']
 
 # Strategy registry
 STRATEGY_REGISTRY = {
