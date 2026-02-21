@@ -69,7 +69,12 @@ def find_latest_log(log_dir, asset_filter=None):
 
 
 def parse_log(filepath):
-    """Parse KOI trade log file."""
+    """Parse KOI trade log file.
+
+    Matches entries to exits by trade ID (not array index) to handle
+    incomplete trades (N/A exits) that would otherwise cause a cascading
+    mismatch in the data.
+    """
     with open(filepath, 'r') as f:
         content = f.read()
     
@@ -81,18 +86,25 @@ def parse_log(filepath):
         content
     )
     
-    # Parse exits
-    exits = re.findall(
-        r'EXIT #(\d+)\nTime: ([\d-]+ [\d:]+)\nExit Reason: (\w+)\n'
+    # Parse exits — accept both normal timestamps and N/A
+    exits_raw = re.findall(
+        r'EXIT #(\d+)\nTime: ([^\n]+)\nExit Reason: ([^\n]+)\n'
         r'P&L: \$([-\d,.]+)',
         content
     )
     
+    # Index exits by trade ID for correct matching
+    exits_by_id = {}
+    for ex in exits_raw:
+        exits_by_id[int(ex[0])] = ex
+    
     # Build trades list
     trades = []
-    for i, entry in enumerate(entries):
+    skipped = 0
+    for entry in entries:
+        trade_id = int(entry[0])
         trade = {
-            'id': int(entry[0]),
+            'id': trade_id,
             'entry_time': datetime.strptime(entry[1], '%Y-%m-%d %H:%M:%S'),
             'entry_price': float(entry[2]),
             'sl': float(entry[3]),
@@ -101,13 +113,23 @@ def parse_log(filepath):
             'atr': float(entry[6]),
             'cci': float(entry[7]),
         }
-        if i < len(exits):
-            trade['exit_time'] = datetime.strptime(exits[i][1], '%Y-%m-%d %H:%M:%S')
-            trade['exit_reason'] = exits[i][2]
-            trade['pnl'] = float(exits[i][3].replace(',', ''))
+        ex = exits_by_id.get(trade_id)
+        if ex:
+            exit_time_str = ex[1].strip()
+            exit_reason = ex[2].strip()
+            # Skip incomplete trades (still open at end of backtest)
+            if exit_time_str == 'N/A' or exit_reason == 'N/A':
+                skipped += 1
+                continue
+            trade['exit_time'] = datetime.strptime(exit_time_str, '%Y-%m-%d %H:%M:%S')
+            trade['exit_reason'] = exit_reason
+            trade['pnl'] = float(ex[3].replace(',', ''))
             trade['duration_min'] = (trade['exit_time'] - trade['entry_time']).total_seconds() / 60
             trade['win'] = trade['pnl'] > 0
         trades.append(trade)
+    
+    if skipped:
+        print(f'  (Skipped {skipped} incomplete trades with N/A exit)')
     
     return trades
 
