@@ -164,9 +164,11 @@ class SunsetOgleStrategy(bt.Strategy):
         # Detailed trade reports
         self.trade_reports = []
         self.trade_report_file = None
+        self._current_trade_idx = None  # Index of active trade in trade_reports
         
         # Exit reason tracking
         self.last_exit_reason = "UNKNOWN"
+        self._entry_fill_bar = -1  # Bar where buy filled (skip EOD close on same bar)
         
         # Initialize trade reporting
         self._init_trade_reporting()
@@ -453,6 +455,7 @@ class SunsetOgleStrategy(bt.Strategy):
                 'bars_to_entry': bars_to_entry,
             }
             self.trade_reports.append(trade_entry)
+            self._current_trade_idx = len(self.trade_reports) - 1
             
             # Skip file writing if no report file
             if not self.trade_report_file:
@@ -493,8 +496,12 @@ class SunsetOgleStrategy(bt.Strategy):
         if not self.trade_reports:
             return
         
+        # Skip recording for phantom trades (e.g. accidental shorts)
+        if self._current_trade_idx is None:
+            return
+        
         try:
-            last_trade = self.trade_reports[-1]
+            last_trade = self.trade_reports[self._current_trade_idx]
             
             # Always update trade record (for save_trade_log)
             
@@ -534,6 +541,9 @@ class SunsetOgleStrategy(bt.Strategy):
                 self.trade_report_file.write(f"Duration: {duration_bars} bars ({duration_minutes} min)\n")
                 self.trade_report_file.write("=" * 80 + "\n\n")
                 self.trade_report_file.flush()
+            
+            # Mark trade as completed
+            self._current_trade_idx = None
             
         except Exception as e:
             print(f"Trade exit recording error: {e}")
@@ -649,7 +659,9 @@ class SunsetOgleStrategy(bt.Strategy):
             return
         
         # EOD forced close for ETFs
-        if self.position and self._check_eod_close(dt):
+        # Skip on the bar where buy just filled to avoid cancel() race condition
+        # (SL placed same bar isn't yet in broker pending → cancel fails → phantom short)
+        if self.position and len(self) != self._entry_fill_bar and self._check_eod_close(dt):
             return
         
         # Skip entry logic if in position
@@ -714,6 +726,9 @@ class SunsetOgleStrategy(bt.Strategy):
                     if self.p.print_signals:
                         print(f'{dt} [{self.data._name}] === BUY EXEC @ {order.executed.price:.5f} | Comm: {order.executed.comm:.2f} ===')
                     
+                    # Track fill bar to prevent EOD close race condition
+                    self._entry_fill_bar = len(self)
+                    
                     # Place protective orders
                     if self.stop_level and self.take_level:
                         self.stop_order = self.sell(
@@ -759,6 +774,10 @@ class SunsetOgleStrategy(bt.Strategy):
         
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             if order == self.order:
+                # Buy order rejected/margin — remove orphan entry from trade_reports
+                if self._current_trade_idx is not None and self._current_trade_idx == len(self.trade_reports) - 1:
+                    self.trade_reports.pop()
+                    self._current_trade_idx = None
                 self.order = None
             if order == self.stop_order:
                 self.stop_order = None
