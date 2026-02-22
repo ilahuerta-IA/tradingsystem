@@ -258,6 +258,8 @@ class SEDNAStrategy(bt.Strategy):
         # Trade reporting
         self.trade_reports = []
         self.trade_report_file = None
+        self._current_trade_idx = None  # Index of active trade in trade_reports
+        self._entry_fill_bar = -1  # Bar where buy filled (skip EOD close on same bar)
         self._init_trade_reporting()
 
     # =========================================================================
@@ -352,6 +354,7 @@ class SEDNAStrategy(bt.Strategy):
                 'take_level': self.take_level,
             }
             self.trade_reports.append(entry)
+            self._current_trade_idx = len(self.trade_reports) - 1
             self.trade_report_file.write(f"ENTRY #{len(self.trade_reports)}\n")
             self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
             self.trade_report_file.write(f"Entry Price: {entry_price:.5f}\n")
@@ -370,16 +373,21 @@ class SEDNAStrategy(bt.Strategy):
         """Record exit to trade report file."""
         if not self.trade_report_file or not self.trade_reports:
             return
+        # Skip recording for phantom trades (e.g. accidental shorts)
+        if self._current_trade_idx is None:
+            return
         try:
-            self.trade_reports[-1]['pnl'] = pnl
-            self.trade_reports[-1]['exit_reason'] = reason
-            self.trade_reports[-1]['exit_time'] = dt
+            last_trade = self.trade_reports[self._current_trade_idx]
+            last_trade['pnl'] = pnl
+            last_trade['exit_reason'] = reason
+            last_trade['exit_time'] = dt
             self.trade_report_file.write(f"EXIT #{len(self.trade_reports)}\n")
             self.trade_report_file.write(f"Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}\n")
             self.trade_report_file.write(f"Exit Reason: {reason}\n")
             self.trade_report_file.write(f"P&L: ${pnl:.2f}\n")
             self.trade_report_file.write("=" * 80 + "\n\n")
             self.trade_report_file.flush()
+            self._current_trade_idx = None
         except:
             pass
 
@@ -768,7 +776,8 @@ class SEDNAStrategy(bt.Strategy):
             return
         
         if self.position:
-            if self._check_eod_close(dt):
+            # Skip EOD close on bar where buy just filled (prevents cancel race condition)
+            if len(self) != self._entry_fill_bar and self._check_eod_close(dt):
                 return
             if self.state != "SCANNING":
                 self._reset_breakout_state()
@@ -841,6 +850,7 @@ class SEDNAStrategy(bt.Strategy):
             if order == self.order:  # Entry order
                 self.last_entry_price = order.executed.price
                 self.last_entry_bar = len(self)
+                self._entry_fill_bar = len(self)  # Track fill bar for EOD close race prevention
                 
                 if self.p.print_signals:
                     print(f"[OK] SEDNA BUY EXECUTED at {order.executed.price:.5f} size={order.executed.size}")
@@ -904,7 +914,17 @@ class SEDNAStrategy(bt.Strategy):
             if not is_expected_cancel and self.p.print_signals:
                 print(f"Order {order.getstatusname()}: {order.ref}")
             
-            if self.order and order.ref == self.order.ref: self.order = None
+            if self.order and order.ref == self.order.ref:
+                # Buy order rejected/margin — write N/A exit for orphan entry
+                if self._current_trade_idx is not None and self.trade_report_file:
+                    self.trade_report_file.write(f"EXIT #{self._current_trade_idx + 1}\n")
+                    self.trade_report_file.write("Time: N/A\n")
+                    self.trade_report_file.write(f"Exit Reason: {order.getstatusname()}\n")
+                    self.trade_report_file.write("P&L: $0.00\n")
+                    self.trade_report_file.write("=" * 80 + "\n\n")
+                    self.trade_report_file.flush()
+                self._current_trade_idx = None
+                self.order = None
             if self.stop_order and order.ref == self.stop_order.ref: self.stop_order = None
             if self.limit_order and order.ref == self.limit_order.ref: self.limit_order = None
 

@@ -65,5 +65,6 @@ Thumbs.db
 # Original/Legacy files (keep for reference but don't track changes)
 # originals/
 
-# Private AI context file (not for public repo)
+# Private AI context files (not for public repo)
 CONTEXT.md
+BUGS_FIXES.md
