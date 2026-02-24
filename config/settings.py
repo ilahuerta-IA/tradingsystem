@@ -735,13 +735,13 @@ STRATEGIES_CONFIG = {
     },
 
     'XLU_PRO': {
-        'active': True,
+        'active': False,
         'strategy_name': 'SunsetOgle',
         'asset_name': 'XLU',
         'data_path': 'data/XLU_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 7, 1),
+        'to_date': datetime.datetime(2025, 7, 1),
         
         'starting_cash': 100000.0,
         
@@ -752,16 +752,16 @@ STRATEGIES_CONFIG = {
         
         'params': {
             # EMA settings
-            'ema_fast_length': 9,
-            'ema_medium_length': 11,
-            'ema_slow_length': 24,
+            'ema_fast_length': 7,
+            'ema_medium_length': 7,
+            'ema_slow_length': 9,
             'ema_confirm_length': 1,
             'ema_filter_price_length': 100,
             
             # ATR settings
             'atr_length': 10,
             'atr_min': 0.00,
-            'atr_max': 9.50,
+            'atr_max': 0.20,
             
             # Angle Filter
             'use_angle_filter': False,
@@ -770,17 +770,17 @@ STRATEGIES_CONFIG = {
             'angle_scale': 10000.0,
             
             # SL/TP multipliers
-            'sl_mult': 3.0,
+            'sl_mult': 4.0,
             'tp_mult': 8.0,
             
             # Pullback settings
-            'pullback_candles': 3,
-            'window_periods': 10,
+            'pullback_candles': 2,
+            'window_periods': 7,
             'price_offset_mult': 0.01,
             
             # Time filter
-            'use_time_filter': False,
-            'allowed_hours': [13, 14, 15, 16, 18, 19, 20],
+            'use_time_filter': True,
+            'allowed_hours': [13, 14, 15, 19, 20],
             
             # Day filter (0=Monday, 6=Sunday)
             'use_day_filter': True,
@@ -788,7 +788,7 @@ STRATEGIES_CONFIG = {
             
             # SL pips filter
             'use_sl_pips_filter': True,
-            'sl_pips_min': 10.0,
+            'sl_pips_min': 50.0,
             'sl_pips_max': 900.0,
             
             # Risk management
@@ -1568,6 +1568,84 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    'XLU_KOI': {
+        'active': True,
+        'strategy_name': 'KOI',
+        'asset_name': 'XLU',
+        'data_path': 'data/XLU_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # 5 EMAs
+            'ema_1_period': 10,
+            'ema_2_period': 20,
+            'ema_3_period': 40,
+            'ema_4_period': 60,
+            'ema_5_period': 60,
+            
+            # CCI
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 200,
+            
+            # ATR
+            'atr_length': 10,
+            'atr_sl_multiplier': 3.5,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 3,
+            'breakout_level_offset_pips': 5.0,
+            
+            # === FILTERS ===
+            
+            # Time Filter 
+            'use_time_filter': False,
+            'allowed_hours': [14, 15, 16, 17, 18, 19],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 4],
+            
+            # SL Pips Filter (disabled - ETF uses ATR filter)
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 50,   # $1 min (pip_value=0.01 -> 100 pips)
+            'sl_pips_max': 120,  # $20 max
+            
+            # ATR Filter (optimized for DIA)
+            'use_atr_filter': False,
+            'atr_min': 0.25,  # $0.30 ATR min
+            'atr_max': 0.50,  # $0.40 ATR max
+            
+            # ETF Asset config
+            'pip_value': 0.01,   # ETF: 2 decimal places
+            'lot_size': 1,       # ETF: 1 share per contract
+            'jpy_rate': 1.0,     # Not used for ETF
+            'is_etf': True,
+            'margin_pct': 20.0,  # 20% margin (5:1 leverage)
+            
+            # EOD close (UTC) - close open positions before market close
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
     # =========================================================================
     # SEDNA STRATEGY CONFIGURATIONS
     # =========================================================================
@@ -1933,6 +2011,103 @@ STRATEGIES_CONFIG = {
             'use_pullback_filter': True,
             'pullback_min_bars': 1,
             'pullback_max_bars': 10,
+            
+            # === EXIT CONDITIONS ===
+            
+            # KAMA Exit: Close when KAMA > EMA (trend reversal)
+            'use_kama_exit': False,
+            
+            # ETF Asset config
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+            
+            # EOD close (UTC) - close open positions before market close
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'XLU_SEDNA': {
+        'active': False,
+        'strategy_name': 'SEDNA',
+        'asset_name': 'XLU',
+        'data_path': 'data/XLU_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,  # EMA period for KAMA comparison (1 = raw HL2)
+            
+            # CCI settings (optional momentum filter)
+            'use_cci_filter': False,  # Disabled - not part of 3-phase system
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 6.0,
+            'atr_tp_multiplier': 12.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 15,
+            'breakout_level_offset_pips': 3.0,
+            
+            # === FILTERS ===
+            
+            # Time Filter
+            'use_time_filter': True,
+            'allowed_hours': [13, 14, 16, 17, 18, 19, 20],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 3, 4],  # Monday-Friday
+            
+            # SL Pips Filter
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 60,
+            'sl_pips_max': 75,
+            
+            # ATR Filter (uses average ATR)
+            'use_atr_filter': False,
+            'atr_min': 0.30,
+            'atr_max': 9.99,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
+            # Main trigger: ER >= threshold AND Close > KAMA
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.45,
+            
+            # === PULLBACK DETECTION ===
+            # Detects consolidation after HH for trend continuation
+            'use_pullback_filter': True,
+            'pullback_min_bars': 2,
+            'pullback_max_bars': 7,
             
             # === EXIT CONDITIONS ===
             
