@@ -10,6 +10,14 @@ Usage:
     python tools/compare_robustness.py DIA             # Filter by asset
     python tools/compare_robustness.py DIA_PRO         # Filter by config name
     python tools/compare_robustness.py log1.txt log2.txt  # Compare specific files
+    python tools/compare_robustness.py DIA_PRO --wf    # Walk-forward mode (relaxed criteria)
+
+Modes:
+    Standard (default): Compares same-params across 2 periods (e.g. 5Y vs 6Y).
+    Walk-forward (--wf): Log A = training period, Log B = full period (train + OOS).
+        Relaxes criteria 1 (core match allows edge-of-training year diff) and
+        criteria 9 (PF degradation 25% allowed instead of 15%).
+        Adds OOS-specific evaluation section.
 """
 import re
 import os
@@ -36,6 +44,13 @@ CHECK_DOMINANT_YEAR_MAX = 40.0  # percent
 CHECK_NEGATIVE_YEARS_MAX = 1
 CHECK_PF_DEGRADATION_MAX = 15.0  # percent
 CHECK_TRADES_PER_YEAR_MIN = 10
+
+# Walk-forward relaxed thresholds
+WF_PF_DEGRADATION_MAX = 25.0  # percent (IS→OOS degradation is expected)
+WF_CORE_TOLERANCE_TRADES = 5  # edge-of-training year may differ slightly
+WF_CORE_TOLERANCE_PNL = 1500.0
+WF_OOS_PF_MIN = 1.0            # minimum PF for OOS to be considered viable
+WF_OOS_PF_TARGET = 1.3         # target PF for OOS to confirm real edge
 
 
 # ---------------------------------------------------------------------------
@@ -344,30 +359,53 @@ def analyze_core_border(yearly_a, yearly_b):
 # ---------------------------------------------------------------------------
 # Checklist
 # ---------------------------------------------------------------------------
-def run_checklist(metrics_a, metrics_b, yearly_a, yearly_b):
+def run_checklist(metrics_a, metrics_b, yearly_a, yearly_b, walk_forward=False):
     """Run 10-criteria pre-evaluation checklist.
 
     Returns list of (criterion, pass/fail, details) tuples.
     Convention: A = shorter/5Y-like period, B = longer/6Y-like period.
     If both have same length, A = first log, B = second log.
+
+    Args:
+        walk_forward: If True, relax criteria 1 (core match) and 9 (PF degradation)
+                      because IS→OOS degradation is expected and edge-of-training
+                      year may have different trade counts.
     """
     checks = []
+    mode_tag = ' [WF]' if walk_forward else ''
 
     # Determine which is shorter
     if metrics_a['years'] <= metrics_b['years']:
         ma, mb = metrics_a, metrics_b
         ya, yb = yearly_a, yearly_b
-        label_a, label_b = 'A (shorter)', 'B (longer)'
+        label_a, label_b = ('A (train)', 'B (full)') if walk_forward else ('A (shorter)', 'B (longer)')
     else:
         ma, mb = metrics_b, metrics_a
         ya, yb = yearly_b, yearly_a
-        label_a, label_b = 'A (shorter)', 'B (longer)'
+        label_a, label_b = ('A (train)', 'B (full)') if walk_forward else ('A (shorter)', 'B (longer)')
 
-    # 1. Core match
+    # 1. Core match (relaxed in walk-forward: edge-of-training year allowed to differ)
     core_info = analyze_core_border(ya, yb)
-    checks.append(('1. CORE MATCH', core_info['core_match'],
-                    f'Core years {core_info["core_years"]} identical' if core_info['core_match']
-                    else 'Core years DIFFER'))
+    if walk_forward:
+        # In WF mode, check core with relaxed tolerance
+        wf_core_match = True
+        for diff in core_info['core_diffs']:
+            if diff['match']:
+                continue
+            # Allow larger diff only for the LAST core year (edge of training)
+            is_last_core = diff['year'] == max(y['year'] for y in core_info['core_diffs'])
+            if is_last_core:
+                if abs(diff['trades_a'] - diff['trades_b']) <= WF_CORE_TOLERANCE_TRADES and \
+                   abs(diff['pnl_a'] - diff['pnl_b']) <= WF_CORE_TOLERANCE_PNL:
+                    continue
+            wf_core_match = False
+        checks.append(('1. CORE MATCH' + mode_tag, wf_core_match,
+                        f'Core years {core_info["core_years"]} OK (WF tolerance)' if wf_core_match
+                        else 'Core years DIFFER (even with WF tolerance)'))
+    else:
+        checks.append(('1. CORE MATCH', core_info['core_match'],
+                        f'Core years {core_info["core_years"]} identical' if core_info['core_match']
+                        else 'Core years DIFFER'))
 
     # 2. Borders add or subtract
     border_pnl = 0
@@ -424,14 +462,16 @@ def run_checklist(metrics_a, metrics_b, yearly_a, yearly_b):
     checks.append(('8. NEG YEARS <= 1', neg_pass,
                     f'{label_a}: {neg_a} | {label_b}: {neg_b}'))
 
-    # 9. PF degradation < 15%
+    # 9. PF degradation (15% standard, 25% walk-forward)
     if ma['pf'] > 0 and ma['pf'] < float('inf'):
         pf_delta = (mb['pf'] - ma['pf']) / ma['pf'] * 100
     else:
         pf_delta = 0
-    pf_deg_pass = abs(pf_delta) <= CHECK_PF_DEGRADATION_MAX
-    checks.append(('9. PF DEGRAD < 15%', pf_deg_pass,
-                    f'Delta: {pf_delta:+.1f}%'))
+    pf_deg_limit = WF_PF_DEGRADATION_MAX if walk_forward else CHECK_PF_DEGRADATION_MAX
+    pf_deg_pass = abs(pf_delta) <= pf_deg_limit
+    pf_label = f'9. PF DEGRAD < {int(pf_deg_limit)}%'
+    checks.append((pf_label, pf_deg_pass,
+                    f'Delta: {pf_delta:+.1f}%{" (WF relaxed)" if walk_forward else ""}'))
 
     # 10. Trades/year >= 10
     tpy_a = ma['trades_per_year']
@@ -452,17 +492,18 @@ def print_header(text, char='=', width=80):
     print(f'{char * width}')
 
 
-def print_comparison(log_a, log_b, metrics_a, metrics_b, yearly_a, yearly_b):
+def print_comparison(log_a, log_b, metrics_a, metrics_b, yearly_a, yearly_b,
+                     walk_forward=False):
     """Print full side-by-side comparison."""
-    # Determine shorter/longer
-    if metrics_a['years'] <= metrics_b['years']:
-        label_a = f'A: {os.path.basename(log_a)} ({metrics_a["years"]:.1f}y)'
-        label_b = f'B: {os.path.basename(log_b)} ({metrics_b["years"]:.1f}y)'
-    else:
-        label_a = f'A: {os.path.basename(log_a)} ({metrics_a["years"]:.1f}y)'
-        label_b = f'B: {os.path.basename(log_b)} ({metrics_b["years"]:.1f}y)'
+    mode_str = 'WALK-FORWARD' if walk_forward else 'ROBUSTNESS'
 
-    print_header('ROBUSTNESS COMPARISON')
+    # Determine shorter/longer
+    tag_a = 'TRAIN' if walk_forward else ''
+    tag_b = 'FULL' if walk_forward else ''
+    label_a = f'A: {os.path.basename(log_a)} ({metrics_a["years"]:.1f}y){" [" + tag_a + "]" if tag_a else ""}'
+    label_b = f'B: {os.path.basename(log_b)} ({metrics_b["years"]:.1f}y){" [" + tag_b + "]" if tag_b else ""}'
+
+    print_header(f'{mode_str} COMPARISON')
     print(f'  {label_a}')
     print(f'  {label_b}')
 
@@ -546,8 +587,9 @@ def print_comparison(log_a, log_b, metrics_a, metrics_b, yearly_a, yearly_b):
             print(f'  {label}: Net PnL negative - no concentration analysis')
 
     # --- Checklist ---
-    print_header('PRE-EVALUATION CHECKLIST', '-')
-    checks = run_checklist(metrics_a, metrics_b, yearly_a, yearly_b)
+    checklist_title = 'PRE-EVALUATION CHECKLIST (WALK-FORWARD)' if walk_forward else 'PRE-EVALUATION CHECKLIST'
+    print_header(checklist_title, '-')
+    checks = run_checklist(metrics_a, metrics_b, yearly_a, yearly_b, walk_forward=walk_forward)
     passed = 0
     failed = 0
     for criterion, ok, details in checks:
@@ -577,6 +619,52 @@ def print_comparison(log_a, log_b, metrics_a, metrics_b, yearly_a, yearly_b):
     else:
         print(f'  >>> VERDICT: {failed} criteria fail - review required')
 
+    # --- Walk-forward OOS analysis (only in --wf mode) ---
+    if walk_forward:
+        print_header('OUT-OF-SAMPLE ANALYSIS (Walk-Forward)', '-')
+        # Identify OOS years: years in full (B) but not in training (A)
+        if metrics_a['years'] <= metrics_b['years']:
+            train_trades = parse_a_trades
+            full_trades = parse_b_trades
+        else:
+            train_trades = parse_b_trades
+            full_trades = parse_a_trades
+
+        train_years = set(t['entry_time'].year for t in train_trades if 'pnl' in t)
+        oos_trades = [t for t in full_trades if 'pnl' in t and t['entry_time'].year not in train_years]
+
+        if oos_trades:
+            oos_m = calc_metrics(oos_trades)
+            oos_yearly = calc_yearly(oos_trades)
+            if oos_m:
+                oos_years = sorted(oos_yearly.keys())
+                print(f'  OOS Period: {oos_years[0]}-{oos_years[-1]} ({len(oos_trades)} trades, {oos_m["years"]:.1f}y)')
+                print(f'  OOS PF:     {oos_m["pf"]:.2f}')
+                print(f'  OOS WR:     {oos_m["wr"]:.1f}%')
+                print(f'  OOS PnL:    ${oos_m["net_pnl"]:,.0f}')
+                print(f'  OOS Sharpe: {oos_m["sharpe"]:.2f}')
+                print(f'  OOS DD:     {oos_m["max_dd"]:.2f}%')
+                print()
+
+                # Per-year OOS breakdown
+                print(f'  {"Year":<6} {"Trades":>7} {"WR%":>6} {"PF":>6} {"PnL":>12}')
+                print(f'  {"-"*6} {"-"*7} {"-"*6} {"-"*6} {"-"*12}')
+                for y in oos_years:
+                    yd = oos_yearly[y]
+                    pf_str = f'{yd["pf"]:.2f}' if yd['pf'] < 100 else 'INF'
+                    print(f'  {y:<6} {yd["trades"]:>7} {yd["wr"]:>5.1f}% {pf_str:>6} ${yd["pnl"]:>11,.0f}')
+                print()
+
+                # OOS verdict
+                if oos_m['pf'] >= WF_OOS_PF_TARGET:
+                    print(f'  >>> OOS VERDICT: STRONG EDGE (PF {oos_m["pf"]:.2f} >= {WF_OOS_PF_TARGET})')
+                elif oos_m['pf'] >= WF_OOS_PF_MIN:
+                    print(f'  >>> OOS VERDICT: VIABLE (PF {oos_m["pf"]:.2f} >= {WF_OOS_PF_MIN}, below target {WF_OOS_PF_TARGET})')
+                else:
+                    print(f'  >>> OOS VERDICT: FAIL (PF {oos_m["pf"]:.2f} < {WF_OOS_PF_MIN})')
+        else:
+            print('  No OOS trades found (training covers all years in full log)')
+
     # --- Recent period test (Test B) ---
     print_header('RECENT PERIOD TEST (2022-2025)', '-')
     for label, trades_list, metrics in [('Log A', parse_a_trades, metrics_a), ('Log B', parse_b_trades, metrics_b)]:
@@ -604,6 +692,8 @@ def main():
 
     # Parse arguments
     args = sys.argv[1:]
+    walk_forward = '--wf' in args
+    args = [a for a in args if a != '--wf']
 
     if len(args) == 2 and args[0].endswith('.txt') and args[1].endswith('.txt'):
         # Two specific files
@@ -630,7 +720,10 @@ def main():
         else:
             paths.append(f)
 
-    print(f'Comparing:')
+    if walk_forward:
+        print(f'Comparing (WALK-FORWARD mode):')
+    else:
+        print(f'Comparing:')
     print(f'  A: {os.path.basename(paths[0])}')
     print(f'  B: {os.path.basename(paths[1])}')
 
@@ -653,7 +746,8 @@ def main():
     yearly_b = calc_yearly(data_b['trades'])
 
     # Print comparison
-    print_comparison(paths[0], paths[1], metrics_a, metrics_b, yearly_a, yearly_b)
+    print_comparison(paths[0], paths[1], metrics_a, metrics_b, yearly_a, yearly_b,
+                     walk_forward=walk_forward)
 
 
 if __name__ == '__main__':
