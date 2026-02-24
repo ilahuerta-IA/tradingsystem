@@ -360,7 +360,7 @@ STRATEGIES_CONFIG = {
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 1, 1),
+        'from_date': datetime.datetime(2022, 1, 1),
         'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
