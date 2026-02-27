@@ -71,25 +71,27 @@ STRATEGY_REGISTRY = {
 PORTFOLIO_TOTAL_CAPITAL = 50_000  # EUR (demo account)
 
 PORTFOLIO_ALLOCATION = {
-    # --- Tier A: PF > 2.8, DD < 8%, MC95 < 9% ---
-    'USDCHF_PRO':    {'allocation': 0.10, 'risk_pct': 1.50},  # PF 2.86, DD 7.4%, MC95 8.6%
-    'USDCHF_GEMINI': {'allocation': 0.10, 'risk_pct': 1.50},  # PF 2.83, DD 7.3%, MC95 6.9%
-
-    # --- Tier B: PF > 2.3 or Calmar > 1.2 ---
-    'EURUSD_PRO':    {'allocation': 0.09, 'risk_pct': 1.00},  # PF 2.70, DD 9.4%, MC95 11.2%
-    'USDCHF_KOI':   {'allocation': 0.09, 'risk_pct': 1.00},  # PF 2.62, DD 10.4%, MC95 11.3%
-    'EURJPY_PRO':    {'allocation': 0.09, 'risk_pct': 1.00},  # PF 2.38, DD 11.6%, MC95 13.8%
-
-    # --- Tier C: Solid, PF > 2.0 ---
-    'EURUSD_KOI':    {'allocation': 0.08, 'risk_pct': 0.75},  # PF 2.15, DD 11.6%, MC95 11.8%
-    'EURJPY_KOI':    {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.09, DD 11.0%, MC95 13.9%
-    'USDJPY_KOI':    {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.09, DD 9.3%, MC95 15.4%
-    'USDJPY_SEDNA':  {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.07, DD 10.7%, MC95 12.3%
-    'USDJPY_PRO':    {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.07, DD 11.5%, MC95 15.7%
-    'EURUSD_GEMINI': {'allocation': 0.07, 'risk_pct': 0.75},  # PF 2.04, DD 10.1%, MC95 12.0%
-
-    # --- Tier D: Weakest ---
-    'EURJPY_SEDNA':  {'allocation': 0.10, 'risk_pct': 0.50},  # PF 1.70, DD 14.5%, MC95 17.5%
+    # --- Flat 1% risk for initial global assessment (pre-tier) ---
+    # Forex live configs
+    'USDCHF_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
+    'USDCHF_GEMINI': {'allocation': 0.06, 'risk_pct': 1.00},
+    'EURUSD_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
+    'USDCHF_KOI':   {'allocation': 0.06, 'risk_pct': 1.00},
+    'EURJPY_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
+    'EURUSD_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},
+    'EURJPY_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},
+    'USDJPY_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},
+    'USDJPY_SEDNA':  {'allocation': 0.06, 'risk_pct': 1.00},
+    'USDJPY_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
+    'EURUSD_GEMINI': {'allocation': 0.06, 'risk_pct': 1.00},
+    'EURJPY_SEDNA':  {'allocation': 0.04, 'risk_pct': 1.00},
+    # ETF WF-approved configs
+    'DIA_PRO':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier B, OOS PF 1.67
+    'DIA_SEDNA':     {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier B, OOS PF ~2.05
+    'GLD_PRO':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier C, OOS PF ~1.80
+    'GLD_SEDNA':     {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier C⚠️, OOS PF ~1.63
+    'XLE_PRO':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier B, OOS PF ~2.55
+    'XLU_KOI':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier C, OOS PF 1.83
 }
 
 
