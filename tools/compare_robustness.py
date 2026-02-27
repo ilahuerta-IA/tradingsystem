@@ -86,33 +86,65 @@ def find_latest_logs(log_dir, name_filter=None, count=2):
 # ---------------------------------------------------------------------------
 # Log parsing
 # ---------------------------------------------------------------------------
+def _detect_strategy_type(content):
+    """Detect log format from header. Returns 'koi', 'sedna', or 'ogle'."""
+    if 'KOI STRATEGY' in content:
+        return 'koi'
+    if 'SEDNA STRATEGY' in content:
+        return 'sedna'
+    return 'ogle'
+
+
 def parse_log(filepath):
-    """Parse a trade log file and return list of trade dicts."""
+    """Parse a trade log file and return list of trade dicts.
+
+    Supports three log formats:
+      - Ogle/Sunrise: Direction, ATR Current, Angle Current, SL Pips
+      - KOI:  Entry Price, Stop Loss, Take Profit, SL Pips, ATR, CCI
+      - SEDNA: Entry Price, Stop Loss, Take Profit, SL Pips, ATR (avg), CCI (HL2)
+    """
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # Extract config name from header
+    strategy = _detect_strategy_type(content)
+
+    # Extract config name from header (Ogle only)
     config_match = re.search(r'Configuration: (\S+)', content)
     config_name = config_match.group(1) if config_match else 'Unknown'
 
-    # Extract asset name
+    # Extract asset name (Ogle only)
     asset_match = re.search(r'Asset: (\S+)', content)
     asset_name = asset_match.group(1) if asset_match else 'Unknown'
 
-    # Parse entries
-    entries = re.findall(
-        r'ENTRY #(\d+)\n'
-        r'Time: ([\d-]+ [\d:]+)\n'
-        r'Direction: (\w+)\n'
-        r'ATR Current: ([\d.]+)\n'
-        r'(?:[^\n]*\n)?'  # Optional ATR Increment/Change line
-        r'Angle Current: ([\d.-]+) deg\n'
-        r'[^\n]*\n'       # Angle Filter line
-        r'SL Pips: ([\d.]+)',
-        content
-    )
+    # --- Parse ENTRIES based on strategy type ---
+    if strategy in ('koi', 'sedna'):
+        # KOI/SEDNA: Entry Price, SL, TP, SL Pips, ATR [optional CCI]
+        entries = re.findall(
+            r'ENTRY #(\d+)\n'
+            r'Time: ([\d-]+ [\d:]+)\n'
+            r'Entry Price: [\d.]+\n'
+            r'Stop Loss: [\d.]+\n'
+            r'Take Profit: [\d.]+\n'
+            r'SL Pips: ([\d.]+)\n'
+            r'ATR(?:\s*\(avg\))?: ([\d.]+)',
+            content
+        )
+    else:
+        # Ogle/Sunrise: Direction, ATR Current, Angle Current, SL Pips
+        entries = re.findall(
+            r'ENTRY #(\d+)\n'
+            r'Time: ([\d-]+ [\d:]+)\n'
+            r'Direction: (\w+)\n'
+            r'ATR Current: ([\d.]+)\n'
+            r'(?:[^\n]*\n)?'  # Optional ATR Increment/Change line
+            r'Angle Current: ([\d.-]+) deg\n'
+            r'[^\n]*\n'       # Angle Filter line
+            r'SL Pips: ([\d.]+)',
+            content
+        )
 
-    # Parse exits
+    # --- Parse EXITS ---
+    # Try full format first (Ogle: P&L without $, Pips, Duration)
     exits_raw = re.findall(
         r'EXIT #(\d+)\n'
         r'Time: ([^\n]+)\n'
@@ -122,6 +154,15 @@ def parse_log(filepath):
         r'Duration: (\d+) bars',
         content
     )
+    if not exits_raw:
+        # KOI/SEDNA format: P&L with $ sign, no Pips/Duration
+        exits_raw = re.findall(
+            r'EXIT #(\d+)\n'
+            r'Time: ([^\n]+)\n'
+            r'Exit Reason: ([^\n]+)\n'
+            r'P&L: \$([-\d,.]+)',
+            content
+        )
 
     exits_by_id = {}
     for ex in exits_raw:
@@ -134,14 +175,28 @@ def parse_log(filepath):
     trades = []
     for entry in entries:
         trade_id = int(entry[0])
-        trade = {
-            'id': trade_id,
-            'entry_time': datetime.strptime(entry[1], '%Y-%m-%d %H:%M:%S'),
-            'direction': entry[2],
-            'atr': float(entry[3]),
-            'angle': float(entry[4]),
-            'sl_pips': float(entry[5]),
-        }
+
+        if strategy in ('koi', 'sedna'):
+            # KOI/SEDNA tuple: (id, time, sl_pips, atr)
+            trade = {
+                'id': trade_id,
+                'entry_time': datetime.strptime(entry[1], '%Y-%m-%d %H:%M:%S'),
+                'direction': 'LONG',  # KOI/SEDNA don't log direction
+                'atr': float(entry[3]),
+                'angle': 0.0,
+                'sl_pips': float(entry[2]),
+            }
+        else:
+            # Ogle tuple: (id, time, direction, atr, angle, sl_pips)
+            trade = {
+                'id': trade_id,
+                'entry_time': datetime.strptime(entry[1], '%Y-%m-%d %H:%M:%S'),
+                'direction': entry[2],
+                'atr': float(entry[3]),
+                'angle': float(entry[4]),
+                'sl_pips': float(entry[5]),
+            }
+
         ex = exits_by_id.get(trade_id)
         if ex:
             exit_time_str = ex[1].strip()
@@ -151,8 +206,8 @@ def parse_log(filepath):
             trade['exit_time'] = datetime.strptime(exit_time_str, '%Y-%m-%d %H:%M:%S')
             trade['exit_reason'] = exit_reason
             trade['pnl'] = float(ex[3].replace(',', ''))
-            trade['pips'] = float(ex[4].replace(',', ''))
-            trade['duration_bars'] = int(ex[5])
+            trade['pips'] = float(ex[4].replace(',', '')) if len(ex) > 4 else 0.0
+            trade['duration_bars'] = int(ex[5]) if len(ex) > 5 else 0
             trade['win'] = trade['pnl'] > 0
             trades.append(trade)
 
@@ -161,6 +216,7 @@ def parse_log(filepath):
         'asset': asset_name,
         'trades': trades,
         'commission': total_commission,
+        'strategy': strategy,
     }
 
 
