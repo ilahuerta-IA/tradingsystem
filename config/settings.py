@@ -589,7 +589,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/XLE_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -1341,7 +1341,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/GLD_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -1364,7 +1364,7 @@ STRATEGIES_CONFIG = {
             
             # ATR
             'atr_length': 10,
-            'atr_sl_multiplier': 2.0,
+            'atr_sl_multiplier': 5.0,
             'atr_tp_multiplier': 10.0,
             
             # Breakout Window
