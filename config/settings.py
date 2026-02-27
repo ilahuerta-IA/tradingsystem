@@ -1657,7 +1657,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/DIA_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -1748,7 +1748,7 @@ STRATEGIES_CONFIG = {
     },
 
     'GLD_SEDNA': {
-        'active': False,
+        'active': True,
         'strategy_name': 'SEDNA',
         'asset_name': 'GLD',
         'data_path': 'data/GLD_5m_5Yea.csv',
@@ -1789,7 +1789,7 @@ STRATEGIES_CONFIG = {
             
             # Time Filter
             'use_time_filter': True,
-            'allowed_hours': [14, 15, 16, 17, 19, 20],            
+            'allowed_hours': [14, 15, 17, 19, 20],            
             # Day Filter (0=Monday, 6=Sunday)
             'use_day_filter': True,
             'allowed_days': [0, 1, 2, 3],
@@ -1797,12 +1797,12 @@ STRATEGIES_CONFIG = {
             # SL Pips Filter
             'use_sl_pips_filter': True,
             'sl_pips_min': 30,
-            'sl_pips_max': 200,
+            'sl_pips_max': 120,
             
             # ATR Filter (uses average ATR)
-            'use_atr_filter': False,
-            'atr_min': 0.00,
-            'atr_max': 0.60,
+            'use_atr_filter': True,
+            'atr_min': 0.15,
+            'atr_max': 0.40,
             'atr_avg_period': 20,
             
             # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
