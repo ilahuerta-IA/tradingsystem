@@ -507,7 +507,7 @@ STRATEGIES_CONFIG = {
     },
 
     'GLD_PRO': {
-        'active': True,
+        'active': False,  # Eliminated: portfolio score 0.56, 2024-2025 breakeven, MC95 18%
         'strategy_name': 'SunsetOgle',
         'asset_name': 'GLD',
         'data_path': 'data/GLD_5m_5Yea.csv',
@@ -1748,7 +1748,7 @@ STRATEGIES_CONFIG = {
     },
 
     'GLD_SEDNA': {
-        'active': True,
+        'active': False,  # Eliminated: portfolio score 0.54, worst score, 2025 negative, PF dropped 1.86->1.69
         'strategy_name': 'SEDNA',
         'asset_name': 'GLD',
         'data_path': 'data/GLD_5m_5Yea.csv',

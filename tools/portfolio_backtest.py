@@ -71,27 +71,33 @@ STRATEGY_REGISTRY = {
 PORTFOLIO_TOTAL_CAPITAL = 50_000  # EUR (demo account)
 
 PORTFOLIO_ALLOCATION = {
-    # --- Flat 1% risk for initial global assessment (pre-tier) ---
-    # Forex live configs
-    'USDCHF_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
-    'USDCHF_GEMINI': {'allocation': 0.06, 'risk_pct': 1.00},
-    'EURUSD_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
-    'USDCHF_KOI':   {'allocation': 0.06, 'risk_pct': 1.00},
-    'EURJPY_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
-    'EURUSD_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},
-    'EURJPY_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},
-    'USDJPY_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},
-    'USDJPY_SEDNA':  {'allocation': 0.06, 'risk_pct': 1.00},
-    'USDJPY_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},
-    'EURUSD_GEMINI': {'allocation': 0.06, 'risk_pct': 1.00},
-    'EURJPY_SEDNA':  {'allocation': 0.04, 'risk_pct': 1.00},
-    # ETF WF-approved configs
-    'DIA_PRO':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier B, OOS PF 1.67
-    'DIA_SEDNA':     {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier B, OOS PF ~2.05
-    'GLD_PRO':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier C, OOS PF ~1.80
-    'GLD_SEDNA':     {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier C⚠️, OOS PF ~1.63
-    'XLE_PRO':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier B, OOS PF ~2.55
-    'XLU_KOI':       {'allocation': 0.04, 'risk_pct': 1.00},  # WF Tier C, OOS PF 1.83
+    # --- Tier A: Score > 3.0, risk 1.50% --- (PF×Calmar / (MC95/10%))
+    'USDCHF_PRO':    {'allocation': 0.08, 'risk_pct': 1.50},  # Score 4.44 | PF 2.86, DD 7.96%, MC95 9.21%
+    'USDCHF_GEMINI': {'allocation': 0.08, 'risk_pct': 1.50},  # Score 4.21 | PF 2.86, DD 8.09%, MC95 7.82%
+    'EURUSD_PRO':    {'allocation': 0.08, 'risk_pct': 1.50},  # Score 3.20 | PF 2.69, DD 9.71%, MC95 12.10%
+
+    # --- Tier B: Score 1.5-3.0, risk 1.00% ---
+    'DIA_SEDNA':     {'allocation': 0.06, 'risk_pct': 1.00},  # Score 2.70 | PF 2.04, DD 7.18%, Calmar 1.75
+    'USDCHF_KOI':   {'allocation': 0.06, 'risk_pct': 1.00},  # Score 2.35 | PF 2.60, DD 11.55%
+    'EURJPY_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},  # Score 2.25 | PF 2.38, CAGR 14.77%
+    'XLE_PRO':       {'allocation': 0.06, 'risk_pct': 1.00},  # Score 2.17 | PF 2.16, Sharpe 1.25
+    'EURUSD_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},  # Score 1.87 | PF 2.18, DD 11.79%
+    'EURJPY_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},  # Score 1.73 | PF 2.09, DD 11.04%
+    'USDJPY_SEDNA':  {'allocation': 0.06, 'risk_pct': 1.00},  # Score 1.63 | PF 2.07, DD 10.67%
+    'USDJPY_KOI':    {'allocation': 0.06, 'risk_pct': 1.00},  # Score 1.62 | PF 2.09, DD 9.25%
+    'USDJPY_PRO':    {'allocation': 0.06, 'risk_pct': 1.00},  # Score 1.51 | PF 2.07, DD 11.53%
+
+    # --- Tier C: Score 1.0-1.5, risk 0.75% ---
+    'DIA_PRO':       {'allocation': 0.05, 'risk_pct': 0.75},  # Score 1.33 | PF 1.83, MC95 18.10%
+    'XLU_KOI':       {'allocation': 0.05, 'risk_pct': 0.75},  # Score 1.26 | PF 1.94, CAGR 5.97%
+    'EURUSD_GEMINI': {'allocation': 0.05, 'risk_pct': 0.75},  # Score 1.16 | PF 2.03, CAGR 8.23%
+
+    # --- Tier D: Score < 1.0, risk 0.50% — UNDER SURVEILLANCE ---
+    'EURJPY_SEDNA':  {'allocation': 0.04, 'risk_pct': 0.50},  # Score 0.77 | PF 1.70, DD 14.45% (worst)
+
+    # --- ELIMINATED (active: False in settings.py) ---
+    # GLD_PRO:   Score 0.56, 2024-2025 breakeven, MC95 18.07%, CAGR 6.45%
+    # GLD_SEDNA: Score 0.54, worst score, 2025 negative, PF dropped 1.86->1.69
 }
 
 
