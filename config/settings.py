@@ -513,7 +513,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/GLD_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -524,15 +524,15 @@ STRATEGIES_CONFIG = {
         
         'params': {
             # EMA settings
-            'ema_fast_length': 9,
-            'ema_medium_length': 11,
+            'ema_fast_length': 11,
+            'ema_medium_length': 15,
             'ema_slow_length': 24,
             'ema_confirm_length': 1,
-            'ema_filter_price_length': 100,
+            'ema_filter_price_length': 90,
             
             # ATR settings
             'atr_length': 10,
-            'atr_min': 0.00,
+            'atr_min': 0.10,
             'atr_max': 9.50,
             
             # Angle Filter
@@ -542,8 +542,8 @@ STRATEGIES_CONFIG = {
             'angle_scale': 10000.0,
             
             # SL/TP multipliers
-            'sl_mult': 3.0,
-            'tp_mult': 8.0,
+            'sl_mult': 2.5,
+            'tp_mult': 6.0,
             
             # Pullback settings
             'pullback_candles': 3,
@@ -552,7 +552,7 @@ STRATEGIES_CONFIG = {
             
             # Time filter
             'use_time_filter': False,
-            'allowed_hours': [13, 14, 15, 16, 18, 19, 20],
+            'allowed_hours': [13, 14, 15, 16, 17, 18],
             
             # Day filter (0=Monday, 6=Sunday)
             'use_day_filter': True,
@@ -561,7 +561,7 @@ STRATEGIES_CONFIG = {
             # SL pips filter
             'use_sl_pips_filter': True,
             'sl_pips_min': 10.0,
-            'sl_pips_max': 900.0,
+            'sl_pips_max': 200.0,
             
             # Risk management
             'risk_percent': 0.01,
