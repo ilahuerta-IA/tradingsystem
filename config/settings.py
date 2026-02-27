@@ -513,7 +513,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/GLD_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -659,13 +659,13 @@ STRATEGIES_CONFIG = {
     },
 
     'EWZ_PRO': {
-        'active': True,
+        'active': False,
         'strategy_name': 'SunsetOgle',
         'asset_name': 'EWZ',
         'data_path': 'data/EWZ_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -740,8 +740,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'XLU',
         'data_path': 'data/XLU_5m_5Yea.csv',
         
-        'from_date': datetime.datetime(2020, 7, 1),
-        'to_date': datetime.datetime(2025, 7, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 1, 31),
         
         'starting_cash': 100000.0,
         
@@ -761,7 +761,7 @@ STRATEGIES_CONFIG = {
             # ATR settings
             'atr_length': 10,
             'atr_min': 0.00,
-            'atr_max': 0.20,
+            'atr_max': 99.20,
             
             # Angle Filter
             'use_angle_filter': False,
@@ -779,16 +779,16 @@ STRATEGIES_CONFIG = {
             'price_offset_mult': 0.01,
             
             # Time filter
-            'use_time_filter': True,
+            'use_time_filter': False,
             'allowed_hours': [13, 14, 15, 19, 20],
             
             # Day filter (0=Monday, 6=Sunday)
-            'use_day_filter': True,
+            'use_day_filter': False,
             'allowed_days': [0, 1, 3, 4],
             
             # SL pips filter
             'use_sl_pips_filter': True,
-            'sl_pips_min': 50.0,
+            'sl_pips_min': 10.0,
             'sl_pips_max': 900.0,
             
             # Risk management
@@ -1255,7 +1255,7 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
-    # KO
+
     'TLT_KOI': {
         'active': False,
         'strategy_name': 'KOI',
@@ -1413,7 +1413,7 @@ STRATEGIES_CONFIG = {
     },
 
     'XLE_KOI': {
-        'active': True,
+        'active': False,
         'strategy_name': 'KOI',
         'asset_name': 'XLE',
         'data_path': 'data/XLE_5m_5Yea.csv',
@@ -1575,7 +1575,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/XLU_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -1657,7 +1657,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/DIA_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -1692,7 +1692,7 @@ STRATEGIES_CONFIG = {
             
             # Time Filter
             'use_time_filter': False,
-            'allowed_hours': [13, 14, 15, 17, 18, 19, 20, 21, 22, 23],
+            'allowed_hours': [13, 14, 15, 17, 18, 19, 20],
             
             # Day Filter (0=Monday, 6=Sunday)
             'use_day_filter': True,
@@ -1700,13 +1700,13 @@ STRATEGIES_CONFIG = {
             
             # SL Pips Filter
             'use_sl_pips_filter': False,
-            'sl_pips_min': 60,
-            'sl_pips_max': 75,
+            'sl_pips_min': 10,
+            'sl_pips_max': 200,
             
             # ATR Filter (uses average ATR)
             'use_atr_filter': True,
             'atr_min': 0.30,
-            'atr_max': 9.99,
+            'atr_max': 0.75,
             'atr_avg_period': 20,
             
             # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
