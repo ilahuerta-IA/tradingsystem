@@ -65,7 +65,8 @@ Thumbs.db
 # Original/Legacy files (keep for reference but don't track changes)
 # originals/
 
-# Private AI context files (not for public repo)
+# Private AI context files (NEVER public — equivalent to credentials)
+# Contains: axioms, strategy docs, live analysis, session history, bugs
+# All private context lives in context/ folder. Root CONTEXT.md is just a pointer.
 CONTEXT.md
-CONTEXT_BACKUP.md
 context/
