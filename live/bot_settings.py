@@ -18,17 +18,17 @@ ENABLED_CONFIGS = {
     "EURJPY_PRO": True,
     "USDCAD_PRO": False,  # Disabled: high spread/slippage destroys edge
     "USDCHF_PRO": True,
-    "USDJPY_PRO": True,
+    "USDJPY_PRO": False,  # PAUSED 2026-02-28: 1/11 WR in OOS (p=1.6%). Re-evaluate Jun 2026
     
     # KOI strategy (Forex)
     "EURUSD_KOI": True,
     "USDCAD_KOI": False,  # Disabled: high spread/slippage destroys edge
     "USDCHF_KOI": True,
-    "USDJPY_KOI": True,
+    "USDJPY_KOI": False,  # PAUSED 2026-02-28: 1/11 WR in OOS (p=1.6%). Re-evaluate Jun 2026
     "EURJPY_KOI": True,
     
     # SEDNA strategy (Forex - JPY pairs)
-    "USDJPY_SEDNA": True,
+    "USDJPY_SEDNA": False,  # PAUSED 2026-02-28: 1/11 WR in OOS (p=1.6%). Re-evaluate Jun 2026
     "EURJPY_SEDNA": True,
     
     # GEMINI strategy (correlation divergence EURUSD/USDCHF)
