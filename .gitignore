@@ -67,4 +67,5 @@ Thumbs.db
 
 # Private AI context files (not for public repo)
 CONTEXT.md
-BUGS_FIXES.md
+CONTEXT_BACKUP.md
+context/
