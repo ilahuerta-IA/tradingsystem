@@ -2681,6 +2681,179 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    # =========================================================================
+    # GEMINI_S (Sync Mode) — Correlation SYNC (same direction) pairs
+    # sync_mode=True: Harmony = ROC_primary * ROC_reference (positive = synced)
+    # =========================================================================
+
+    'USDJPY_GEMINI_S': {
+        'active': True,
+        'strategy_name': 'GEMINI',
+        'asset_name': 'USDJPY',
+        'data_path': 'data/USDJPY_5m_5Yea.csv',
+
+        # Reference: EURJPY (corr ~+0.75 with USDJPY)
+        'reference_data_path': 'data/EURJPY_5m_5Yea.csv',
+        'reference_symbol': 'EURJPY',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'params': {
+            # === SYNC MODE ===
+            'sync_mode': True,              # KEY: ROC*ROC instead of ROC*(-ROC)
+
+            # === ROC SETTINGS ===
+            'roc_period_primary': 5,
+            'roc_period_reference': 5,
+            'harmony_scale': 10000,
+
+            # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
+            'allowed_cross_bars': [],       # Empty = all bars allowed (exploratory)
+            'entry_roc_angle_min': 5.0,
+            'entry_roc_angle_max': 80.0,
+            'entry_harmony_angle_min': 5.0,
+            'entry_harmony_angle_max': 80.0,
+            'roc_angle_scale': 1.0,
+            'harmony_angle_scale': 1.0,
+
+            # === KAMA SETTINGS ===
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+
+            # === ATR for SL/TP ===
+            'atr_length': 10,
+            'atr_sl_multiplier': 5.0,
+            'atr_tp_multiplier': 10.0,
+
+            # === FILTERS (wide open for initial exploration) ===
+            'use_time_filter': False,
+            'allowed_hours': [],
+
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 80,
+
+            'use_atr_filter': False,
+            'atr_min': 0.01,
+            'atr_max': 0.15,
+            'atr_avg_period': 20,
+
+            # Asset config
+            'pip_value': 0.01,
+            'is_jpy_pair': True,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+
+            # Risk
+            'risk_percent': 0.01,
+
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+
+            # Plot options
+            'plot_roc_multiplier': 500,
+            'plot_harmony_multiplier': 15.0,
+        }
+    },
+
+    'EURJPY_GEMINI_S': {
+        'active': True,
+        'strategy_name': 'GEMINI',
+        'asset_name': 'EURJPY',
+        'data_path': 'data/EURJPY_5m_5Yea.csv',
+
+        # Reference: USDJPY (corr ~+0.75 with EURJPY)
+        'reference_data_path': 'data/USDJPY_5m_5Yea.csv',
+        'reference_symbol': 'USDJPY',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'params': {
+            # === SYNC MODE ===
+            'sync_mode': True,              # KEY: ROC*ROC instead of ROC*(-ROC)
+
+            # === ROC SETTINGS ===
+            'roc_period_primary': 5,
+            'roc_period_reference': 5,
+            'harmony_scale': 10000,
+
+            # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
+            'allowed_cross_bars': [],       # Empty = all bars allowed (exploratory)
+            'entry_roc_angle_min': 5.0,
+            'entry_roc_angle_max': 80.0,
+            'entry_harmony_angle_min': 5.0,
+            'entry_harmony_angle_max': 80.0,
+            'roc_angle_scale': 1.0,
+            'harmony_angle_scale': 1.0,
+
+            # === KAMA SETTINGS ===
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+
+            # === ATR for SL/TP ===
+            'atr_length': 10,
+            'atr_sl_multiplier': 5.0,
+            'atr_tp_multiplier': 10.0,
+
+            # === FILTERS (wide open for initial exploration) ===
+            'use_time_filter': False,
+            'allowed_hours': [],
+
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 80,
+
+            'use_atr_filter': False,
+            'atr_min': 0.01,
+            'atr_max': 0.15,
+            'atr_avg_period': 20,
+
+            # Asset config
+            'pip_value': 0.01,
+            'is_jpy_pair': True,
+            'lot_size': 100000,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 3.33,
+
+            # Risk
+            'risk_percent': 0.01,
+
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+
+            # Plot options
+            'plot_roc_multiplier': 500,
+            'plot_harmony_multiplier': 15.0,
+        }
+    },
+
 }
 
 # Broker settings for commission calculation

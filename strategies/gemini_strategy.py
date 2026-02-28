@@ -128,6 +128,7 @@ class GEMINIStrategy(bt.Strategy):
         
         # === HARMONY SCORE ===
         harmony_scale=10000,            # Multiplier for visualization (raw values ~0.000001)
+        sync_mode=False,                # False=inverse (ROC*-ROC), True=sync (ROC*ROC)
         
         # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
         # Step 1: TRIGGER - HL2_EMA crosses above KAMA
@@ -350,9 +351,13 @@ class GEMINIStrategy(bt.Strategy):
             roc_primary = calculate_roc_from_history(self.primary_close_history, self.p.roc_period_primary)
             roc_reference = calculate_roc_from_history(self.reference_close_history, self.p.roc_period_reference)
             
-            # Harmony = ROC_primary × (-ROC_reference) × scale
-            # Positive when: primary up AND reference down (harmonic divergence)
-            harmony_raw = roc_primary * (-roc_reference)
+            # Harmony = ROC_primary * (-ROC_reference) * scale  [inverse mode]
+            # Harmony = ROC_primary *  ROC_reference  * scale  [sync mode]
+            # Positive when: primary strengthens in harmony with reference
+            if self.p.sync_mode:
+                harmony_raw = roc_primary * roc_reference
+            else:
+                harmony_raw = roc_primary * (-roc_reference)
             harmony_scaled = harmony_raw * self.p.harmony_scale
             
             # Store values history for slope calculation

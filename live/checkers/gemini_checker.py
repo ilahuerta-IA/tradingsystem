@@ -80,6 +80,7 @@ class GEMINIChecker(BaseChecker):
         self.roc_period_primary = params.get("roc_period_primary", 5)
         self.roc_period_reference = params.get("roc_period_reference", 5)
         self.harmony_scale = params.get("harmony_scale", 10000)
+        self.sync_mode = params.get("sync_mode", False)
         
         # Entry parameters
         self.allowed_cross_bars = params.get("allowed_cross_bars", [])
@@ -235,8 +236,11 @@ class GEMINIChecker(BaseChecker):
         roc_primary = self._calculate_roc(primary_closes, self.roc_period_primary)
         roc_reference = self._calculate_roc(reference_closes, self.roc_period_reference)
         
-        # Harmony = ROC_primary * (-ROC_reference) * scale
-        harmony_raw = roc_primary * (-roc_reference)
+        # Harmony: inverse (ROC*-ROC) or sync (ROC*ROC)
+        if self.sync_mode:
+            harmony_raw = roc_primary * roc_reference
+        else:
+            harmony_raw = roc_primary * (-roc_reference)
         harmony_scaled = harmony_raw * self.harmony_scale
         
         # Store for angle calculation
