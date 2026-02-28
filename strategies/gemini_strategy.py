@@ -1093,7 +1093,17 @@ class GEMINIStrategy(bt.Strategy):
             print(f"{'='*70}")
         
         # Commission Summary (calculated from trade_reports)
-        total_lots = sum(t.get('size', 0) / self.p.lot_size for t in self.trade_reports if 'size' in t)
+        # JPY pairs: bt_size is divided by jpy_rate, restore before lot calc
+        if self.p.is_jpy_pair:
+            total_lots = sum(
+                t.get('size', 0) * self.p.jpy_rate / self.p.lot_size
+                for t in self.trade_reports if 'size' in t
+            )
+        else:
+            total_lots = sum(
+                t.get('size', 0) / self.p.lot_size
+                for t in self.trade_reports if 'size' in t
+            )
         total_commission = total_lots * 2 * 2.5  # Round-trip * $2.5 per lot (typical forex)
         avg_commission = total_commission / total_trades if total_trades > 0 else 0
         avg_lots = total_lots / total_trades if total_trades > 0 else 0

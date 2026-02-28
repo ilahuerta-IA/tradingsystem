@@ -705,7 +705,10 @@ def main():
     analyze_by_cross_bars(trades)
     analyze_by_roc_angle(trades)
     analyze_by_harmony_angle(trades)
-    analyze_by_atr_range(trades)
+    # JPY pairs need larger ATR step (ATR ~0.02-0.15 vs ~0.0005-0.003)
+    pip_value = config.get('pip_value', 0.0001)
+    atr_step = 0.005 if pip_value >= 0.01 else 0.0001
+    analyze_by_atr_range(trades, step=atr_step)
     analyze_by_sl_pips(trades)
     analyze_by_hour(trades)
     analyze_by_day(trades)

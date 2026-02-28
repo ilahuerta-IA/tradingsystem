@@ -2696,12 +2696,12 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/EURJPY_5m_5Yea.csv',
         'reference_symbol': 'EURJPY',
 
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2022, 10, 1),
+        'to_date': datetime.datetime(2022, 12, 31),
 
         'starting_cash': 100000.0,
 
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
 
@@ -2737,7 +2737,7 @@ STRATEGIES_CONFIG = {
             'use_time_filter': False,
             'allowed_hours': [],
 
-            'use_day_filter': False,
+            'use_day_filter': True,           # Always filter weekends in forex
             'allowed_days': [0, 1, 2, 3, 4],
 
             'use_sl_pips_filter': False,
@@ -2821,7 +2821,7 @@ STRATEGIES_CONFIG = {
             'use_time_filter': False,
             'allowed_hours': [],
 
-            'use_day_filter': False,
+            'use_day_filter': True,           # Always filter weekends in forex
             'allowed_days': [0, 1, 2, 3, 4],
 
             'use_sl_pips_filter': False,
