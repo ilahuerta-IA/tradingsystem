@@ -87,21 +87,24 @@ def find_latest_logs(log_dir, name_filter=None, count=2):
 # Log parsing
 # ---------------------------------------------------------------------------
 def _detect_strategy_type(content):
-    """Detect log format from header. Returns 'koi', 'sedna', or 'ogle'."""
+    """Detect log format from header. Returns 'koi', 'sedna', 'gemini', or 'ogle'."""
     if 'KOI STRATEGY' in content:
         return 'koi'
     if 'SEDNA STRATEGY' in content:
         return 'sedna'
+    if 'GEMINI STRATEGY' in content:
+        return 'gemini'
     return 'ogle'
 
 
 def parse_log(filepath):
     """Parse a trade log file and return list of trade dicts.
 
-    Supports three log formats:
+    Supports four log formats:
       - Ogle/Sunrise: Direction, ATR Current, Angle Current, SL Pips
       - KOI:  Entry Price, Stop Loss, Take Profit, SL Pips, ATR, CCI
       - SEDNA: Entry Price, Stop Loss, Take Profit, SL Pips, ATR (avg), CCI (HL2)
+      - GEMINI: Entry Price, Stop Loss, Take Profit, SL Pips, ATR (avg), Cross Bars, ROC Angle, Harmony Angle
     """
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -117,7 +120,22 @@ def parse_log(filepath):
     asset_name = asset_match.group(1) if asset_match else 'Unknown'
 
     # --- Parse ENTRIES based on strategy type ---
-    if strategy in ('koi', 'sedna'):
+    if strategy == 'gemini':
+        # GEMINI: Entry Price, SL, TP, SL Pips, ATR (avg), Cross Bars, ROC Angle, Harmony Angle
+        entries = re.findall(
+            r'ENTRY #(\d+)\n'
+            r'Time: ([\d-]+ [\d:]+)\n'
+            r'Entry Price: [\d.]+\n'
+            r'Stop Loss: [\d.]+\n'
+            r'Take Profit: [\d.]+\n'
+            r'SL Pips: ([\d.]+)\n'
+            r'ATR(?:\s*\(avg\))?: ([\d.]+)\n'
+            r'Cross Bars: \d+\n'
+            r'ROC Angle: [\d.]+\n'
+            r'Harmony Angle: [\d.]+',
+            content
+        )
+    elif strategy in ('koi', 'sedna'):
         # KOI/SEDNA: Entry Price, SL, TP, SL Pips, ATR [optional CCI]
         entries = re.findall(
             r'ENTRY #(\d+)\n'
@@ -176,12 +194,12 @@ def parse_log(filepath):
     for entry in entries:
         trade_id = int(entry[0])
 
-        if strategy in ('koi', 'sedna'):
-            # KOI/SEDNA tuple: (id, time, sl_pips, atr)
+        if strategy in ('koi', 'sedna', 'gemini'):
+            # KOI/SEDNA/GEMINI tuple: (id, time, sl_pips, atr)
             trade = {
                 'id': trade_id,
                 'entry_time': datetime.strptime(entry[1], '%Y-%m-%d %H:%M:%S'),
-                'direction': 'LONG',  # KOI/SEDNA don't log direction
+                'direction': 'LONG',  # KOI/SEDNA/GEMINI don't log direction
                 'atr': float(entry[3]),
                 'angle': 0.0,
                 'sl_pips': float(entry[2]),
