@@ -11,7 +11,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -285,7 +285,7 @@ STRATEGIES_CONFIG = {
     },
 
     'USDJPY_PRO': {
-        'active': True,  # Set to False to skip this config when running
+        'active': False,  # Set to False to skip this config when running
         'strategy_name': 'SunsetOgle',
         'asset_name': 'USDJPY',
         'data_path': 'data/USDJPY_5m_5Yea.csv',
@@ -885,7 +885,7 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
-    #KO
+    
     'USDCAD_KOI': {
         'active': False,
         'strategy_name': 'KOI',
@@ -1037,7 +1037,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/USDJPY_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -2145,7 +2145,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
         
         'starting_cash': 100000.0,
         
@@ -2231,7 +2231,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/USDJPY_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2025, 12, 11),
         
         'starting_cash': 100000.0,
         
@@ -2687,7 +2687,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
 
     'USDJPY_GEMINI_S': {
-        'active': True,
+        'active': False,
         'strategy_name': 'GEMINI',
         'asset_name': 'USDJPY',
         'data_path': 'data/USDJPY_5m_5Yea.csv',
@@ -2696,12 +2696,12 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/EURJPY_5m_5Yea.csv',
         'reference_symbol': 'EURJPY',
 
-        'from_date': datetime.datetime(2022, 10, 1),
-        'to_date': datetime.datetime(2022, 12, 31),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
 
         'starting_cash': 100000.0,
 
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
 
@@ -2715,11 +2715,11 @@ STRATEGIES_CONFIG = {
             'harmony_scale': 10000,
 
             # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
-            'allowed_cross_bars': [],       # Empty = all bars allowed (exploratory)
-            'entry_roc_angle_min': 5.0,
-            'entry_roc_angle_max': 80.0,
-            'entry_harmony_angle_min': 5.0,
-            'entry_harmony_angle_max': 80.0,
+            'allowed_cross_bars': [1, 3, 5, 6],       # Empty = all bars allowed (exploratory)
+            'entry_roc_angle_min': 10.0,
+            'entry_roc_angle_max': 20.0,
+            'entry_harmony_angle_min': 10.0,
+            'entry_harmony_angle_max': 20.0,
             'roc_angle_scale': 1.0,
             'harmony_angle_scale': 1.0,
 
@@ -2735,14 +2735,14 @@ STRATEGIES_CONFIG = {
 
             # === FILTERS (wide open for initial exploration) ===
             'use_time_filter': False,
-            'allowed_hours': [],
+            'allowed_hours': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17],
 
             'use_day_filter': True,           # Always filter weekends in forex
-            'allowed_days': [0, 1, 2, 3, 4],
+            'allowed_days': [1, 2, 3, 4],
 
-            'use_sl_pips_filter': False,
+            'use_sl_pips_filter': True,
             'sl_pips_min': 10,
-            'sl_pips_max': 80,
+            'sl_pips_max': 70,
 
             'use_atr_filter': False,
             'atr_min': 0.01,
@@ -2766,12 +2766,12 @@ STRATEGIES_CONFIG = {
 
             # Plot options
             'plot_roc_multiplier': 500,
-            'plot_harmony_multiplier': 15.0,
+            'plot_harmony_multiplier': 20.0,
         }
     },
 
     'EURJPY_GEMINI_S': {
-        'active': True,
+        'active': False,
         'strategy_name': 'GEMINI',
         'asset_name': 'EURJPY',
         'data_path': 'data/EURJPY_5m_5Yea.csv',

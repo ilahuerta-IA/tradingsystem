@@ -24,11 +24,11 @@ ENABLED_CONFIGS = {
     "EURUSD_KOI": True,
     "USDCAD_KOI": False,  # Disabled: high spread/slippage destroys edge
     "USDCHF_KOI": True,
-    "USDJPY_KOI": False,  # PAUSED 2026-02-28: 1/11 WR in OOS (p=1.6%). Re-evaluate Jun 2026
+    "USDJPY_KOI": True,  # REACTIVATED 2026-03-01: WF 9/10, 2025 PF 2.13 (no degradation). Ogle-specific issue, not regime. PRO stays paused.
     "EURJPY_KOI": True,
     
     # SEDNA strategy (Forex - JPY pairs)
-    "USDJPY_SEDNA": False,  # PAUSED 2026-02-28: 1/11 WR in OOS (p=1.6%). Re-evaluate Jun 2026
+    "USDJPY_SEDNA": True,  # REACTIVATED 2026-03-01: WF 9/10, 2025 PF 2.46 (strongest OOS year). Ogle-specific issue, not regime. PRO stays paused.
     "EURJPY_SEDNA": True,
     
     # GEMINI strategy (correlation divergence EURUSD/USDCHF)
