@@ -423,5 +423,26 @@ if __name__ == '__main__':
     
     if len(sys.argv) > 1:
         config_to_run = sys.argv[1]
-    
+
+    # Optional date overrides: --to-date YYYY-MM-DD and/or --from-date YYYY-MM-DD
+    # Usage: python run_backtest.py GLD_CERES --to-date 2024-01-01
+    #        python run_backtest.py GLD_CERES --from-date 2020-01-01 --to-date 2024-01-01
+    date_overrides = {}
+    args = sys.argv[2:]
+    i = 0
+    while i < len(args):
+        if args[i] == '--to-date' and i + 1 < len(args):
+            date_overrides['to_date'] = datetime.strptime(args[i + 1], '%Y-%m-%d')
+            i += 2
+        elif args[i] == '--from-date' and i + 1 < len(args):
+            date_overrides['from_date'] = datetime.strptime(args[i + 1], '%Y-%m-%d')
+            i += 2
+        else:
+            i += 1
+
+    # Apply date overrides to config (temporary, does not modify settings.py)
+    if date_overrides and config_to_run in STRATEGIES_CONFIG:
+        for key, val in date_overrides.items():
+            STRATEGIES_CONFIG[config_to_run][key] = val
+
     run_backtest(config_to_run)
