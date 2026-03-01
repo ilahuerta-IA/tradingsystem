@@ -1037,7 +1037,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/USDJPY_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -2145,7 +2145,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -2313,7 +2313,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
     # GLIESE v2 STRATEGY CONFIGURATIONS (Simplified Mean Reversion)
     # =========================================================================
-    #ko
+    
     'USDCHF_GLIESE': {
         'active': False,
         'strategy_name': 'GLIESE',
@@ -2421,7 +2421,7 @@ STRATEGIES_CONFIG = {
     # HELIX STRATEGY CONFIGURATIONS (SE-based variant of SEDNA)
     # Target: EURUSD (where SEDNA doesn't work well)
     # =========================================================================
-    #ko
+    
     'EURUSD_HELIX': {
         'active': False,
         'strategy_name': 'HELIX',
@@ -2851,6 +2851,104 @@ STRATEGIES_CONFIG = {
             # Plot options
             'plot_roc_multiplier': 500,
             'plot_harmony_multiplier': 15.0,
+        }
+    },
+
+    # =========================================================================
+    # CERES - Opening Range + Pullback + Breakout (Intraday ETF)
+    # =========================================================================
+
+    'GLD_CERES': {
+        'active': True,
+        'strategy_name': 'CERES',
+        'asset_name': 'GLD',
+        'data_path': 'data/GLD_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'params': {
+            # Opening Range
+            'market_open_hour': 14,
+            'market_open_minute': 30,
+            'or_candles': 8,               # 8 x 5min = 40min OR window
+
+            # Quality Filters (all OFF for baseline)
+            'use_angle_filter': False,
+            'angle_min': 5.0,
+            'angle_max': 80.0,
+
+            'use_atr_or_filter': False,
+            'atr_or_min': 0.0,
+            'atr_or_max': 999.0,
+
+            'use_er_or_filter': False,
+            'er_or_threshold': 0.3,
+
+            'use_er_htf_filter': False,
+            'er_htf_threshold': 0.3,
+            'er_htf_period': 10,
+            'er_htf_timeframe_minutes': 60,
+
+            # Pullback + Breakout
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 20,
+            'breakout_buffer_pips': 2.0,
+
+            # Stop Loss
+            'sl_mode': 'or_low',
+            'sl_buffer_pips': 5.0,
+            'sl_fixed_pips': 30.0,
+            'sl_atr_mult': 1.5,
+
+            # Take Profit
+            'tp_mode': 'none',             # EOD close by default
+            'tp_or_mult': 1.5,
+            'tp_fixed_pips': 50.0,
+            'tp_atr_mult': 2.0,
+
+            # EOD Close (UTC) - 20:45 = 15 min before US close
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 45,
+
+            # Standard Filters
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 5.0,
+            'sl_pips_max': 200.0,
+
+            'use_atr_avg_filter': False,
+            'atr_avg_min': 0.0,
+            'atr_avg_max': 999.0,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # Risk management
+            'risk_percent': 0.0075,
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+            'plot_entry_exit_lines': False,
         }
     },
 
