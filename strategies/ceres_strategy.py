@@ -171,8 +171,7 @@ class CERESStrategy(bt.Strategy):
 
     params = dict(
         # --- Opening Range ---
-        market_open_hour=14,
-        market_open_minute=30,
+        delay_bars=0,              # Bars to skip after first bar of day before OR
         or_candles=8,              # Bars to form OR (8 x 15min = 2h)
 
         # --- Quality Filters (all optional, independent) ---
@@ -289,6 +288,10 @@ class CERESStrategy(bt.Strategy):
         self.or_atr_avg = None
         self.or_end_bar = None
 
+        # Day-start detection (DST-agnostic)
+        self._day_first_bar_seen = False
+        self._delay_bars_remaining = 0
+
         # ARMED state tracking
         self.highs_since_or = []
         self.armed_bar_count = 0
@@ -349,8 +352,8 @@ class CERESStrategy(bt.Strategy):
             f.write("\n")
 
             # Opening Range config
-            f.write("Opening Range: %d candles, open=%d:%02d UTC\n" % (
-                self.p.or_candles, self.p.market_open_hour, self.p.market_open_minute))
+            f.write("Opening Range: %d candles, delay=%d bars after open\n" % (
+                self.p.or_candles, self.p.delay_bars))
 
             # Quality filters
             if self.p.use_angle_filter:
@@ -549,10 +552,18 @@ class CERESStrategy(bt.Strategy):
         self.entry_exit_lines.lines.or_hh[0] = hh if hh else nan
         self.entry_exit_lines.lines.or_ll[0] = ll if ll else nan
 
-    def _is_market_open(self, dt):
-        """Check if current bar is the market open bar."""
-        return (dt.hour == self.p.market_open_hour
-                and dt.minute == self.p.market_open_minute)
+    def _is_or_start_ready(self):
+        """Check if we should start forming the OR (first bar of day + delay).
+
+        DST-agnostic: detects day change from data, not from clock.
+        Uses delay_bars param to skip N bars after first bar of day.
+        """
+        if not self._day_first_bar_seen:
+            return False
+        if self._delay_bars_remaining > 0:
+            self._delay_bars_remaining -= 1
+            return False
+        return True
 
     def _reset_state(self):
         """Reset to IDLE state, clearing all OR and ARMED data."""
@@ -804,6 +815,8 @@ class CERESStrategy(bt.Strategy):
         if today != self._today_date:
             self._today_date = today
             self._traded_today = False
+            self._day_first_bar_seen = True
+            self._delay_bars_remaining = self.p.delay_bars
             # If day changes while in WINDOW_FORMING or ARMED, reset
             if self.state in ("WINDOW_FORMING", "ARMED"):
                 self._reset_state()
@@ -847,7 +860,8 @@ class CERESStrategy(bt.Strategy):
 
         # ---- STATE: IDLE ----
         if self.state == "IDLE":
-            if self._is_market_open(dt):
+            if self._is_or_start_ready():
+                self._day_first_bar_seen = False  # consumed
                 self.state = "WINDOW_FORMING"
                 self.or_bar_count = 0
                 self.or_highs = []
@@ -1281,9 +1295,8 @@ class CERESStrategy(bt.Strategy):
         print("\n" + "=" * 70)
         print("STRATEGY CONFIGURATION")
         print("=" * 70)
-        print("  OR: %d candles, open=%d:%02d UTC"
-              % (self.p.or_candles, self.p.market_open_hour,
-                 self.p.market_open_minute))
+        print("  OR: %d candles, delay=%d bars after day open"
+              % (self.p.or_candles, self.p.delay_bars))
         print("  SL Mode: %s | Buffer: %.1f pips"
               % (self.p.sl_mode, self.p.sl_buffer_pips))
         print("  TP Mode: %s" % self.p.tp_mode)

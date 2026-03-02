@@ -2865,7 +2865,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/GLD_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'to_date': datetime.datetime(2023, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -2876,8 +2876,7 @@ STRATEGIES_CONFIG = {
 
         'params': {
             # Opening Range
-            'market_open_hour': 14,
-            'market_open_minute': 30,
+            'delay_bars': 0,                   # 0 = OR starts at first bar of day (DST-agnostic)
             'or_candles': 8,               # 8 x 5min = 40min OR window
 
             # Quality Filters (all OFF for baseline)
@@ -2909,7 +2908,7 @@ STRATEGIES_CONFIG = {
             'sl_atr_mult': 1.5,
 
             # Take Profit
-            'tp_mode': 'none',             # EOD close by default
+            'tp_mode': 'none',    # EOD close by default 'or_height_mult' 'fixed_pips' 'atr_mult'
             'tp_or_mult': 1.5,
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 2.0,

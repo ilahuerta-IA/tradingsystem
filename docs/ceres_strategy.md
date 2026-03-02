@@ -35,8 +35,8 @@ MARKET OPEN → OPENING RANGE → QUALITY CHECK → PULLBACK + BREAKOUT → ENTR
      (1)           (2)             (3)               (4)
 ```
 
-1. **Market Open**: Se detecta la hora de apertura del activo (configurable)
-2. **Opening Range (OR)**: Se recogen N velas desde apertura → OR HH, OR LL, OR Height
+1. **Day Open Detection**: First bar of each day detected from data (DST-agnostic)
+2. **Opening Range (OR)**: After optional delay_bars, collect N velas -> OR HH, OR LL, OR Height
 3. **Quality Check**: Filtros opcionales sobre el OR (ángulo, ATR, ER) → si ALL OFF, pasa directo
 4. **Pullback + Breakout**: Consolidación debajo del OR HH → price breaks OR HH → ENTRY LONG
 
@@ -100,8 +100,8 @@ Estrategia diseñada **desde cero** para el comportamiento de ETFs:
 ### State Machine
 
 ```
-                market opens
-    IDLE ─────────────────────► WINDOW_FORMING
+            first bar of new day
+    IDLE ───── (+ delay_bars) ────► WINDOW_FORMING
      ▲                              │
      │                      OR completo (N velas)
      │                              │
@@ -122,20 +122,30 @@ Entry se ejecuta inline desde ARMED (no es un estado separado).
 
 ---
 
-### State 1: IDLE — Esperando Apertura
+### State 1: IDLE — Esperando Primera Barra del Día
 
 ```python
-# Cada barra se comprueba:
-if current_hour == market_open_hour and current_minute == market_open_minute:
-    or_bar_count = 0
-    or_highs = []
-    or_lows = []
-    state = "WINDOW_FORMING"
+# Day change detected from data (DST-agnostic):
+if today != yesterday:
+    day_first_bar_seen = True
+    delay_remaining = delay_bars
+
+# Each bar in IDLE:
+if day_first_bar_seen:
+    if delay_remaining > 0:
+        delay_remaining -= 1
+    else:
+        state = "WINDOW_FORMING"
 ```
 
 **Parámetros:**
-- `market_open_hour` (default: 14 para ETFs US = 14:30 UTC)
-- `market_open_minute` (default: 30)
+- `delay_bars` (default: 0) — Number of bars to skip after first bar of day before starting OR
+  - `delay_bars=0`: OR starts immediately at market open (first bar of day in data)
+  - `delay_bars=6`: Skip 6 bars (30 min at 5min TF) after open, then start OR
+
+**DST-agnostic:** No need for `market_open_hour`/`market_open_minute`. The data itself
+contains the correct open time (13:30 UTC in summer, 14:30 UTC in winter for US ETFs).
+The strategy simply detects "new day" and counts bars from there.
 
 ---
 
@@ -566,8 +576,7 @@ una función stateless y genérica.
 ## Changelog
 
 | Date | Version | Changes |
-|------|---------|---------|
-| 2026-03-01 | 0.1 | Diseño inicial documentado. Pre-implementación. |
+|------|---------|---------|| 2026-03-02 | 0.2 | Replace market_open_hour/minute with delay_bars (DST-agnostic day detection) || 2026-03-01 | 0.1 | Diseño inicial documentado. Pre-implementación. |
 
 ---
 
