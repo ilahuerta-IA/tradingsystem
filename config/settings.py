@@ -2865,7 +2865,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/GLD_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -2908,7 +2908,7 @@ STRATEGIES_CONFIG = {
             'sl_atr_mult': 1.5,
 
             # Take Profit
-            'tp_mode': 'none',    # EOD close by default 'or_height_mult' 'fixed_pips' 'atr_mult'
+            'tp_mode': 'none',             # EOD close by default
             'tp_or_mult': 1.5,
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 2.0,
