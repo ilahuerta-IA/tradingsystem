@@ -11,7 +11,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/EURJPY_5m_5Yea.csv',
         
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
         
         'starting_cash': 100000.0,
         
@@ -2865,7 +2865,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/GLD_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'to_date': datetime.datetime(2023, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -2877,9 +2877,13 @@ STRATEGIES_CONFIG = {
         'params': {
             # Opening Range
             'delay_bars': 0,                   # 0 = OR starts at first bar of day (DST-agnostic)
-            'or_candles': 8,               # 8 x 5min = 40min OR window
+            'or_candles': 8,               # 12 x 5min = 60min OR window
 
             # Quality Filters (all OFF for baseline)
+            'use_or_height_filter': False,
+            'or_height_min': 0.0,             # pips
+            'or_height_max': 9999.0,          # pips
+
             'use_angle_filter': False,
             'angle_min': 5.0,
             'angle_max': 80.0,
@@ -2891,27 +2895,27 @@ STRATEGIES_CONFIG = {
             'use_er_or_filter': False,
             'er_or_threshold': 0.3,
 
-            'use_er_htf_filter': False,
+            'use_er_htf_filter': True,
             'er_htf_threshold': 0.3,
             'er_htf_period': 10,
-            'er_htf_timeframe_minutes': 60,
+            'er_htf_timeframe_minutes': 15,
 
             # Pullback + Breakout
             'pullback_min_bars': 1,
             'pullback_max_bars': 20,
-            'breakout_buffer_pips': 2.0,
+            'breakout_buffer_pips': 1.0,
 
-            # Stop Loss
-            'sl_mode': 'or_low',
-            'sl_buffer_pips': 5.0,
+            # Stop Loss  (options: 'or_low' | 'fixed' | 'atr')
+            'sl_mode': 'atr',
+            'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
-            'sl_atr_mult': 1.5,
+            'sl_atr_mult': 3.5,
 
-            # Take Profit
-            'tp_mode': 'none',             # EOD close by default
+            # Take Profit  (options: 'none' | 'or_height_mult' | 'fixed_pips' | 'atr_mult')
+            'tp_mode': 'atr_mult',             # EOD close by default
             'tp_or_mult': 1.5,
             'tp_fixed_pips': 50.0,
-            'tp_atr_mult': 2.0,
+            'tp_atr_mult': 10.0,
 
             # EOD Close (UTC) - 20:45 = 15 min before US close
             'use_eod_close': True,

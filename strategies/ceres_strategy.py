@@ -179,6 +179,10 @@ class CERESStrategy(bt.Strategy):
         angle_min=5.0,
         angle_max=80.0,
 
+        use_or_height_filter=False, # OR height in pips (min/max)
+        or_height_min=0.0,
+        or_height_max=9999.0,
+
         use_atr_or_filter=False,   # ATR average during OR
         atr_or_min=0.0,
         atr_or_max=999.0,
@@ -356,6 +360,12 @@ class CERESStrategy(bt.Strategy):
                 self.p.or_candles, self.p.delay_bars))
 
             # Quality filters
+            if self.p.use_or_height_filter:
+                f.write("OR Height Filter: ENABLED | Range: %.1f-%.1f pips\n" % (
+                    self.p.or_height_min, self.p.or_height_max))
+            else:
+                f.write("OR Height Filter: DISABLED\n")
+
             if self.p.use_angle_filter:
                 f.write("Angle Filter: ENABLED | Range: %.1f-%.1f deg\n" % (
                     self.p.angle_min, self.p.angle_max))
@@ -626,6 +636,19 @@ class CERESStrategy(bt.Strategy):
         Check all optional quality filters on the completed Opening Range.
         Returns True if OR passes all active filters (or all are disabled).
         """
+        # OR Height filter (in pips)
+        if self.p.use_or_height_filter:
+            if self.or_height is None:
+                return False
+            height_pips = self.or_height / self.p.pip_value
+            if not (self.p.or_height_min <= height_pips <= self.p.or_height_max):
+                if self.p.print_signals:
+                    dt = self._get_datetime()
+                    print('%s [%s] OR REJECTED: height=%.1f pips (need %.1f-%.1f)'
+                          % (dt, self.data._name, height_pips,
+                             self.p.or_height_min, self.p.or_height_max))
+                return False
+
         # Angle filter
         if self.p.use_angle_filter:
             if self.or_angle is None:
@@ -1300,6 +1323,9 @@ class CERESStrategy(bt.Strategy):
         print("  SL Mode: %s | Buffer: %.1f pips"
               % (self.p.sl_mode, self.p.sl_buffer_pips))
         print("  TP Mode: %s" % self.p.tp_mode)
+        if self.p.use_or_height_filter:
+            print("  OR Height Filter: %.1f-%.1f pips"
+                  % (self.p.or_height_min, self.p.or_height_max))
         if self.p.use_angle_filter:
             print("  Angle Filter: %.1f-%.1f deg"
                   % (self.p.angle_min, self.p.angle_max))

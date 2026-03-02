@@ -188,6 +188,23 @@ Independiente del timeframe → 100% configurable.
 Cada filtro tiene su `use_X = True/False`. Si TODOS están en `False`, el OR pasa directamente
 a ARMED sin juicio de calidad.
 
+#### Filter 0: OR Height (tamaño del Opening Range)
+
+¿El OR fue lo suficientemente grande como para generar un trade con edge? ORs muy pequeños (< 50 pips en GLD) tienen poco momentum; ORs enormes pueden tener SL excesivo.
+
+```python
+height_pips = or_height / pip_value
+
+if height_pips < or_height_min or height_pips > or_height_max:
+    return False  # OR demasiado pequeno o demasiado grande
+```
+
+| Parámetro | Default | Descripción |
+|-----------|---------|-------------|
+| `use_or_height_filter` | False | Habilitar filtro de altura del OR |
+| `or_height_min` | 0.0 | Altura mínima en pips (evitar ORs sin rango) |
+| `or_height_max` | 9999.0 | Altura máxima en pips (evitar ORs extremos) |
+
 #### Filter 1: Ángulo del OR
 
 Mide la dirección/fuerza del Opening Range: ¿fue alcista o plano?
@@ -424,7 +441,11 @@ market_open_minute = 30        # Minuto UTC apertura
 or_candles = 8                 # Velas para formar el OR (8 × 15min = 2h)
 
 # --- Quality Filters (todos opcionales) ---
-use_angle_filter = False       # Ángulo del OR
+use_or_height_filter = False   # Altura del OR en pips
+or_height_min = 0.0
+or_height_max = 9999.0
+
+use_angle_filter = False       # Angulo del OR
 angle_min = 5.0
 angle_max = 80.0
 
@@ -576,7 +597,10 @@ una función stateless y genérica.
 ## Changelog
 
 | Date | Version | Changes |
-|------|---------|---------|| 2026-03-02 | 0.2 | Replace market_open_hour/minute with delay_bars (DST-agnostic day detection) || 2026-03-01 | 0.1 | Diseño inicial documentado. Pre-implementación. |
+|------|---------|---------|
+| 2026-03-02 | 0.3 | Add or_height filter (use_or_height_filter, or_height_min/max in pips) |
+| 2026-03-02 | 0.2 | Replace market_open_hour/minute with delay_bars (DST-agnostic day detection) |
+| 2026-03-01 | 0.1 | Diseño inicial documentado. Pre-implementación. |
 
 ---
 
