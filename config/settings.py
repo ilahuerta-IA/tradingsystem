@@ -2880,7 +2880,7 @@ STRATEGIES_CONFIG = {
             'or_candles': 8,               # 12 x 5min = 60min OR window
 
             # Quality Filters (all OFF for baseline)
-            'use_or_height_filter': True,
+            'use_or_height_filter': False,
             'or_height_min': 50.0,             # pips
             'or_height_max': 300.0,          # pips
 
@@ -2888,22 +2888,23 @@ STRATEGIES_CONFIG = {
             'pb_angle_min': -90.0,
             'pb_angle_max': 90.0,
 
-            'use_atr_or_filter': False,
-            'atr_or_min': 0.0,
-            'atr_or_max': 999.0,
-
-            'use_er_or_filter': True,
+            'use_er_or_filter': False,
             'er_or_min': 0.0,
             'er_or_max': 0.3,
 
-            'use_er_htf_filter': True,
+            'use_er_htf_filter': False,
             'er_htf_threshold': 0.30,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
-            # Pullback + Breakout
-            'pullback_min_bars': 1,
-            'pullback_max_bars': 24,
+            # Pullback (Ogle mechanics)
+            'pullback_candles': 2,
+            'pullback_max_bars': 22,
+            'pullback_max_retries': 3,
+
+            # Breakout Window (Ogle channel)
+            'window_periods': 3,
+            'price_offset_mult': 0.5,
             'breakout_buffer_pips': 1.0,
 
             # Stop Loss  (options: 'or_low' | 'fixed' | 'atr')
@@ -2916,7 +2917,7 @@ STRATEGIES_CONFIG = {
             'tp_mode': 'atr_mult',             # EOD close by default
             'tp_or_mult': 1.5,
             'tp_fixed_pips': 50.0,
-            'tp_atr_mult': 10.0,
+            'tp_atr_mult': 12.0,
 
             # EOD Close (UTC) - 20:45 = 15 min before US close
             'use_eod_close': True,
@@ -2924,18 +2925,14 @@ STRATEGIES_CONFIG = {
             'eod_close_minute': 45,
 
             # Standard Filters
-            'use_time_filter': False,
-            'allowed_hours': [14, 15, 18, 19],
+            'use_time_filter': True,
+            'allowed_hours': [14, 15, 17, 18, 19],
             'use_day_filter': False,
-            'allowed_days': [0, 1, 3],
+            'allowed_days': [0, 1, 2, 3, 4],
 
             'use_sl_pips_filter': False,
             'sl_pips_min': 60.0,
             'sl_pips_max': 90.0,
-
-            'use_atr_avg_filter': False,
-            'atr_avg_min': 0.0,
-            'atr_avg_max': 999.0,
 
             # ATR
             'atr_length': 14,
