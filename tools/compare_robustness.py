@@ -125,6 +125,7 @@ def parse_log(filepath):
     # --- Parse ENTRIES based on strategy type ---
     if strategy == 'ceres':
         # CERES: Entry Price, SL, TP (or NONE), SL Pips, ATR (avg), OR fields
+        # Try new format first (no OR Angle, with PB fields)
         entries = re.findall(
             r'ENTRY #(\d+)\n'
             r'Time: ([\d-]+ [\d:]+)\n'
@@ -136,10 +137,26 @@ def parse_log(filepath):
             r'OR HH: [\d.]+\n'
             r'OR LL: [\d.]+\n'
             r'OR Height: [\d.]+\n'
-            r'OR Angle: ([\d.-]+)\n'
             r'OR ER: [\d.]+',
             content
         )
+        if not entries:
+            # Fallback: legacy format with OR Angle
+            entries = re.findall(
+                r'ENTRY #(\d+)\n'
+                r'Time: ([\d-]+ [\d:]+)\n'
+                r'Entry Price: [\d.]+\n'
+                r'Stop Loss: [\d.]+\n'
+                r'Take Profit: [^\n]+\n'
+                r'SL Pips: ([\d.]+)\n'
+                r'ATR(?:\s*\(avg\))?: ([\d.]+)\n'
+                r'OR HH: [\d.]+\n'
+                r'OR LL: [\d.]+\n'
+                r'OR Height: [\d.]+\n'
+                r'OR Angle: [\d.-]+\n'
+                r'OR ER: [\d.]+',
+                content
+            )
     elif strategy == 'gemini':
         # GEMINI: Entry Price, SL, TP, SL Pips, ATR (avg), Cross Bars, ROC Angle, Harmony Angle
         entries = re.findall(
@@ -215,13 +232,13 @@ def parse_log(filepath):
         trade_id = int(entry[0])
 
         if strategy == 'ceres':
-            # CERES tuple: (id, time, sl_pips, atr, or_angle)
+            # CERES tuple: (id, time, sl_pips, atr)
             trade = {
                 'id': trade_id,
                 'entry_time': datetime.strptime(entry[1], '%Y-%m-%d %H:%M:%S'),
                 'direction': 'LONG',  # CERES is always LONG
                 'atr': float(entry[3]),
-                'angle': float(entry[4]),
+                'angle': 0.0,
                 'sl_pips': float(entry[2]),
             }
         elif strategy in ('koi', 'sedna', 'gemini'):
