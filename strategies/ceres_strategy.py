@@ -102,6 +102,35 @@ def calculate_or_efficiency(or_opens, or_closes, or_highs, or_lows):
     return 0.0
 
 
+def calculate_pullback_angle(closes_since_or, num_bars):
+    """
+    Calculate angle of the pullback phase (from OR end to just before entry).
+
+    Measures how price behaved during the consolidation/pullback:
+    - Flat angle (~0) = sideways consolidation (healthy)
+    - Negative angle = price fell during pullback (deeper retracement)
+    - Positive angle = price drifted up during pullback (shallow)
+
+    Uses close prices from OR completion to the bar before entry.
+
+    Args:
+        closes_since_or: List of close prices during ARMED phase
+        num_bars: Number of bars in pullback
+
+    Returns:
+        Angle in degrees
+    """
+    if num_bars <= 0 or len(closes_since_or) < 2:
+        return 0.0
+    first_close = closes_since_or[0]
+    last_close = closes_since_or[-1]
+    if first_close <= 0:
+        return 0.0
+    pct_change = (last_close - first_close) / first_close
+    angle_rad = math.atan2(pct_change * 10000, num_bars)
+    return math.degrees(angle_rad)
+
+
 def check_or_pullback_ready(bars_since_or, highs_since_or, or_hh, min_bars, max_bars):
     """
     Check if pullback below OR HH is valid for breakout entry.
@@ -299,6 +328,8 @@ class CERESStrategy(bt.Strategy):
 
         # ARMED state tracking
         self.highs_since_or = []
+        self.closes_since_or = []
+        self.lows_since_or = []
         self.armed_bar_count = 0
 
         # Order management
@@ -458,7 +489,8 @@ class CERESStrategy(bt.Strategy):
             print("Trade reporting init failed: %s" % e)
 
     def _record_trade_entry(self, dt, entry_price, size, atr_avg, sl_pips,
-                            or_hh, or_ll, or_height, or_angle, or_er, or_atr_avg):
+                            or_hh, or_ll, or_height, or_angle, or_er, or_atr_avg,
+                            pb_bars=0, pb_angle=0.0, pb_depth_pct=0.0):
         """Record entry details to log and trade_reports list."""
         entry = {
             'entry_time': dt,
@@ -476,6 +508,9 @@ class CERESStrategy(bt.Strategy):
             'or_atr_avg': or_atr_avg,
             'sl_mode': self.p.sl_mode,
             'tp_mode': self.p.tp_mode,
+            'pb_bars': pb_bars,
+            'pb_angle': pb_angle,
+            'pb_depth_pct': pb_depth_pct,
         }
         self.trade_reports.append(entry)
         self._current_trade_idx = len(self.trade_reports) - 1
@@ -502,6 +537,9 @@ class CERESStrategy(bt.Strategy):
             f.write("OR ATR Avg: %.6f\n" % or_atr_avg)
             f.write("SL Mode: %s\n" % self.p.sl_mode)
             f.write("TP Mode: %s\n" % self.p.tp_mode)
+            f.write("PB Bars: %d\n" % pb_bars)
+            f.write("PB Angle: %.2f\n" % pb_angle)
+            f.write("PB Depth: %.1f%%\n" % pb_depth_pct)
             f.write("-" * 50 + "\n\n")
             f.flush()
         except Exception:
@@ -594,6 +632,8 @@ class CERESStrategy(bt.Strategy):
         self.or_atr_avg = None
         self.or_end_bar = None
         self.highs_since_or = []
+        self.closes_since_or = []
+        self.lows_since_or = []
         self.armed_bar_count = 0
 
     # =====================================================================
@@ -812,6 +852,18 @@ class CERESStrategy(bt.Strategy):
         self.order = self.buy(size=bt_size)
         self._traded_today = True
 
+        # Compute pullback metrics
+        pb_bars = self.armed_bar_count
+        pb_angle = calculate_pullback_angle(
+            self.closes_since_or, pb_bars
+        )
+        # Pullback depth: how far below OR_HH the lowest low went
+        if self.lows_since_or and self.or_hh and self.or_height and self.or_height > 0:
+            pb_min_low = min(self.lows_since_or)
+            pb_depth_pct = (self.or_hh - pb_min_low) / self.or_height * 100
+        else:
+            pb_depth_pct = 0.0
+
         # Record
         self._record_trade_entry(
             dt, entry_price, bt_size, atr_avg, sl_pips,
@@ -819,6 +871,7 @@ class CERESStrategy(bt.Strategy):
             self.or_angle if self.or_angle else 0.0,
             self.or_er if self.or_er else 0.0,
             self.or_atr_avg if self.or_atr_avg else 0.0,
+            pb_bars, pb_angle, pb_depth_pct,
         )
 
         if self.p.print_signals:
@@ -946,6 +999,8 @@ class CERESStrategy(bt.Strategy):
                 if self._check_or_quality():
                     self.state = "ARMED"
                     self.highs_since_or = []
+                    self.closes_since_or = []
+                    self.lows_since_or = []
                     self.armed_bar_count = 0
                     if self.p.print_signals:
                         print('%s [%s] ARMED: waiting pullback+breakout > %.5f'
@@ -976,9 +1031,11 @@ class CERESStrategy(bt.Strategy):
                     self._reset_state()
                     return
 
-            # Add current bar high AFTER pullback check (so next bar
+            # Add current bar data AFTER pullback check (so next bar
             # evaluates this bar as part of the pullback history)
             self.highs_since_or.append(current_high)
+            self.closes_since_or.append(float(self.data.close[0]))
+            self.lows_since_or.append(float(self.data.low[0]))
 
             # Timeout?
             if self.armed_bar_count > self.p.pullback_max_bars:

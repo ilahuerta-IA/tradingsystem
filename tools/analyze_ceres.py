@@ -302,6 +302,7 @@ def parse_ceres_log(filepath):
         content = f.read()
 
     # Parse entries - flexible regex for CERES format
+    # Try new format with PB fields first, fallback to old format
     entries = re.findall(
         r'ENTRY #(\d+)\s*\n'
         r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -317,10 +318,36 @@ def parse_ceres_log(filepath):
         r'OR ER: ([\d.]+)\s*\n'
         r'OR ATR Avg: ([\d.]+)\s*\n'
         r'SL Mode: (\w+)\s*\n'
-        r'TP Mode: (\w+)',
+        r'TP Mode: (\w+)\s*\n'
+        r'PB Bars: (\d+)\s*\n'
+        r'PB Angle: ([-\d.]+)\s*\n'
+        r'PB Depth: ([\d.]+)%',
         content,
         re.IGNORECASE
     )
+    has_pb_fields = len(entries) > 0
+
+    if not has_pb_fields:
+        # Fallback: old format without PB fields
+        entries = re.findall(
+            r'ENTRY #(\d+)\s*\n'
+            r'Time: ([\d-]+ [\d:]+)\s*\n'
+            r'Entry Price: ([\d.]+)\s*\n'
+            r'Stop Loss: ([\d.]+)\s*\n'
+            r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
+            r'SL Pips: ([\d.]+)\s*\n'
+            r'ATR \(avg\): ([\d.]+)\s*\n'
+            r'OR HH: ([\d.]+)\s*\n'
+            r'OR LL: ([\d.]+)\s*\n'
+            r'OR Height: ([\d.]+)\s*\n'
+            r'OR Angle: ([-\d.]+)\s*\n'
+            r'OR ER: ([\d.]+)\s*\n'
+            r'OR ATR Avg: ([\d.]+)\s*\n'
+            r'SL Mode: (\w+)\s*\n'
+            r'TP Mode: (\w+)',
+            content,
+            re.IGNORECASE
+        )
 
     # Parse exits
     exits = re.findall(
@@ -362,6 +389,12 @@ def parse_ceres_log(filepath):
             'hour': entry_time.hour,
             'day_of_week': entry_time.weekday(),
         }
+
+        # Add pullback fields if present
+        if has_pb_fields:
+            trade['pb_bars'] = int(entry[15])
+            trade['pb_angle'] = float(entry[16])
+            trade['pb_depth_pct'] = float(entry[17])
 
         # Match with exit
         if trade_id in exit_dict:
@@ -594,6 +627,36 @@ def analyze_by_exit_reason(trades):
             format_pf(m['pf']), m['avg_pnl']))
 
 
+def analyze_by_pb_bars(trades):
+    """Analyze performance by pullback bars count."""
+    print_section('ANALYSIS BY PULLBACK BARS')
+    pb_trades = [t for t in trades if 'pb_bars' in t]
+    if not pb_trades:
+        print('No pullback data available (regenerate trade log)')
+        return
+    _print_range_table(pb_trades, 'pb_bars', 1, 'PB Bars', fmt='%.0f')
+
+
+def analyze_by_pb_angle(trades, step=10.0):
+    """Analyze performance by pullback angle."""
+    print_section('ANALYSIS BY PULLBACK ANGLE (degrees)')
+    pb_trades = [t for t in trades if 'pb_angle' in t]
+    if not pb_trades:
+        print('No pullback data available (regenerate trade log)')
+        return
+    _print_range_table(pb_trades, 'pb_angle', step, 'PB Angle')
+
+
+def analyze_by_pb_depth(trades, step=10.0):
+    """Analyze performance by pullback depth (% of OR height)."""
+    print_section('ANALYSIS BY PULLBACK DEPTH (% of OR Height)')
+    pb_trades = [t for t in trades if 'pb_depth_pct' in t]
+    if not pb_trades:
+        print('No pullback data available (regenerate trade log)')
+        return
+    _print_range_table(pb_trades, 'pb_depth_pct', step, 'PB Depth %')
+
+
 def analyze_by_sl_mode(trades):
     """Analyze performance by SL mode."""
     print_section('ANALYSIS BY SL MODE')
@@ -741,6 +804,11 @@ def main():
     analyze_by_hour(trades)
     analyze_by_day(trades)
     analyze_by_exit_reason(trades)
+
+    # Pullback analyses (only if data available)
+    analyze_by_pb_bars(trades)
+    analyze_by_pb_angle(trades)
+    analyze_by_pb_depth(trades)
 
 
 if __name__ == '__main__':

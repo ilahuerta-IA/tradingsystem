@@ -600,6 +600,7 @@ una función stateless y genérica.
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-03 | 0.6 | Add pullback metrics to trade log + analyzer (pb_bars, pb_angle, pb_depth) |
 | 2026-03-03 | 0.5 | Convert er_or_filter from threshold to min/max range (er_or_min/er_or_max) |
 | 2026-03-03 | 0.4 | Fix day/time filters: move from global guard to entry point |
 | 2026-03-02 | 0.3 | Add or_height filter (use_or_height_filter, or_height_min/max in pips) |
