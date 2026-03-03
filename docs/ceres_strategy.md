@@ -600,6 +600,7 @@ una función stateless y genérica.
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-03 | 0.8.1 | Add pb_depth_filter (use_pb_depth_filter, pb_depth_min/max) and allowed_pb_bars (discrete bar selection) filters |
 | 2026-03-03 | 0.8 | Replace permissive pullback with Ogle mechanics (consecutive bearish candles + dynamic channel + re-arming). Remove ATR OR/Avg filters. Add WINDOW_OPEN state. New params: pullback_candles, window_periods, price_offset_mult, pullback_max_retries. Add Rearm Count to trade log. |
 | 2026-03-03 | 0.7 | Remove OR Angle (useless), repurpose angle filter → PB Angle filter at entry |
 | 2026-03-03 | 0.6 | Add pullback metrics to trade log + analyzer (pb_bars, pb_angle, pb_depth) |

@@ -151,6 +151,12 @@ class CERESStrategy(bt.Strategy):
         pb_angle_min=-90.0,
         pb_angle_max=90.0,
 
+        use_pb_depth_filter=False,  # PB Depth as % of OR Height
+        pb_depth_min=0.0,
+        pb_depth_max=100.0,
+
+        allowed_pb_bars=[],         # List of allowed PB bar counts (empty=all)
+
         use_or_height_filter=False, # OR height in pips (min/max)
         or_height_min=0.0,
         or_height_max=9999.0,
@@ -351,6 +357,17 @@ class CERESStrategy(bt.Strategy):
                     self.p.pb_angle_min, self.p.pb_angle_max))
             else:
                 f.write("PB Angle Filter: DISABLED\n")
+
+            if self.p.use_pb_depth_filter:
+                f.write("PB Depth Filter: ENABLED | Range: %.1f-%.1f%%\n" % (
+                    self.p.pb_depth_min, self.p.pb_depth_max))
+            else:
+                f.write("PB Depth Filter: DISABLED\n")
+
+            if self.p.allowed_pb_bars:
+                f.write("Allowed PB Bars: %s\n" % list(self.p.allowed_pb_bars))
+            else:
+                f.write("Allowed PB Bars: ALL\n")
 
             if self.p.use_er_or_filter:
                 f.write("ER OR Filter: ENABLED | Range: %.2f-%.2f\n"
@@ -791,6 +808,24 @@ class CERESStrategy(bt.Strategy):
                     print('%s [%s] ENTRY SKIPPED: pb_angle=%.2f (need %.1f-%.1f)'
                           % (dt, self.data._name, pb_angle,
                              self.p.pb_angle_min, self.p.pb_angle_max))
+                return
+
+        # PB Depth filter (% of OR Height)
+        if self.p.use_pb_depth_filter:
+            if pb_depth_pct < self.p.pb_depth_min or pb_depth_pct > self.p.pb_depth_max:
+                if self.p.print_signals:
+                    print('%s [%s] ENTRY SKIPPED: pb_depth=%.1f%% (need %.1f-%.1f%%)'
+                          % (dt, self.data._name, pb_depth_pct,
+                             self.p.pb_depth_min, self.p.pb_depth_max))
+                return
+
+        # Allowed PB Bars filter
+        if self.p.allowed_pb_bars:
+            if pb_bars not in self.p.allowed_pb_bars:
+                if self.p.print_signals:
+                    print('%s [%s] ENTRY SKIPPED: pb_bars=%d not in %s'
+                          % (dt, self.data._name, pb_bars,
+                             list(self.p.allowed_pb_bars)))
                 return
 
         # Send buy order
@@ -1397,6 +1432,11 @@ class CERESStrategy(bt.Strategy):
         if self.p.use_pb_angle_filter:
             print("  PB Angle Filter: %.1f-%.1f deg"
                   % (self.p.pb_angle_min, self.p.pb_angle_max))
+        if self.p.use_pb_depth_filter:
+            print("  PB Depth Filter: %.1f-%.1f%%"
+                  % (self.p.pb_depth_min, self.p.pb_depth_max))
+        if self.p.allowed_pb_bars:
+            print("  Allowed PB Bars: %s" % list(self.p.allowed_pb_bars))
         if self.p.use_er_or_filter:
             print("  ER OR Filter: %.2f-%.2f"
                   % (self.p.er_or_min, self.p.er_or_max))

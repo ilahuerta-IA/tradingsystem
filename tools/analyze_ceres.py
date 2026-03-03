@@ -99,6 +99,22 @@ def parse_config_header(content):
     else:
         config['pb_angle_filter'] = 'PB Angle Filter: DISABLED' not in content
 
+    # PB Depth filter
+    match = re.search(r'PB Depth Filter: ENABLED \| Range: ([\d.]+)-([\d.]+)%', content)
+    if match:
+        config['pb_depth_filter'] = True
+        config['pb_depth_min'] = float(match.group(1))
+        config['pb_depth_max'] = float(match.group(2))
+    else:
+        config['pb_depth_filter'] = False
+
+    # Allowed PB Bars
+    match = re.search(r'Allowed PB Bars: \[([\d, ]+)\]', content)
+    if match:
+        config['allowed_pb_bars'] = [int(x.strip()) for x in match.group(1).split(',')]
+    else:
+        config['allowed_pb_bars'] = []
+
     # ER OR filter
     match = re.search(r'ER OR Filter: ENABLED \| (?:Threshold|Range): ([\d.]+)(?:-([\d.]+))?', content)
     if match:
@@ -244,6 +260,12 @@ def print_config(config):
         'ENABLED %.1f-%.1f deg' % (config.get('pb_angle_min', 0),
                                     config.get('pb_angle_max', 0))
         if config.get('pb_angle_filter') else 'DISABLED'))
+    print('  PB Depth Filter: %s' % (
+        'ENABLED %.1f-%.1f%%' % (config.get('pb_depth_min', 0),
+                                  config.get('pb_depth_max', 0))
+        if config.get('pb_depth_filter') else 'DISABLED'))
+    print('  Allowed PB Bars: %s' % (
+        config['allowed_pb_bars'] if config.get('allowed_pb_bars') else 'ALL'))
     print('  ER OR Filter:    %s' % (
         'ENABLED >= %.2f' % config.get('er_or_threshold', 0)
         if config.get('er_or_filter') else 'DISABLED'))
