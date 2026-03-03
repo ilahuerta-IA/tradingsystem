@@ -739,6 +739,19 @@ class CERESStrategy(bt.Strategy):
 
     def _execute_entry(self, dt, atr_avg):
         """Validate filters, size position, and send buy order."""
+
+        # Day/Time filter (applied at entry, not globally)
+        if not check_day_filter(dt, self.p.allowed_days, self.p.use_day_filter):
+            if self.p.print_signals:
+                print('%s [%s] ENTRY SKIPPED: day %s not in allowed_days'
+                      % (dt, self.data._name, dt.strftime('%A')))
+            return
+        if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
+            if self.p.print_signals:
+                print('%s [%s] ENTRY SKIPPED: hour %d not in allowed_hours'
+                      % (dt, self.data._name, dt.hour))
+            return
+
         entry_price = float(self.data.close[0])
 
         # Calculate SL/TP
@@ -866,12 +879,6 @@ class CERESStrategy(bt.Strategy):
             return
 
         # --- NO POSITION: run state machine ---
-
-        # Day/Time filter (early exit before any state processing)
-        if not check_day_filter(dt, self.p.allowed_days, self.p.use_day_filter):
-            return
-        if not check_time_filter(dt, self.p.allowed_hours, self.p.use_time_filter):
-            return
 
         # Already traded today? Wait for tomorrow.
         if self._traded_today:
