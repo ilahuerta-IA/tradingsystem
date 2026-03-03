@@ -872,6 +872,27 @@ class CERESStrategy(bt.Strategy):
         # Day change detection -> reset daily tracking
         today = dt.date()
         if today != self._today_date:
+            # Force-close any overnight position (DST-safe EOD)
+            if self.position and self.p.use_eod_close:
+                self.last_exit_reason = "EOD_CLOSE"
+                if self.stop_order:
+                    self.cancel(self.stop_order)
+                    self.stop_order = None
+                if self.limit_order:
+                    self.cancel(self.limit_order)
+                    self.limit_order = None
+                self.order = self.close()
+                if self.p.print_signals:
+                    print('%s [%s] === EOD CLOSE (day change) @ %.2f ==='
+                          % (dt, self.data._name, self.data.close[0]))
+
+            # If we just submitted a close order, wait for it
+            # (reset daily vars AFTER this guard so _traded_today isn't
+            #  prematurely False while a day-change close is still pending)
+            if self.order:
+                self._today_date = today
+                return
+
             self._today_date = today
             self._traded_today = False
             self._day_first_bar_seen = True
@@ -1096,8 +1117,9 @@ class CERESStrategy(bt.Strategy):
             return
 
         if order.status == order.Completed:
-            if order == self.order:
-                # Entry fill
+            if order == self.order and order.isbuy():
+                # Entry fill (must be a BUY -- day-change close also uses
+                # self.order but is a SELL, must go to the else branch)
                 self.last_entry_price = order.executed.price
                 self.last_entry_bar = len(self)
                 self._entry_fill_bar = len(self)
@@ -1173,6 +1195,8 @@ class CERESStrategy(bt.Strategy):
                 print("Order %s: ref=%d" % (order.getstatusname(), order.ref))
 
             if self.order and order.ref == self.order.ref:
+                # Entry rejected -> allow re-entry today
+                self._traded_today = False
                 # Entry rejected -> write orphan exit
                 if self._current_trade_idx is not None and self.trade_report_file:
                     f = self.trade_report_file
