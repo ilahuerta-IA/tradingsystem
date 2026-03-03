@@ -10,7 +10,7 @@ ENTRY SYSTEM (3 STATES):
 
 1. IDLE: Wait for market open
 2. WINDOW_FORMING: Collect OR bars -> OR_HH, OR_LL, OR_HEIGHT
-3. Quality Filters (all optional): angle, ATR, ER_OR, ER_HTF
+3. Quality Filters (all optional): ATR, ER_OR, ER_HTF, PB_Angle
 4. ARMED: Wait for pullback (consolidation below OR_HH) + breakout
 
 EXIT SYSTEM:
@@ -47,30 +47,6 @@ from lib.position_sizing import calculate_position_size
 # =========================================================================
 # REUSABLE: Opening Range quality assessment
 # =========================================================================
-
-def calculate_or_angle(or_open, or_close, or_candles):
-    """
-    Calculate angle of the Opening Range in degrees.
-
-    Measures OR direction/strength: from open of first bar to close of last bar.
-    Positive = bullish OR, negative = bearish.
-
-    Args:
-        or_open: Open price of first OR bar
-        or_close: Close price of last OR bar
-        or_candles: Number of bars in the OR
-
-    Returns:
-        Angle in degrees (positive = bullish, negative = bearish)
-    """
-    if or_candles <= 0 or or_open <= 0:
-        return 0.0
-    # Percentage change normalized by bar count
-    pct_change = (or_close - or_open) / or_open
-    # Scale to make angle meaningful (same logic as Ogle angle)
-    angle_rad = math.atan2(pct_change * 10000, or_candles)
-    return math.degrees(angle_rad)
-
 
 def calculate_or_efficiency(or_opens, or_closes, or_highs, or_lows):
     """
@@ -204,9 +180,9 @@ class CERESStrategy(bt.Strategy):
         or_candles=8,              # Bars to form OR (8 x 15min = 2h)
 
         # --- Quality Filters (all optional, independent) ---
-        use_angle_filter=False,
-        angle_min=5.0,
-        angle_max=80.0,
+        use_pb_angle_filter=False,
+        pb_angle_min=-90.0,
+        pb_angle_max=90.0,
 
         use_or_height_filter=False, # OR height in pips (min/max)
         or_height_min=0.0,
@@ -317,7 +293,6 @@ class CERESStrategy(bt.Strategy):
         self.or_hh = None
         self.or_ll = None
         self.or_height = None
-        self.or_angle = None
         self.or_er = None
         self.or_atr_avg = None
         self.or_end_bar = None
@@ -398,11 +373,11 @@ class CERESStrategy(bt.Strategy):
             else:
                 f.write("OR Height Filter: DISABLED\n")
 
-            if self.p.use_angle_filter:
-                f.write("Angle Filter: ENABLED | Range: %.1f-%.1f deg\n" % (
-                    self.p.angle_min, self.p.angle_max))
+            if self.p.use_pb_angle_filter:
+                f.write("PB Angle Filter: ENABLED | Range: %.1f-%.1f deg\n" % (
+                    self.p.pb_angle_min, self.p.pb_angle_max))
             else:
-                f.write("Angle Filter: DISABLED\n")
+                f.write("PB Angle Filter: DISABLED\n")
 
             if self.p.use_atr_or_filter:
                 f.write("ATR OR Filter: ENABLED | Range: %.4f-%.4f\n" % (
@@ -489,7 +464,7 @@ class CERESStrategy(bt.Strategy):
             print("Trade reporting init failed: %s" % e)
 
     def _record_trade_entry(self, dt, entry_price, size, atr_avg, sl_pips,
-                            or_hh, or_ll, or_height, or_angle, or_er, or_atr_avg,
+                            or_hh, or_ll, or_height, or_er, or_atr_avg,
                             pb_bars=0, pb_angle=0.0, pb_depth_pct=0.0):
         """Record entry details to log and trade_reports list."""
         entry = {
@@ -503,7 +478,6 @@ class CERESStrategy(bt.Strategy):
             'or_hh': or_hh,
             'or_ll': or_ll,
             'or_height': or_height,
-            'or_angle': or_angle,
             'or_er': or_er,
             'or_atr_avg': or_atr_avg,
             'sl_mode': self.p.sl_mode,
@@ -532,7 +506,6 @@ class CERESStrategy(bt.Strategy):
             f.write("OR HH: %.5f\n" % or_hh)
             f.write("OR LL: %.5f\n" % or_ll)
             f.write("OR Height: %.5f\n" % or_height)
-            f.write("OR Angle: %.2f\n" % or_angle)
             f.write("OR ER: %.4f\n" % or_er)
             f.write("OR ATR Avg: %.6f\n" % or_atr_avg)
             f.write("SL Mode: %s\n" % self.p.sl_mode)
@@ -627,7 +600,6 @@ class CERESStrategy(bt.Strategy):
         self.or_hh = None
         self.or_ll = None
         self.or_height = None
-        self.or_angle = None
         self.or_er = None
         self.or_atr_avg = None
         self.or_end_bar = None
@@ -689,19 +661,6 @@ class CERESStrategy(bt.Strategy):
                     print('%s [%s] OR REJECTED: height=%.1f pips (need %.1f-%.1f)'
                           % (dt, self.data._name, height_pips,
                              self.p.or_height_min, self.p.or_height_max))
-                return False
-
-        # Angle filter
-        if self.p.use_angle_filter:
-            if self.or_angle is None:
-                return False
-            # Only accept positive angle (bullish OR for LONG)
-            if self.or_angle < self.p.angle_min or self.or_angle > self.p.angle_max:
-                if self.p.print_signals:
-                    dt = self._get_datetime()
-                    print('%s [%s] OR REJECTED: angle=%.2f (need %.1f-%.1f)'
-                          % (dt, self.data._name, self.or_angle,
-                             self.p.angle_min, self.p.angle_max))
                 return False
 
         # ATR average during OR
@@ -848,11 +807,7 @@ class CERESStrategy(bt.Strategy):
         if bt_size <= 0:
             return
 
-        # Send buy order
-        self.order = self.buy(size=bt_size)
-        self._traded_today = True
-
-        # Compute pullback metrics
+        # Compute pullback metrics (before buy, so filter can reject)
         pb_bars = self.armed_bar_count
         pb_angle = calculate_pullback_angle(
             self.closes_since_or, pb_bars
@@ -864,11 +819,23 @@ class CERESStrategy(bt.Strategy):
         else:
             pb_depth_pct = 0.0
 
+        # PB Angle filter
+        if self.p.use_pb_angle_filter:
+            if pb_angle < self.p.pb_angle_min or pb_angle > self.p.pb_angle_max:
+                if self.p.print_signals:
+                    print('%s [%s] ENTRY SKIPPED: pb_angle=%.2f (need %.1f-%.1f)'
+                          % (dt, self.data._name, pb_angle,
+                             self.p.pb_angle_min, self.p.pb_angle_max))
+                return
+
+        # Send buy order
+        self.order = self.buy(size=bt_size)
+        self._traded_today = True
+
         # Record
         self._record_trade_entry(
             dt, entry_price, bt_size, atr_avg, sl_pips,
             self.or_hh, self.or_ll, self.or_height,
-            self.or_angle if self.or_angle else 0.0,
             self.or_er if self.or_er else 0.0,
             self.or_atr_avg if self.or_atr_avg else 0.0,
             pb_bars, pb_angle, pb_depth_pct,
@@ -974,9 +941,6 @@ class CERESStrategy(bt.Strategy):
                 self.or_end_bar = len(self)
 
                 # Compute quality metrics (always, for logging)
-                self.or_angle = calculate_or_angle(
-                    self.or_opens[0], self.or_closes[-1], self.p.or_candles
-                )
                 self.or_er = calculate_or_efficiency(
                     self.or_opens, self.or_closes,
                     self.or_highs, self.or_lows,
@@ -989,9 +953,9 @@ class CERESStrategy(bt.Strategy):
                 if self.p.print_signals:
                     print(
                         '%s [%s] OR COMPLETE: HH=%.5f LL=%.5f '
-                        'Height=%.5f Angle=%.2f ER=%.4f ATR=%.6f'
+                        'Height=%.5f ER=%.4f ATR=%.6f'
                         % (dt, self.data._name, self.or_hh, self.or_ll,
-                           self.or_height, self.or_angle, self.or_er,
+                           self.or_height, self.or_er,
                            self.or_atr_avg)
                     )
 
@@ -1392,9 +1356,9 @@ class CERESStrategy(bt.Strategy):
         if self.p.use_or_height_filter:
             print("  OR Height Filter: %.1f-%.1f pips"
                   % (self.p.or_height_min, self.p.or_height_max))
-        if self.p.use_angle_filter:
-            print("  Angle Filter: %.1f-%.1f deg"
-                  % (self.p.angle_min, self.p.angle_max))
+        if self.p.use_pb_angle_filter:
+            print("  PB Angle Filter: %.1f-%.1f deg"
+                  % (self.p.pb_angle_min, self.p.pb_angle_max))
         if self.p.use_atr_or_filter:
             print("  ATR OR Filter: %.4f-%.4f"
                   % (self.p.atr_or_min, self.p.atr_or_max))

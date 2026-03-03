@@ -11,7 +11,6 @@ Usage:
 
 Key Parameters to Analyze:
 - OR Height ranges (Opening Range size)
-- OR Angle ranges (OR direction/strength)
 - OR ER ranges (Efficiency Ratio of the OR)
 - OR ATR ranges (volatility during OR)
 - SL pips ranges
@@ -91,14 +90,14 @@ def parse_config_header(content):
         config['open_hour'] = int(match.group(2))
         config['open_minute'] = int(match.group(3))
 
-    # Angle filter
-    match = re.search(r'Angle Filter: ENABLED \| Range: ([\d.]+)-([\d.]+) deg', content)
+    # PB Angle filter
+    match = re.search(r'PB Angle Filter: ENABLED \| Range: ([\-\d.]+)-([\-\d.]+) deg', content)
     if match:
-        config['angle_filter'] = True
-        config['angle_min'] = float(match.group(1))
-        config['angle_max'] = float(match.group(2))
+        config['pb_angle_filter'] = True
+        config['pb_angle_min'] = float(match.group(1))
+        config['pb_angle_max'] = float(match.group(2))
     else:
-        config['angle_filter'] = 'Angle Filter: DISABLED' not in content
+        config['pb_angle_filter'] = 'PB Angle Filter: DISABLED' not in content
 
     # ATR OR filter
     match = re.search(
@@ -238,10 +237,10 @@ def print_config(config):
         print('Risk: %s%%' % config['risk_pct'])
 
     print('\nFilters:')
-    print('  Angle Filter:    %s' % (
-        'ENABLED %.1f-%.1f deg' % (config.get('angle_min', 0),
-                                    config.get('angle_max', 0))
-        if config.get('angle_filter') else 'DISABLED'))
+    print('  PB Angle Filter: %s' % (
+        'ENABLED %.1f-%.1f deg' % (config.get('pb_angle_min', 0),
+                                    config.get('pb_angle_max', 0))
+        if config.get('pb_angle_filter') else 'DISABLED'))
     print('  ATR OR Filter:   %s' % (
         'ENABLED' if config.get('atr_or_filter') else 'DISABLED'))
     print('  ER OR Filter:    %s' % (
@@ -275,7 +274,7 @@ def parse_ceres_log(filepath):
     """
     Parse CERES trade log file.
 
-    Expected format:
+    Expected format (v0.7+):
         ENTRY #N
         Time: YYYY-MM-DD HH:MM:SS
         Entry Price: X.XXXXX
@@ -286,23 +285,27 @@ def parse_ceres_log(filepath):
         OR HH: X.XXXXX
         OR LL: X.XXXXX
         OR Height: X.XXXXX
-        OR Angle: XX.XX
         OR ER: X.XXXX
         OR ATR Avg: X.XXXXXX
         SL Mode: xxx
         TP Mode: xxx
+        PB Bars: N
+        PB Angle: XX.XX
+        PB Depth: XX.X%
         --------------------------------------------------
 
         EXIT #N
         Time: YYYY-MM-DD HH:MM:SS
         Exit Reason: REASON
         P&L: $X,XXX.XX
+
+    Also supports legacy formats with OR Angle field.
     """
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
     # Parse entries - flexible regex for CERES format
-    # Try new format with PB fields first, fallback to old format
+    # Try new format (no OR Angle, with PB fields) first
     entries = re.findall(
         r'ENTRY #(\d+)\s*\n'
         r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -314,7 +317,6 @@ def parse_ceres_log(filepath):
         r'OR HH: ([\d.]+)\s*\n'
         r'OR LL: ([\d.]+)\s*\n'
         r'OR Height: ([\d.]+)\s*\n'
-        r'OR Angle: ([-\d.]+)\s*\n'
         r'OR ER: ([\d.]+)\s*\n'
         r'OR ATR Avg: ([\d.]+)\s*\n'
         r'SL Mode: (\w+)\s*\n'
@@ -325,10 +327,36 @@ def parse_ceres_log(filepath):
         content,
         re.IGNORECASE
     )
-    has_pb_fields = len(entries) > 0
+    format_version = 'new' if entries else None
 
-    if not has_pb_fields:
-        # Fallback: old format without PB fields
+    if not entries:
+        # Fallback: legacy format with OR Angle + PB fields
+        entries = re.findall(
+            r'ENTRY #(\d+)\s*\n'
+            r'Time: ([\d-]+ [\d:]+)\s*\n'
+            r'Entry Price: ([\d.]+)\s*\n'
+            r'Stop Loss: ([\d.]+)\s*\n'
+            r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
+            r'SL Pips: ([\d.]+)\s*\n'
+            r'ATR \(avg\): ([\d.]+)\s*\n'
+            r'OR HH: ([\d.]+)\s*\n'
+            r'OR LL: ([\d.]+)\s*\n'
+            r'OR Height: ([\d.]+)\s*\n'
+            r'OR Angle: ([-\d.]+)\s*\n'
+            r'OR ER: ([\d.]+)\s*\n'
+            r'OR ATR Avg: ([\d.]+)\s*\n'
+            r'SL Mode: (\w+)\s*\n'
+            r'TP Mode: (\w+)\s*\n'
+            r'PB Bars: (\d+)\s*\n'
+            r'PB Angle: ([-\d.]+)\s*\n'
+            r'PB Depth: ([\d.]+)%',
+            content,
+            re.IGNORECASE
+        )
+        format_version = 'legacy_pb' if entries else None
+
+    if not entries:
+        # Fallback: oldest format with OR Angle, no PB fields
         entries = re.findall(
             r'ENTRY #(\d+)\s*\n'
             r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -348,6 +376,7 @@ def parse_ceres_log(filepath):
             content,
             re.IGNORECASE
         )
+        format_version = 'legacy' if entries else None
 
     # Parse exits
     exits = re.findall(
@@ -370,31 +399,56 @@ def parse_ceres_log(filepath):
         tp_str = entry[4]
         tp_val = float(tp_str) if tp_str.replace('.', '').isdigit() else None
 
-        trade = {
-            'id': trade_id,
-            'datetime': entry_time,
-            'entry_price': float(entry[2]),
-            'sl': float(entry[3]),
-            'tp': tp_val,
-            'sl_pips': float(entry[5]),
-            'atr': float(entry[6]),
-            'or_hh': float(entry[7]),
-            'or_ll': float(entry[8]),
-            'or_height': float(entry[9]),
-            'or_angle': float(entry[10]),
-            'or_er': float(entry[11]),
-            'or_atr_avg': float(entry[12]),
-            'sl_mode': entry[13],
-            'tp_mode': entry[14],
-            'hour': entry_time.hour,
-            'day_of_week': entry_time.weekday(),
-        }
-
-        # Add pullback fields if present
-        if has_pb_fields:
-            trade['pb_bars'] = int(entry[15])
-            trade['pb_angle'] = float(entry[16])
-            trade['pb_depth_pct'] = float(entry[17])
+        if format_version == 'new':
+            # New format: no OR Angle, groups 10=or_er, 11=or_atr_avg,
+            # 12=sl_mode, 13=tp_mode, 14=pb_bars, 15=pb_angle, 16=pb_depth
+            trade = {
+                'id': trade_id,
+                'datetime': entry_time,
+                'entry_price': float(entry[2]),
+                'sl': float(entry[3]),
+                'tp': tp_val,
+                'sl_pips': float(entry[5]),
+                'atr': float(entry[6]),
+                'or_hh': float(entry[7]),
+                'or_ll': float(entry[8]),
+                'or_height': float(entry[9]),
+                'or_er': float(entry[10]),
+                'or_atr_avg': float(entry[11]),
+                'sl_mode': entry[12],
+                'tp_mode': entry[13],
+                'hour': entry_time.hour,
+                'day_of_week': entry_time.weekday(),
+                'pb_bars': int(entry[14]),
+                'pb_angle': float(entry[15]),
+                'pb_depth_pct': float(entry[16]),
+            }
+        else:
+            # Legacy formats: have OR Angle at group 10 (skip it)
+            # groups 11=or_er, 12=or_atr_avg, 13=sl_mode, 14=tp_mode
+            trade = {
+                'id': trade_id,
+                'datetime': entry_time,
+                'entry_price': float(entry[2]),
+                'sl': float(entry[3]),
+                'tp': tp_val,
+                'sl_pips': float(entry[5]),
+                'atr': float(entry[6]),
+                'or_hh': float(entry[7]),
+                'or_ll': float(entry[8]),
+                'or_height': float(entry[9]),
+                'or_er': float(entry[11]),
+                'or_atr_avg': float(entry[12]),
+                'sl_mode': entry[13],
+                'tp_mode': entry[14],
+                'hour': entry_time.hour,
+                'day_of_week': entry_time.weekday(),
+            }
+            # Add PB fields if legacy_pb format
+            if format_version == 'legacy_pb':
+                trade['pb_bars'] = int(entry[15])
+                trade['pb_angle'] = float(entry[16])
+                trade['pb_depth_pct'] = float(entry[17])
 
         # Match with exit
         if trade_id in exit_dict:
@@ -497,15 +551,6 @@ def analyze_by_or_height(trades, pip_value=0.01):
         t['_or_height_pips'] = t['or_height'] / pip_value if pip_value > 0 else 0
     step = 50.0 if pip_value <= 0.01 else 5.0
     _print_range_table(trades, '_or_height_pips', step, 'OR Height (pips)')
-
-
-def analyze_by_or_angle(trades, step=10.0):
-    """Analyze performance by Opening Range angle."""
-    print_section('ANALYSIS BY OR ANGLE (degrees)')
-    if not trades:
-        print('No trades to analyze')
-        return
-    _print_range_table(trades, 'or_angle', step, 'OR Angle')
 
 
 def analyze_by_or_er(trades, step=0.1):
@@ -708,11 +753,6 @@ def print_summary(trades):
     print('\nOR Height Range:  %.5f to %.5f' % (min(heights), max(heights)))
     print('OR Height Avg:    %.5f' % (sum(heights) / len(heights)))
 
-    # OR Angle stats
-    angles = [t['or_angle'] for t in trades]
-    print('\nOR Angle Range:   %.1f to %.1f deg' % (min(angles), max(angles)))
-    print('OR Angle Avg:     %.1f deg' % (sum(angles) / len(angles)))
-
     # OR ER stats
     ers = [t['or_er'] for t in trades]
     print('\nOR ER Range:      %.4f to %.4f' % (min(ers), max(ers)))
@@ -792,7 +832,6 @@ def main():
     # CERES-specific analyses
     pip_value = config.get('pip_value', 0.01)
     analyze_by_or_height(trades, pip_value=pip_value)
-    analyze_by_or_angle(trades)
     analyze_by_or_er(trades)
 
     # ATR step: ETF ~0.1-3.0, forex ~0.0005

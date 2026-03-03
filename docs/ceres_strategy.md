@@ -600,6 +600,7 @@ una función stateless y genérica.
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-03 | 0.7 | Remove OR Angle (useless), repurpose angle filter → PB Angle filter at entry |
 | 2026-03-03 | 0.6 | Add pullback metrics to trade log + analyzer (pb_bars, pb_angle, pb_depth) |
 | 2026-03-03 | 0.5 | Convert er_or_filter from threshold to min/max range (er_or_min/er_or_max) |
 | 2026-03-03 | 0.4 | Fix day/time filters: move from global guard to entry point |

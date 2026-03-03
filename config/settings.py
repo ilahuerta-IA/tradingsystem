@@ -2880,36 +2880,37 @@ STRATEGIES_CONFIG = {
             'or_candles': 8,               # 12 x 5min = 60min OR window
 
             # Quality Filters (all OFF for baseline)
-            'use_or_height_filter': False,
-            'or_height_min': 0.0,             # pips
-            'or_height_max': 9999.0,          # pips
+            'use_or_height_filter': True,
+            'or_height_min': 50.0,             # pips
+            'or_height_max': 300.0,          # pips
 
-            'use_angle_filter': False,
-            'angle_min': 5.0,
-            'angle_max': 80.0,
+            'use_pb_angle_filter': False,
+            'pb_angle_min': -90.0,
+            'pb_angle_max': 90.0,
 
             'use_atr_or_filter': False,
             'atr_or_min': 0.0,
             'atr_or_max': 999.0,
 
-            'use_er_or_filter': False,
-            'er_or_threshold': 0.3,
+            'use_er_or_filter': True,
+            'er_or_min': 0.0,
+            'er_or_max': 0.3,
 
             'use_er_htf_filter': True,
-            'er_htf_threshold': 0.3,
+            'er_htf_threshold': 0.30,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
             # Pullback + Breakout
             'pullback_min_bars': 1,
-            'pullback_max_bars': 20,
+            'pullback_max_bars': 24,
             'breakout_buffer_pips': 1.0,
 
             # Stop Loss  (options: 'or_low' | 'fixed' | 'atr')
             'sl_mode': 'atr',
             'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
-            'sl_atr_mult': 3.5,
+            'sl_atr_mult': 3.0,
 
             # Take Profit  (options: 'none' | 'or_height_mult' | 'fixed_pips' | 'atr_mult')
             'tp_mode': 'atr_mult',             # EOD close by default
@@ -2924,13 +2925,13 @@ STRATEGIES_CONFIG = {
 
             # Standard Filters
             'use_time_filter': False,
-            'allowed_hours': [],
-            'use_day_filter': True,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'allowed_hours': [14, 15, 18, 19],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 3],
 
             'use_sl_pips_filter': False,
-            'sl_pips_min': 5.0,
-            'sl_pips_max': 200.0,
+            'sl_pips_min': 60.0,
+            'sl_pips_max': 90.0,
 
             'use_atr_avg_filter': False,
             'atr_avg_min': 0.0,
@@ -2941,7 +2942,7 @@ STRATEGIES_CONFIG = {
             'atr_avg_period': 20,
 
             # Risk management
-            'risk_percent': 0.0075,
+            'risk_percent': 0.01,
             'pip_value': 0.01,
             'lot_size': 1,
             'jpy_rate': 1.0,
