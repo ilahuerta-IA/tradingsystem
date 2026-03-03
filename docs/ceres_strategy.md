@@ -249,14 +249,15 @@ if atr_value < atr_min or atr_value > atr_max:
 ```python
 er_or = abs(or_close - or_open) / sum_of_bar_ranges_during_or
 
-if er_or < er_or_threshold:
-    return False  # OR fue choppy, no tendencial
+if not (er_or_min <= er_or <= er_or_max):
+    return False  # OR fuera del rango deseado
 ```
 
 | Parámetro | Default | Descripción |
 |-----------|---------|-------------|
-| `use_er_or_filter` | False | Habilitar ER del OR |
-| `er_or_threshold` | 0.3 | ER mínimo para considerar OR tendencial |
+| `use_er_or_filter` | False | Habilitar ER del OR (rango min/max) |
+| `er_or_min` | 0.0 | ER mínimo del OR |
+| `er_or_max` | 1.0 | ER máximo del OR |
 
 #### Filter 4: ER en Timeframe Superior (contexto macro)
 
@@ -453,8 +454,9 @@ use_atr_filter = False         # ATR medio durante OR
 atr_min = 0.0
 atr_max = 999.0
 
-use_er_or_filter = False       # ER del propio OR
-er_or_threshold = 0.3
+use_er_or_filter = False       # ER del propio OR (rango min/max)
+er_or_min = 0.0
+er_or_max = 1.0
 
 use_er_htf_filter = False      # ER en TF superior
 er_htf_threshold = 0.3
@@ -598,6 +600,8 @@ una función stateless y genérica.
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-03 | 0.5 | Convert er_or_filter from threshold to min/max range (er_or_min/er_or_max) |
+| 2026-03-03 | 0.4 | Fix day/time filters: move from global guard to entry point |
 | 2026-03-02 | 0.3 | Add or_height filter (use_or_height_filter, or_height_min/max in pips) |
 | 2026-03-02 | 0.2 | Replace market_open_hour/minute with delay_bars (DST-agnostic day detection) |
 | 2026-03-01 | 0.1 | Diseño inicial documentado. Pre-implementación. |

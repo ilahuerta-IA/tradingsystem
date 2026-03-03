@@ -187,8 +187,9 @@ class CERESStrategy(bt.Strategy):
         atr_or_min=0.0,
         atr_or_max=999.0,
 
-        use_er_or_filter=False,    # ER of the OR itself
-        er_or_threshold=0.3,
+        use_er_or_filter=False,    # ER of the OR itself (min/max range)
+        er_or_min=0.0,
+        er_or_max=1.0,
 
         use_er_htf_filter=False,   # ER in higher timeframe (macro context)
         er_htf_threshold=0.3,
@@ -379,7 +380,8 @@ class CERESStrategy(bt.Strategy):
                 f.write("ATR OR Filter: DISABLED\n")
 
             if self.p.use_er_or_filter:
-                f.write("ER OR Filter: ENABLED | Threshold: %.2f\n" % self.p.er_or_threshold)
+                f.write("ER OR Filter: ENABLED | Range: %.2f-%.2f\n"
+                        % (self.p.er_or_min, self.p.er_or_max))
             else:
                 f.write("ER OR Filter: DISABLED\n")
 
@@ -674,16 +676,16 @@ class CERESStrategy(bt.Strategy):
                              self.p.atr_or_min, self.p.atr_or_max))
                 return False
 
-        # ER of the OR itself
+        # ER of the OR itself (min/max range)
         if self.p.use_er_or_filter:
             if self.or_er is None:
                 return False
-            if self.or_er < self.p.er_or_threshold:
+            if not (self.p.er_or_min <= self.or_er <= self.p.er_or_max):
                 if self.p.print_signals:
                     dt = self._get_datetime()
-                    print('%s [%s] OR REJECTED: er=%.4f (need >= %.2f)'
+                    print('%s [%s] OR REJECTED: er=%.4f (need %.2f-%.2f)'
                           % (dt, self.data._name, self.or_er,
-                             self.p.er_or_threshold))
+                             self.p.er_or_min, self.p.er_or_max))
                 return False
 
         # ER in higher timeframe
@@ -1340,7 +1342,8 @@ class CERESStrategy(bt.Strategy):
             print("  ATR OR Filter: %.4f-%.4f"
                   % (self.p.atr_or_min, self.p.atr_or_max))
         if self.p.use_er_or_filter:
-            print("  ER OR Filter: >= %.2f" % self.p.er_or_threshold)
+            print("  ER OR Filter: %.2f-%.2f"
+                  % (self.p.er_or_min, self.p.er_or_max))
         if self.p.use_er_htf_filter:
             print("  ER HTF Filter: >= %.2f (period=%d, tf=%dm)"
                   % (self.p.er_htf_threshold, self.p.er_htf_period,
