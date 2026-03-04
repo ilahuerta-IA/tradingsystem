@@ -2859,7 +2859,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
 
     'GLD_CERES': {
-        'active': True,
+        'active': False,
         'strategy_name': 'CERES',
         'asset_name': 'GLD',
         'data_path': 'data/GLD_5m_5Yea.csv',
@@ -2876,10 +2876,10 @@ STRATEGIES_CONFIG = {
 
         'params': {
             # Opening Range
-            'delay_bars': 0,                   # 0 = OR starts at first bar of day (DST-agnostic)
-            'or_candles': 15,                  # 15 x 5min = 75min OR window
+            'delay_bars': 0,
+            'or_candles': 15,
 
-            # Quality Filters (all OFF for baseline)
+            # Quality Filters
             'use_or_height_filter': False,
             'or_height_min': 10.0,
             'or_height_max': 200.0,
@@ -2892,11 +2892,11 @@ STRATEGIES_CONFIG = {
             'pb_depth_min': 0.0,
             'pb_depth_max': 60.0,
 
-            'allowed_pb_bars': [],             # Empty = all allowed
+            'allowed_pb_bars': [],
 
             'use_er_or_filter': False,
             'er_or_min': 0.0,
-            'er_or_max': 0.9,
+            'er_or_max': 1.0,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
@@ -2906,19 +2906,19 @@ STRATEGIES_CONFIG = {
             # Pullback (simple: close<HH then close>HH)
             'pullback_max_bars': 20,
 
-            # Stop Loss  (options: 'or_low' | 'fixed_pips' | 'atr_mult')
+            # Stop Loss
             'sl_mode': 'or_low',
             'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
             'sl_atr_mult': 3.0,
 
-            # Take Profit  (options: 'none' | 'or_height_mult' | 'fixed_pips' | 'atr_mult')
-            'tp_mode': 'none',                 # EOD close only
+            # Take Profit
+            'tp_mode': 'none',
             'tp_or_mult': 1.5,
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 10.0,
 
-            # EOD Close (UTC) - 20:45 = 15 min before US close
+            # EOD Close
             'use_eod_close': True,
             'eod_close_hour': 20,
             'eod_close_minute': 45,
@@ -2930,8 +2930,8 @@ STRATEGIES_CONFIG = {
             'allowed_days': [0, 1, 2, 3, 4],
 
             'use_sl_pips_filter': False,
-            'sl_pips_min': 5.0,
-            'sl_pips_max': 220.0,
+            'sl_pips_min': 70.0,
+            'sl_pips_max': 90.0,
 
             # ATR
             'atr_length': 14,
@@ -3026,6 +3026,194 @@ STRATEGIES_CONFIG = {
             'use_sl_pips_filter': False,
             'sl_pips_min': 5.0,
             'sl_pips_max': 220.0,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # Risk management
+            'risk_percent': 0.01,
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+            'plot_entry_exit_lines': False,
+        }
+    },
+
+    'DIA_CERES': {
+        'active': False,
+        'strategy_name': 'CERES',
+        'asset_name': 'DIA',
+        'data_path': 'data/DIA_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'params': {
+            # Opening Range: 12 bars x 5min = 60min (full first hour)
+            'delay_bars': 0,
+            'or_candles': 12,
+
+            # Quality Filters (ALL OFF for baseline)
+            'use_or_height_filter': False,
+            'or_height_min': 10.0,
+            'or_height_max': 9999.0,
+
+            'use_pb_angle_filter': False,
+            'pb_angle_min': -90.0,
+            'pb_angle_max': 90.0,
+
+            'use_pb_depth_filter': False,
+            'pb_depth_min': 0.0,
+            'pb_depth_max': 100.0,
+
+            'allowed_pb_bars': [],
+
+            'use_er_or_filter': False,
+            'er_or_min': 0.0,
+            'er_or_max': 1.0,
+
+            'use_er_htf_filter': False,
+            'er_htf_threshold': 0.35,
+            'er_htf_period': 10,
+            'er_htf_timeframe_minutes': 15,
+
+            # Pullback (simple: close<HH then close>HH)
+            'pullback_max_bars': 50,
+
+            # Stop Loss: OR low (natural intraday support)
+            'sl_mode': 'or_low',
+            'sl_buffer_pips': 1.0,
+            'sl_fixed_pips': 30.0,
+            'sl_atr_mult': 3.0,
+
+            # Take Profit: none (EOD close captures full intraday move)
+            'tp_mode': 'none',
+            'tp_or_mult': 1.5,
+            'tp_fixed_pips': 50.0,
+            'tp_atr_mult': 10.0,
+
+            # EOD Close (UTC) — 20:45 = ~15 min before NYSE close
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 45,
+
+            # Standard Filters (ALL OFF for baseline)
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 5.0,
+            'sl_pips_max': 500.0,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # Risk management
+            'risk_percent': 0.01,
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+            'plot_entry_exit_lines': False,
+        }
+    },
+
+    'XLE_CERES': {
+        'active': False,
+        'strategy_name': 'CERES',
+        'asset_name': 'XLE',
+        'data_path': 'data/XLE_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'params': {
+            # Opening Range: 12 bars x 5min = 60min
+            'delay_bars': 0,
+            'or_candles': 12,
+
+            # Quality Filters (ALL OFF for baseline)
+            'use_or_height_filter': False,
+            'or_height_min': 10.0,
+            'or_height_max': 9999.0,
+
+            'use_pb_angle_filter': False,
+            'pb_angle_min': -90.0,
+            'pb_angle_max': 90.0,
+
+            'use_pb_depth_filter': False,
+            'pb_depth_min': 0.0,
+            'pb_depth_max': 100.0,
+
+            'allowed_pb_bars': [],
+
+            'use_er_or_filter': False,
+            'er_or_min': 0.0,
+            'er_or_max': 1.0,
+
+            'use_er_htf_filter': False,
+            'er_htf_threshold': 0.35,
+            'er_htf_period': 10,
+            'er_htf_timeframe_minutes': 15,
+
+            # Pullback (simple: close<HH then close>HH)
+            'pullback_max_bars': 50,
+
+            # Stop Loss: OR low (natural intraday support)
+            'sl_mode': 'or_low',
+            'sl_buffer_pips': 1.0,
+            'sl_fixed_pips': 30.0,
+            'sl_atr_mult': 3.0,
+
+            # Take Profit: none (EOD close)
+            'tp_mode': 'none',
+            'tp_or_mult': 1.5,
+            'tp_fixed_pips': 50.0,
+            'tp_atr_mult': 10.0,
+
+            # EOD Close (UTC)
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 45,
+
+            # Standard Filters (ALL OFF)
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 5.0,
+            'sl_pips_max': 500.0,
 
             # ATR
             'atr_length': 14,
