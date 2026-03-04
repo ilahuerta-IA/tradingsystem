@@ -1,18 +1,17 @@
 """
-CERES Strategy - Opening Range + Ogle Pullback + Breakout (Intraday ETF)
+CERES Strategy - Opening Range + Simple Pullback + Breakout (Intraday ETF)
 
 Native ETF intraday strategy designed from scratch.
 Core thesis: the first N bars after market open (Opening Range) predict
-the direction of the day. Pullback quality validated via Ogle mechanics.
+the direction of the day. Entry on pullback below OR_HH then breakout above.
 
-ENTRY SYSTEM (4 STATES):
-    IDLE -> WINDOW_FORMING -> ARMED -> WINDOW_OPEN -> Entry
+ENTRY SYSTEM (3 STATES):
+    IDLE -> WINDOW_FORMING -> ARMED -> Entry
 
 1. IDLE: Wait for market open
 2. WINDOW_FORMING: Collect OR bars -> OR_HH, OR_LL, OR_HEIGHT
-3. Quality Filters (all optional): ER_OR, ER_HTF, OR_Height, PB_Angle
-4. ARMED: Wait for N consecutive bearish candles (Ogle pullback)
-5. WINDOW_OPEN: Monitor breakout channel (up=entry, down=re-arm)
+3. Quality Filters (all optional): ER_OR, ER_HTF, OR_Height, PB_Angle, etc.
+4. ARMED: Wait for close < OR_HH (pullback), then close > OR_HH (breakout)
 
 EXIT SYSTEM:
     - Stop Loss: configurable mode (or_low / fixed_pips / atr_mult) + buffer
@@ -23,6 +22,9 @@ DIRECTION: LONG only
 ASSETS: ETFs (GLD, DIA, XLE, XLU, TLT, ...)
 
 Design docs: docs/ceres_strategy.md
+
+v0.9.0: Simplified pullback -- removed Ogle mechanics (bearish candle counting,
+         breakout channel, re-arms). Now: close < OR_HH then close > OR_HH.
 """
 from __future__ import annotations
 import math
@@ -138,7 +140,7 @@ class CERESStrategy(bt.Strategy):
     """
     CERES: Opening Range + Pullback + Breakout intraday strategy for ETFs.
 
-    State machine: IDLE -> WINDOW_FORMING -> ARMED -> Entry (inline)
+    State machine: IDLE -> WINDOW_FORMING -> ARMED -> Entry
     """
 
     params = dict(
@@ -170,15 +172,8 @@ class CERESStrategy(bt.Strategy):
         er_htf_period=10,
         er_htf_timeframe_minutes=60,
 
-        # --- Pullback (Ogle mechanics) ---
-        pullback_candles=2,        # Consecutive bearish candles to confirm pullback
-        pullback_max_bars=8,       # Global timeout: max bars in ARMED+WINDOW_OPEN
-        pullback_max_retries=3,    # Max re-arms per day (timeout/invalidation)
-
-        # --- Breakout Window (Ogle channel) ---
-        window_periods=3,          # Bars to monitor breakout/invalidation channel
-        price_offset_mult=0.5,     # Channel width: candle_range × this multiplier
-        breakout_buffer_pips=5.0,  # Extra buffer above OR_HH for window_top
+        # --- Pullback (simple: close < OR_HH then close > OR_HH) ---
+        pullback_max_bars=20,      # Max bars after OR to wait for pullback+breakout
 
         # --- Stop Loss ---
         sl_mode='or_low',          # 'or_low' | 'fixed_pips' | 'atr_mult'
@@ -277,14 +272,8 @@ class CERESStrategy(bt.Strategy):
         self.lows_since_or = []
         self.armed_bar_count = 0
 
-        # Ogle pullback state (ARMED + WINDOW_OPEN)
-        self.pullback_count = 0        # Consecutive bearish candles counted
-        self.pullback_high = None      # High of last pullback candle
-        self.pullback_low = None       # Low of last pullback candle
-        self.window_top = None         # Breakout level (OR_HH + buffer)
-        self.window_bottom = None      # Invalidation level (pullback_low - offset)
-        self.window_expiry = None      # Bar number when channel expires
-        self.rearm_count = 0           # Re-arms used this day
+        # Simple pullback state
+        self._pullback_seen = False    # True once close < OR_HH observed
 
         # Order management
         self.order = None
@@ -382,13 +371,9 @@ class CERESStrategy(bt.Strategy):
             else:
                 f.write("ER HTF Filter: DISABLED\n")
 
-            # Pullback (Ogle mechanics)
-            f.write("Pullback Candles: %d bearish, max_bars=%d, max_retries=%d\n" % (
-                self.p.pullback_candles, self.p.pullback_max_bars,
-                self.p.pullback_max_retries))
-            f.write("Window: periods=%d, offset_mult=%.2f, buffer=%.1f pips\n" % (
-                self.p.window_periods, self.p.price_offset_mult,
-                self.p.breakout_buffer_pips))
+            # Pullback (simple)
+            f.write("Pullback: simple (close<HH then close>HH), max_bars=%d\n" % (
+                self.p.pullback_max_bars,))
 
             # SL / TP
             f.write("SL Mode: %s | Buffer: %.1f pips" % (
@@ -573,7 +558,7 @@ class CERESStrategy(bt.Strategy):
         return True
 
     def _reset_state(self):
-        """Reset to IDLE state, clearing all OR, ARMED and WINDOW_OPEN data."""
+        """Reset to IDLE state, clearing all OR and ARMED data."""
         self.state = "IDLE"
         self.or_bar_count = 0
         self.or_highs = []
@@ -591,24 +576,7 @@ class CERESStrategy(bt.Strategy):
         self.closes_since_or = []
         self.lows_since_or = []
         self.armed_bar_count = 0
-        # Ogle pullback state
-        self.pullback_count = 0
-        self.pullback_high = None
-        self.pullback_low = None
-        self.window_top = None
-        self.window_bottom = None
-        self.window_expiry = None
-        self.rearm_count = 0
-
-    def _rearm_state(self):
-        """Re-arm after window timeout/invalidation (keep OR data, reset pullback)."""
-        self.state = "ARMED"
-        self.pullback_count = 0
-        self.pullback_high = None
-        self.pullback_low = None
-        self.window_top = None
-        self.window_bottom = None
-        self.window_expiry = None
+        self._pullback_seen = False
 
     # =====================================================================
     # EOD CLOSE
@@ -839,7 +807,6 @@ class CERESStrategy(bt.Strategy):
             self.or_er if self.or_er else 0.0,
             self.or_atr_avg if self.or_atr_avg else 0.0,
             pb_bars, pb_angle, pb_depth_pct,
-            self.rearm_count,
         )
 
         if self.p.print_signals:
@@ -897,8 +864,8 @@ class CERESStrategy(bt.Strategy):
             self._traded_today = False
             self._day_first_bar_seen = True
             self._delay_bars_remaining = self.p.delay_bars
-            # If day changes while in WINDOW_FORMING, ARMED or WINDOW_OPEN, reset
-            if self.state in ("WINDOW_FORMING", "ARMED", "WINDOW_OPEN"):
+            # If day changes while in WINDOW_FORMING or ARMED, reset
+            if self.state in ("WINDOW_FORMING", "ARMED"):
                 self._reset_state()
 
         # Pending order? Wait.
@@ -994,7 +961,7 @@ class CERESStrategy(bt.Strategy):
                 else:
                     self._reset_state()  # OR rejected, wait tomorrow
 
-        # ---- STATE: ARMED (Ogle Phase A: count bearish candles) ----
+        # ---- STATE: ARMED (simple pullback: close<HH then close>HH) ----
         elif self.state == "ARMED":
             self.armed_bar_count += 1
 
@@ -1006,93 +973,31 @@ class CERESStrategy(bt.Strategy):
             self.closes_since_or.append(float(self.data.close[0]))
             self.lows_since_or.append(float(self.data.low[0]))
 
-            # Count consecutive bearish candles (close < open)
-            is_bearish = float(self.data.close[0]) < float(self.data.open[0])
-            if is_bearish:
-                self.pullback_count += 1
-                if self.pullback_count >= self.p.pullback_candles:
-                    # Pullback confirmed -> open breakout window
-                    self.pullback_high = float(self.data.high[0])
-                    self.pullback_low = float(self.data.low[0])
+            current_close = float(self.data.close[0])
 
-                    # Build channel: top = OR_HH + buffer, bottom = pullback_low - offset
-                    candle_range = self.pullback_high - self.pullback_low
-                    offset = candle_range * self.p.price_offset_mult
-                    self.window_top = self.or_hh + (self.p.breakout_buffer_pips * self.p.pip_value)
-                    self.window_bottom = self.pullback_low - offset
-                    self.window_expiry = len(self) + self.p.window_periods
-
-                    self.state = "WINDOW_OPEN"
+            if not self._pullback_seen:
+                # Phase 1: wait for close below OR_HH (pullback)
+                if current_close < self.or_hh:
+                    self._pullback_seen = True
                     if self.p.print_signals:
-                        print('%s [%s] ARMED -> WINDOW_OPEN: top=%.5f bot=%.5f (pullback %d bars, rearm #%d)'
-                              % (dt, self.data._name, self.window_top,
-                                 self.window_bottom, self.pullback_count,
-                                 self.rearm_count))
+                        print('%s [%s] PULLBACK SEEN: close=%.5f < OR_HH=%.5f'
+                              % (dt, self.data._name, current_close,
+                                 self.or_hh))
             else:
-                # Bullish candle resets pullback count (stay ARMED)
-                self.pullback_count = 0
+                # Phase 2: wait for close above OR_HH (breakout)
+                if current_close > self.or_hh:
+                    if self.p.print_signals:
+                        print('%s [%s] BREAKOUT: close=%.5f > OR_HH=%.5f'
+                              % (dt, self.data._name, current_close,
+                                 self.or_hh))
+                    self._execute_entry(dt, atr_avg)
+                    self._reset_state()
+                    return
 
-            # Global timeout (covers all re-arms)
+            # Timeout
             if self.armed_bar_count > self.p.pullback_max_bars:
                 if self.p.print_signals:
                     print('%s [%s] ARMED TIMEOUT after %d bars'
-                          % (dt, self.data._name, self.armed_bar_count))
-                self._reset_state()
-
-        # ---- STATE: WINDOW_OPEN (Ogle Phase B: monitor channel) ----
-        elif self.state == "WINDOW_OPEN":
-            self.armed_bar_count += 1
-
-            # Update plot
-            self._update_plot_lines(hh=self.or_hh, ll=self.or_ll)
-
-            # Track bar data
-            self.highs_since_or.append(float(self.data.high[0]))
-            self.closes_since_or.append(float(self.data.close[0]))
-            self.lows_since_or.append(float(self.data.low[0]))
-
-            current_high = float(self.data.high[0])
-            current_low = float(self.data.low[0])
-
-            # Breakout success: high breaks above window_top -> entry
-            if current_high >= self.window_top:
-                self._execute_entry(dt, atr_avg)
-                self._reset_state()
-                return
-
-            # Invalidation: low breaks below window_bottom
-            if current_low <= self.window_bottom:
-                if self.p.print_signals:
-                    print('%s [%s] WINDOW INVALIDATED: low=%.5f <= bottom=%.5f'
-                          % (dt, self.data._name, current_low, self.window_bottom))
-                if self.rearm_count < self.p.pullback_max_retries:
-                    self.rearm_count += 1
-                    self._rearm_state()
-                else:
-                    if self.p.print_signals:
-                        print('%s [%s] MAX RETRIES (%d) exhausted'
-                              % (dt, self.data._name, self.p.pullback_max_retries))
-                    self._reset_state()
-                return
-
-            # Timeout: nothing happened within window_periods
-            if len(self) > self.window_expiry:
-                if self.p.print_signals:
-                    print('%s [%s] WINDOW TIMEOUT after %d periods'
-                          % (dt, self.data._name, self.p.window_periods))
-                if self.rearm_count < self.p.pullback_max_retries:
-                    self.rearm_count += 1
-                    self._rearm_state()
-                else:
-                    if self.p.print_signals:
-                        print('%s [%s] MAX RETRIES (%d) exhausted'
-                              % (dt, self.data._name, self.p.pullback_max_retries))
-                    self._reset_state()
-
-            # Global timeout (covers all re-arms)
-            if self.state == "WINDOW_OPEN" and self.armed_bar_count > self.p.pullback_max_bars:
-                if self.p.print_signals:
-                    print('%s [%s] GLOBAL ARMED TIMEOUT after %d bars'
                           % (dt, self.data._name, self.armed_bar_count))
                 self._reset_state()
 
@@ -1441,12 +1346,8 @@ class CERESStrategy(bt.Strategy):
         print("=" * 70)
         print("  OR: %d candles, delay=%d bars after day open"
               % (self.p.or_candles, self.p.delay_bars))
-        print("  Pullback: %d bearish candles, max_bars=%d, max_retries=%d"
-              % (self.p.pullback_candles, self.p.pullback_max_bars,
-                 self.p.pullback_max_retries))
-        print("  Window: periods=%d, offset_mult=%.2f, buffer=%.1f pips"
-              % (self.p.window_periods, self.p.price_offset_mult,
-                 self.p.breakout_buffer_pips))
+        print("  Pullback: simple (close<HH then close>HH), max_bars=%d"
+              % self.p.pullback_max_bars)
         print("  SL Mode: %s | Buffer: %.1f pips"
               % (self.p.sl_mode, self.p.sl_buffer_pips))
         print("  TP Mode: %s" % self.p.tp_mode)
