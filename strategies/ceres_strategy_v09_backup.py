@@ -1,29 +1,21 @@
 """
-CERES Strategy v1.0 - Moving Window Consolidation + Breakout (Intraday ETF)
+CERES Strategy - Opening Range + Simple Pullback + Breakout (Intraday ETF)
 
-Native ETF intraday strategy. Detects consolidation zones (tight price ranges)
-that form at any point during the session, then enters on upward breakout.
-
-The window is "mobile" -- it adapts when price breaks containment bounds.
-A break below updates window_low, a break above updates window_high,
-and the consolidation counter resets. Once N consecutive bars stay within
-the window, the consolidation is confirmed and the strategy arms for breakout.
+Native ETF intraday strategy designed from scratch.
+Core thesis: the first N bars after market open (Opening Range) predict
+the direction of the day. Entry on pullback below OR_HH then breakout above.
 
 ENTRY SYSTEM (3 STATES):
-    IDLE -> SCANNING -> ARMED -> Entry
+    IDLE -> WINDOW_FORMING -> ARMED -> Entry
 
-1. IDLE: Wait for market open (new trading day)
-2. SCANNING: Look for N consecutive contained bars (moving consolidation)
-   - If bar breaks below: window_low = bar_low, reset counter
-   - If bar breaks above: window_high = bar_high, reset counter
-   - If N bars contained: window confirmed -> ARMED
-3. ARMED: Wait for close > window_high (breakout)
-   - Optional: breakout candle min height filter (breakout_offset_mult)
-   - If close < window_low: pattern broken -> back to SCANNING
+1. IDLE: Wait for market open
+2. WINDOW_FORMING: Collect OR bars -> OR_HH, OR_LL, OR_HEIGHT
+3. Quality Filters (all optional): ER_OR, ER_HTF, OR_Height, PB_Angle, etc.
+4. ARMED: Wait for close < OR_HH (pullback), then close > OR_HH (breakout)
 
 EXIT SYSTEM:
-    - Stop Loss: configurable mode (window_low / fixed_pips / atr_mult) + buffer
-    - Take Profit: configurable mode (none / window_height_mult / fixed_pips / atr_mult)
+    - Stop Loss: configurable mode (or_low / fixed_pips / atr_mult) + buffer
+    - Take Profit: configurable mode (none / or_height_mult / fixed_pips / atr_mult)
     - EOD Close: forced close before session end
 
 DIRECTION: LONG only
@@ -31,8 +23,8 @@ ASSETS: ETFs (GLD, DIA, XLE, XLU, TLT, ...)
 
 Design docs: docs/ceres_strategy.md
 
-v0.9.0: Simplified pullback (close < OR_HH then close > OR_HH).
-v1.0.0: Mobile consolidation window. Replaces fixed OR + pullback.
+v0.9.0: Simplified pullback -- removed Ogle mechanics (bearish candle counting,
+         breakout channel, re-arms). Now: close < OR_HH then close > OR_HH.
 """
 from __future__ import annotations
 import math
@@ -54,34 +46,69 @@ from lib.position_sizing import calculate_position_size
 
 
 # =========================================================================
-# REUSABLE: Window efficiency ratio
+# REUSABLE: Opening Range quality assessment
 # =========================================================================
 
-def calculate_window_efficiency(opens, closes):
+def calculate_or_efficiency(or_opens, or_closes, or_highs, or_lows):
     """
-    Calculate Efficiency Ratio of a consolidation window.
+    Calculate Efficiency Ratio of the Opening Range.
 
     ER = |net move| / sum(|individual moves|)
-    Low ER = sideways/choppy (good consolidation).
-    High ER = directional (poor consolidation).
+    High ER = directional OR (trending), low ER = choppy OR.
 
     Args:
-        opens: List of open prices during window
-        closes: List of close prices during window
+        or_opens: List of open prices during OR
+        or_closes: List of close prices during OR
+        or_highs: List of high prices during OR (unused, reserved)
+        or_lows: List of low prices during OR (unused, reserved)
 
     Returns:
         ER value 0.0 to 1.0
     """
-    if len(closes) < 2:
+    if len(or_closes) < 2:
         return 0.0
-    change = abs(closes[-1] - opens[0])
+    # Net directional change
+    change = abs(or_closes[-1] - or_opens[0])
+    # Sum of individual bar ranges (close-to-close)
     volatility = sum(
-        abs(closes[i] - closes[i - 1])
-        for i in range(1, len(closes))
+        abs(or_closes[i] - or_closes[i - 1])
+        for i in range(1, len(or_closes))
     )
     if volatility > 0:
         return change / volatility
     return 0.0
+
+
+def calculate_pullback_angle(closes_since_or, num_bars):
+    """
+    Calculate angle of the pullback phase (from OR end to just before entry).
+
+    Measures how price behaved during the consolidation/pullback:
+    - Flat angle (~0) = sideways consolidation (healthy)
+    - Negative angle = price fell during pullback (deeper retracement)
+    - Positive angle = price drifted up during pullback (shallow)
+
+    Uses close prices from OR completion to the bar before entry.
+
+    Args:
+        closes_since_or: List of close prices during ARMED phase
+        num_bars: Number of bars in pullback
+
+    Returns:
+        Angle in degrees
+    """
+    if num_bars <= 0 or len(closes_since_or) < 2:
+        return 0.0
+    first_close = closes_since_or[0]
+    last_close = closes_since_or[-1]
+    if first_close <= 0:
+        return 0.0
+    pct_change = (last_close - first_close) / first_close
+    angle_rad = math.atan2(pct_change * 10000, num_bars)
+    return math.degrees(angle_rad)
+
+
+# check_or_pullback_ready removed in v0.8 — replaced by Ogle pullback mechanics
 
 
 # =========================================================================
@@ -90,14 +117,14 @@ def calculate_window_efficiency(opens, closes):
 
 class CeresEntryExitLines(bt.Indicator):
     """Plot entry/SL/TP lines on chart."""
-    lines = ('entry', 'stop_loss', 'take_profit', 'window_high_line', 'window_low_line')
+    lines = ('entry', 'stop_loss', 'take_profit', 'or_hh', 'or_ll')
     plotinfo = dict(subplot=False, plotlinelabels=True)
     plotlines = dict(
         entry=dict(color='green', linestyle='--', linewidth=1.0),
         stop_loss=dict(color='red', linestyle='--', linewidth=1.0),
         take_profit=dict(color='blue', linestyle='--', linewidth=1.0),
-        window_high_line=dict(color='orange', linestyle=':', linewidth=0.8),
-        window_low_line=dict(color='orange', linestyle=':', linewidth=0.8),
+        or_hh=dict(color='orange', linestyle=':', linewidth=0.8),
+        or_ll=dict(color='orange', linestyle=':', linewidth=0.8),
     )
     def __init__(self):
         pass
@@ -111,42 +138,52 @@ class CeresEntryExitLines(bt.Indicator):
 
 class CERESStrategy(bt.Strategy):
     """
-    CERES: Moving Window Consolidation + Breakout for ETFs.
+    CERES: Opening Range + Pullback + Breakout intraday strategy for ETFs.
 
-    State machine: IDLE -> SCANNING -> ARMED -> Entry
+    State machine: IDLE -> WINDOW_FORMING -> ARMED -> Entry
     """
 
     params = dict(
-        # --- Consolidation Window ---
-        delay_bars=0,               # Bars to skip after first bar of day
-        consolidation_bars=8,       # N consecutive contained bars to confirm
+        # --- Opening Range ---
+        delay_bars=0,              # Bars to skip after first bar of day before OR
+        or_candles=8,              # Bars to form OR (8 x 15min = 2h)
 
-        # --- Window Quality Filters ---
-        use_window_height_filter=False,
-        window_height_min=0.0,      # Min window height in pips
-        window_height_max=9999.0,   # Max window height in pips
+        # --- Quality Filters (all optional, independent) ---
+        use_pb_angle_filter=False,
+        pb_angle_min=-90.0,
+        pb_angle_max=90.0,
 
-        use_window_er_filter=False,  # ER of the consolidation window
-        window_er_min=0.0,
-        window_er_max=1.0,
+        use_pb_depth_filter=False,  # PB Depth as % of OR Height
+        pb_depth_min=0.0,
+        pb_depth_max=100.0,
 
-        use_er_htf_filter=False,    # ER in higher timeframe (macro context)
+        allowed_pb_bars=[],         # List of allowed PB bar counts (empty=all)
+
+        use_or_height_filter=False, # OR height in pips (min/max)
+        or_height_min=0.0,
+        or_height_max=9999.0,
+
+        use_er_or_filter=False,    # ER of the OR itself (min/max range)
+        er_or_min=0.0,
+        er_or_max=1.0,
+
+        use_er_htf_filter=False,   # ER in higher timeframe (macro context)
         er_htf_threshold=0.3,
         er_htf_period=10,
         er_htf_timeframe_minutes=60,
 
-        # --- Breakout ---
-        breakout_offset_mult=0.0,   # Min candle range / window height (0=disabled)
+        # --- Pullback (simple: close < OR_HH then close > OR_HH) ---
+        pullback_max_bars=20,      # Max bars after OR to wait for pullback+breakout
 
         # --- Stop Loss ---
-        sl_mode='window_low',       # 'window_low' | 'fixed_pips' | 'atr_mult'
+        sl_mode='or_low',          # 'or_low' | 'fixed_pips' | 'atr_mult'
         sl_buffer_pips=5.0,
         sl_fixed_pips=30.0,
         sl_atr_mult=1.5,
 
         # --- Take Profit ---
-        tp_mode='none',             # 'none' | 'window_height_mult' | 'fixed_pips' | 'atr_mult'
-        tp_window_mult=1.5,
+        tp_mode='none',            # 'none' | 'or_height_mult' | 'fixed_pips' | 'atr_mult'
+        tp_or_mult=1.5,
         tp_fixed_pips=50.0,
         tp_atr_mult=2.0,
 
@@ -191,7 +228,7 @@ class CERESStrategy(bt.Strategy):
     def __init__(self):
         self.atr = bt.ind.ATR(self.data, period=self.p.atr_length)
 
-        # HTF ER (optional)
+        # HTF ER (optional, scales period by timeframe ratio)
         self.htf_er = None
         if self.p.use_er_htf_filter:
             base_tf_minutes = 5
@@ -210,24 +247,33 @@ class CERESStrategy(bt.Strategy):
 
         # State machine
         self.state = "IDLE"
+        self.or_bar_count = 0
+        self.or_highs = []
+        self.or_lows = []
+        self.or_opens = []
+        self.or_closes = []
+        self.or_atr_values = []
 
-        # Window tracking
-        self.window_high = None
-        self.window_low = None
-        self.window_height = None
-        self.window_er = None
-        self.window_atr_avg = None
-        self.consol_count = 0
-        self.scan_bar_count = 0
-        self.window_closes = []
-        self.window_opens = []
+        # OR computed values
+        self.or_hh = None
+        self.or_ll = None
+        self.or_height = None
+        self.or_er = None
+        self.or_atr_avg = None
+        self.or_end_bar = None
 
         # Day-start detection (DST-agnostic)
         self._day_first_bar_seen = False
         self._delay_bars_remaining = 0
 
         # ARMED state tracking
+        self.highs_since_or = []
+        self.closes_since_or = []
+        self.lows_since_or = []
         self.armed_bar_count = 0
+
+        # Simple pullback state
+        self._pullback_seen = False    # True once close < OR_HH observed
 
         # Order management
         self.order = None
@@ -280,26 +326,43 @@ class CERESStrategy(bt.Strategy):
             self.trade_report_file = open(report_path, 'w', encoding='utf-8')
             f = self.trade_report_file
 
-            f.write("=== CERES STRATEGY TRADE REPORT (v1.0) ===\n")
+            f.write("=== CERES STRATEGY TRADE REPORT ===\n")
             f.write("Generated: %s\n" % datetime.now())
             f.write("\n")
 
-            # Consolidation Window config
-            f.write("Consolidation: %d bars, delay=%d bars after open\n" % (
-                self.p.consolidation_bars, self.p.delay_bars))
+            # Opening Range config
+            f.write("Opening Range: %d candles, delay=%d bars after open\n" % (
+                self.p.or_candles, self.p.delay_bars))
 
             # Quality filters
-            if self.p.use_window_height_filter:
-                f.write("Window Height Filter: ENABLED | Range: %.1f-%.1f pips\n" % (
-                    self.p.window_height_min, self.p.window_height_max))
+            if self.p.use_or_height_filter:
+                f.write("OR Height Filter: ENABLED | Range: %.1f-%.1f pips\n" % (
+                    self.p.or_height_min, self.p.or_height_max))
             else:
-                f.write("Window Height Filter: DISABLED\n")
+                f.write("OR Height Filter: DISABLED\n")
 
-            if self.p.use_window_er_filter:
-                f.write("Window ER Filter: ENABLED | Range: %.2f-%.2f\n"
-                        % (self.p.window_er_min, self.p.window_er_max))
+            if self.p.use_pb_angle_filter:
+                f.write("PB Angle Filter: ENABLED | Range: %.1f-%.1f deg\n" % (
+                    self.p.pb_angle_min, self.p.pb_angle_max))
             else:
-                f.write("Window ER Filter: DISABLED\n")
+                f.write("PB Angle Filter: DISABLED\n")
+
+            if self.p.use_pb_depth_filter:
+                f.write("PB Depth Filter: ENABLED | Range: %.1f-%.1f%%\n" % (
+                    self.p.pb_depth_min, self.p.pb_depth_max))
+            else:
+                f.write("PB Depth Filter: DISABLED\n")
+
+            if self.p.allowed_pb_bars:
+                f.write("Allowed PB Bars: %s\n" % list(self.p.allowed_pb_bars))
+            else:
+                f.write("Allowed PB Bars: ALL\n")
+
+            if self.p.use_er_or_filter:
+                f.write("ER OR Filter: ENABLED | Range: %.2f-%.2f\n"
+                        % (self.p.er_or_min, self.p.er_or_max))
+            else:
+                f.write("ER OR Filter: DISABLED\n")
 
             if self.p.use_er_htf_filter:
                 f.write("ER HTF Filter: ENABLED | Threshold: %.2f, Period: %d, TF: %dm\n" % (
@@ -308,12 +371,9 @@ class CERESStrategy(bt.Strategy):
             else:
                 f.write("ER HTF Filter: DISABLED\n")
 
-            # Breakout
-            if self.p.breakout_offset_mult > 0:
-                f.write("Breakout Offset: %.2f (min candle/window_height)\n"
-                        % self.p.breakout_offset_mult)
-            else:
-                f.write("Breakout Offset: DISABLED (any close > window_high)\n")
+            # Pullback (simple)
+            f.write("Pullback: simple (close<HH then close>HH), max_bars=%d\n" % (
+                self.p.pullback_max_bars,))
 
             # SL / TP
             f.write("SL Mode: %s | Buffer: %.1f pips" % (
@@ -325,8 +385,8 @@ class CERESStrategy(bt.Strategy):
             f.write("\n")
 
             f.write("TP Mode: %s" % self.p.tp_mode)
-            if self.p.tp_mode == 'window_height_mult':
-                f.write(" | Window Mult: %.1f" % self.p.tp_window_mult)
+            if self.p.tp_mode == 'or_height_mult':
+                f.write(" | OR Mult: %.1f" % self.p.tp_or_mult)
             elif self.p.tp_mode == 'fixed_pips':
                 f.write(" | Fixed: %.1f pips" % self.p.tp_fixed_pips)
             elif self.p.tp_mode == 'atr_mult':
@@ -370,10 +430,9 @@ class CERESStrategy(bt.Strategy):
             print("Trade reporting init failed: %s" % e)
 
     def _record_trade_entry(self, dt, entry_price, size, atr_avg, sl_pips,
-                            window_high, window_low, window_height,
-                            window_er, window_atr_avg,
-                            consol_bars, scan_bars, armed_bars,
-                            breakout_candle_height):
+                            or_hh, or_ll, or_height, or_er, or_atr_avg,
+                            pb_bars=0, pb_angle=0.0, pb_depth_pct=0.0,
+                            rearm_count=0):
         """Record entry details to log and trade_reports list."""
         entry = {
             'entry_time': dt,
@@ -383,17 +442,17 @@ class CERESStrategy(bt.Strategy):
             'sl_pips': sl_pips,
             'stop_level': self.stop_level,
             'take_level': self.take_level,
-            'window_high': window_high,
-            'window_low': window_low,
-            'window_height': window_height,
-            'window_er': window_er,
-            'window_atr_avg': window_atr_avg,
+            'or_hh': or_hh,
+            'or_ll': or_ll,
+            'or_height': or_height,
+            'or_er': or_er,
+            'or_atr_avg': or_atr_avg,
             'sl_mode': self.p.sl_mode,
             'tp_mode': self.p.tp_mode,
-            'consol_bars': consol_bars,
-            'scan_bars': scan_bars,
-            'armed_bars': armed_bars,
-            'breakout_candle_height': breakout_candle_height,
+            'pb_bars': pb_bars,
+            'pb_angle': pb_angle,
+            'pb_depth_pct': pb_depth_pct,
+            'rearm_count': rearm_count,
         }
         self.trade_reports.append(entry)
         self._current_trade_idx = len(self.trade_reports) - 1
@@ -412,17 +471,17 @@ class CERESStrategy(bt.Strategy):
                 f.write("Take Profit: NONE (EOD)\n")
             f.write("SL Pips: %.1f\n" % sl_pips)
             f.write("ATR (avg): %.6f\n" % atr_avg)
-            f.write("Window High: %.5f\n" % window_high)
-            f.write("Window Low: %.5f\n" % window_low)
-            f.write("Window Height: %.5f\n" % window_height)
-            f.write("Window ER: %.4f\n" % window_er)
-            f.write("Window ATR Avg: %.6f\n" % window_atr_avg)
+            f.write("OR HH: %.5f\n" % or_hh)
+            f.write("OR LL: %.5f\n" % or_ll)
+            f.write("OR Height: %.5f\n" % or_height)
+            f.write("OR ER: %.4f\n" % or_er)
+            f.write("OR ATR Avg: %.6f\n" % or_atr_avg)
             f.write("SL Mode: %s\n" % self.p.sl_mode)
             f.write("TP Mode: %s\n" % self.p.tp_mode)
-            f.write("Consolidation Bars: %d\n" % consol_bars)
-            f.write("Scan Bars: %d\n" % scan_bars)
-            f.write("Armed Bars: %d\n" % armed_bars)
-            f.write("Breakout Candle: %.5f\n" % breakout_candle_height)
+            f.write("PB Bars: %d\n" % pb_bars)
+            f.write("PB Angle: %.2f\n" % pb_angle)
+            f.write("PB Depth: %.1f%%\n" % pb_depth_pct)
+            f.write("Rearm Count: %d\n" % rearm_count)
             f.write("-" * 50 + "\n\n")
             f.flush()
         except Exception:
@@ -482,11 +541,11 @@ class CERESStrategy(bt.Strategy):
         self.entry_exit_lines.lines.entry[0] = entry if entry else nan
         self.entry_exit_lines.lines.stop_loss[0] = sl if sl else nan
         self.entry_exit_lines.lines.take_profit[0] = tp if tp else nan
-        self.entry_exit_lines.lines.window_high_line[0] = hh if hh else nan
-        self.entry_exit_lines.lines.window_low_line[0] = ll if ll else nan
+        self.entry_exit_lines.lines.or_hh[0] = hh if hh else nan
+        self.entry_exit_lines.lines.or_ll[0] = ll if ll else nan
 
-    def _is_day_scan_ready(self):
-        """Check if we should start scanning (first bar of day + delay).
+    def _is_or_start_ready(self):
+        """Check if we should start forming the OR (first bar of day + delay).
 
         DST-agnostic: detects day change from data, not from clock.
         Uses delay_bars param to skip N bars after first bar of day.
@@ -499,53 +558,25 @@ class CERESStrategy(bt.Strategy):
         return True
 
     def _reset_state(self):
-        """Full reset to IDLE -- end of day or after entry."""
+        """Reset to IDLE state, clearing all OR and ARMED data."""
         self.state = "IDLE"
-        self.window_high = None
-        self.window_low = None
-        self.window_height = None
-        self.window_er = None
-        self.window_atr_avg = None
-        self.consol_count = 0
-        self.scan_bar_count = 0
-        self.window_closes = []
-        self.window_opens = []
+        self.or_bar_count = 0
+        self.or_highs = []
+        self.or_lows = []
+        self.or_opens = []
+        self.or_closes = []
+        self.or_atr_values = []
+        self.or_hh = None
+        self.or_ll = None
+        self.or_height = None
+        self.or_er = None
+        self.or_atr_avg = None
+        self.or_end_bar = None
+        self.highs_since_or = []
+        self.closes_since_or = []
+        self.lows_since_or = []
         self.armed_bar_count = 0
-
-    def _soft_reset_window(self):
-        """Reset window bounds while staying in SCANNING state."""
-        self.window_high = None
-        self.window_low = None
-        self.window_height = None
-        self.window_er = None
-        self.consol_count = 0
-        self.window_closes = []
-        self.window_opens = []
-
-    def _init_window_from_bar(self):
-        """Initialize consolidation window from current bar.
-
-        Returns True if window was initialized, False if rejected (too wide).
-        """
-        bar_high = float(self.data.high[0])
-        bar_low = float(self.data.low[0])
-        bar_close = float(self.data.close[0])
-        bar_open = float(self.data.open[0])
-
-        self.window_high = bar_high
-        self.window_low = bar_low
-        self.window_height = bar_high - bar_low
-        self.consol_count = 1
-        self.window_closes = [bar_close]
-        self.window_opens = [bar_open]
-
-        # Early rejection: single bar wider than max
-        if self.p.use_window_height_filter and self.window_height > 0:
-            height_pips = self.window_height / self.p.pip_value
-            if height_pips > self.p.window_height_max:
-                self._soft_reset_window()
-                return False
-        return True
+        self._pullback_seen = False
 
     # =====================================================================
     # EOD CLOSE
@@ -584,34 +615,34 @@ class CERESStrategy(bt.Strategy):
     # QUALITY FILTERS
     # =====================================================================
 
-    def _check_window_quality(self):
+    def _check_or_quality(self):
         """
-        Check all optional quality filters on the confirmed consolidation window.
-        Returns True if window passes all active filters (or all are disabled).
+        Check all optional quality filters on the completed Opening Range.
+        Returns True if OR passes all active filters (or all are disabled).
         """
-        # Window Height filter (in pips)
-        if self.p.use_window_height_filter:
-            if self.window_height is None:
+        # OR Height filter (in pips)
+        if self.p.use_or_height_filter:
+            if self.or_height is None:
                 return False
-            height_pips = self.window_height / self.p.pip_value
-            if not (self.p.window_height_min <= height_pips <= self.p.window_height_max):
+            height_pips = self.or_height / self.p.pip_value
+            if not (self.p.or_height_min <= height_pips <= self.p.or_height_max):
                 if self.p.print_signals:
                     dt = self._get_datetime()
-                    print('%s [%s] WINDOW REJECTED: height=%.1f pips (need %.1f-%.1f)'
+                    print('%s [%s] OR REJECTED: height=%.1f pips (need %.1f-%.1f)'
                           % (dt, self.data._name, height_pips,
-                             self.p.window_height_min, self.p.window_height_max))
+                             self.p.or_height_min, self.p.or_height_max))
                 return False
 
-        # ER of the consolidation window
-        if self.p.use_window_er_filter:
-            if self.window_er is None:
+        # ER of the OR itself (min/max range)
+        if self.p.use_er_or_filter:
+            if self.or_er is None:
                 return False
-            if not (self.p.window_er_min <= self.window_er <= self.p.window_er_max):
+            if not (self.p.er_or_min <= self.or_er <= self.p.er_or_max):
                 if self.p.print_signals:
                     dt = self._get_datetime()
-                    print('%s [%s] WINDOW REJECTED: er=%.4f (need %.2f-%.2f)'
-                          % (dt, self.data._name, self.window_er,
-                             self.p.window_er_min, self.p.window_er_max))
+                    print('%s [%s] OR REJECTED: er=%.4f (need %.2f-%.2f)'
+                          % (dt, self.data._name, self.or_er,
+                             self.p.er_or_min, self.p.er_or_max))
                 return False
 
         # ER in higher timeframe
@@ -623,7 +654,7 @@ class CERESStrategy(bt.Strategy):
                 ):
                     if self.p.print_signals:
                         dt = self._get_datetime()
-                        print('%s [%s] WINDOW REJECTED: er_htf=%.4f (need >= %.2f)'
+                        print('%s [%s] OR REJECTED: er_htf=%.4f (need >= %.2f)'
                               % (dt, self.data._name, er_val,
                                  self.p.er_htf_threshold))
                     return False
@@ -636,14 +667,14 @@ class CERESStrategy(bt.Strategy):
 
     def _calculate_sl(self, entry_price, atr_avg):
         """Calculate stop loss price based on configured mode."""
-        if self.p.sl_mode in ('window_low', 'or_low'):
-            base = self.window_low
+        if self.p.sl_mode == 'or_low':
+            base = self.or_ll
         elif self.p.sl_mode == 'fixed_pips':
             base = entry_price - (self.p.sl_fixed_pips * self.p.pip_value)
         elif self.p.sl_mode == 'atr_mult':
             base = entry_price - (atr_avg * self.p.sl_atr_mult)
         else:
-            base = self.window_low  # Default fallback
+            base = self.or_ll  # Default fallback
 
         # Apply buffer
         sl_price = base - (self.p.sl_buffer_pips * self.p.pip_value)
@@ -653,8 +684,8 @@ class CERESStrategy(bt.Strategy):
         """Calculate take profit price based on configured mode. None = no TP."""
         if self.p.tp_mode == 'none':
             return None
-        elif self.p.tp_mode in ('window_height_mult', 'or_height_mult'):
-            return entry_price + (self.window_height * self.p.tp_window_mult)
+        elif self.p.tp_mode == 'or_height_mult':
+            return entry_price + (self.or_height * self.p.tp_or_mult)
         elif self.p.tp_mode == 'fixed_pips':
             return entry_price + (self.p.tp_fixed_pips * self.p.pip_value)
         elif self.p.tp_mode == 'atr_mult':
@@ -665,7 +696,7 @@ class CERESStrategy(bt.Strategy):
     # ENTRY EXECUTION
     # =====================================================================
 
-    def _execute_entry(self, dt, atr_avg, breakout_candle_height):
+    def _execute_entry(self, dt, atr_avg):
         """Validate filters, size position, and send buy order."""
 
         # Day/Time filter (applied at entry, not globally)
@@ -726,6 +757,45 @@ class CERESStrategy(bt.Strategy):
         if bt_size <= 0:
             return
 
+        # Compute pullback metrics (before buy, so filter can reject)
+        pb_bars = self.armed_bar_count
+        pb_angle = calculate_pullback_angle(
+            self.closes_since_or, pb_bars
+        )
+        # Pullback depth: how far below OR_HH the lowest low went
+        if self.lows_since_or and self.or_hh and self.or_height and self.or_height > 0:
+            pb_min_low = min(self.lows_since_or)
+            pb_depth_pct = (self.or_hh - pb_min_low) / self.or_height * 100
+        else:
+            pb_depth_pct = 0.0
+
+        # PB Angle filter
+        if self.p.use_pb_angle_filter:
+            if pb_angle < self.p.pb_angle_min or pb_angle > self.p.pb_angle_max:
+                if self.p.print_signals:
+                    print('%s [%s] ENTRY SKIPPED: pb_angle=%.2f (need %.1f-%.1f)'
+                          % (dt, self.data._name, pb_angle,
+                             self.p.pb_angle_min, self.p.pb_angle_max))
+                return
+
+        # PB Depth filter (% of OR Height)
+        if self.p.use_pb_depth_filter:
+            if pb_depth_pct < self.p.pb_depth_min or pb_depth_pct > self.p.pb_depth_max:
+                if self.p.print_signals:
+                    print('%s [%s] ENTRY SKIPPED: pb_depth=%.1f%% (need %.1f-%.1f%%)'
+                          % (dt, self.data._name, pb_depth_pct,
+                             self.p.pb_depth_min, self.p.pb_depth_max))
+                return
+
+        # Allowed PB Bars filter
+        if self.p.allowed_pb_bars:
+            if pb_bars not in self.p.allowed_pb_bars:
+                if self.p.print_signals:
+                    print('%s [%s] ENTRY SKIPPED: pb_bars=%d not in %s'
+                          % (dt, self.data._name, pb_bars,
+                             list(self.p.allowed_pb_bars)))
+                return
+
         # Send buy order
         self.order = self.buy(size=bt_size)
         self._traded_today = True
@@ -733,21 +803,20 @@ class CERESStrategy(bt.Strategy):
         # Record
         self._record_trade_entry(
             dt, entry_price, bt_size, atr_avg, sl_pips,
-            self.window_high, self.window_low, self.window_height,
-            self.window_er if self.window_er else 0.0,
-            self.window_atr_avg if self.window_atr_avg else 0.0,
-            self.consol_count, self.scan_bar_count,
-            self.armed_bar_count, breakout_candle_height,
+            self.or_hh, self.or_ll, self.or_height,
+            self.or_er if self.or_er else 0.0,
+            self.or_atr_avg if self.or_atr_avg else 0.0,
+            pb_bars, pb_angle, pb_depth_pct,
         )
 
         if self.p.print_signals:
             print(
                 '%s [%s] ENTRY LONG @ %.5f | SL=%.5f (%s) | TP=%s | '
-                'Window H=%.5f L=%.5f Height=%.5f'
+                'OR_HH=%.5f OR_LL=%.5f Height=%.5f'
                 % (dt, self.data._name, entry_price, self.stop_level,
                    self.p.sl_mode,
                    ('%.5f' % self.take_level) if self.take_level else 'EOD',
-                   self.window_high, self.window_low, self.window_height)
+                   self.or_hh, self.or_ll, self.or_height)
             )
 
     # =====================================================================
@@ -784,6 +853,9 @@ class CERESStrategy(bt.Strategy):
                     print('%s [%s] === EOD CLOSE (day change) @ %.2f ==='
                           % (dt, self.data._name, self.data.close[0]))
 
+            # If we just submitted a close order, wait for it
+            # (reset daily vars AFTER this guard so _traded_today isn't
+            #  prematurely False while a day-change close is still pending)
             if self.order:
                 self._today_date = today
                 return
@@ -792,8 +864,8 @@ class CERESStrategy(bt.Strategy):
             self._traded_today = False
             self._day_first_bar_seen = True
             self._delay_bars_remaining = self.p.delay_bars
-            # If day changes while in SCANNING or ARMED, reset
-            if self.state in ("SCANNING", "ARMED"):
+            # If day changes while in WINDOW_FORMING or ARMED, reset
+            if self.state in ("WINDOW_FORMING", "ARMED"):
                 self._reset_state()
 
         # Pending order? Wait.
@@ -806,14 +878,14 @@ class CERESStrategy(bt.Strategy):
             if len(self) != self._entry_fill_bar and self._check_eod_close(dt):
                 return
 
-            # Reset state machine if still scanning/armed
+            # Reset state machine if still armed
             if self.state != "IDLE":
                 self._reset_state()
 
             # Update plot lines
             self._update_plot_lines(
                 self.last_entry_price, self.stop_level, self.take_level,
-                self.window_high, self.window_low
+                self.or_hh, self.or_ll
             )
             return
 
@@ -827,160 +899,118 @@ class CERESStrategy(bt.Strategy):
         if atr_avg <= 0:
             return
 
-        # Stop scanning at EOD time (no point entering right before close)
-        if self.state in ("SCANNING", "ARMED"):
-            if self.p.use_eod_close:
-                current_minutes = dt.hour * 60 + dt.minute
-                eod_minutes = self.p.eod_close_hour * 60 + self.p.eod_close_minute
-                if current_minutes >= eod_minutes:
-                    self._reset_state()
-                    return
-
         # ---- STATE: IDLE ----
         if self.state == "IDLE":
-            if self._is_day_scan_ready():
+            if self._is_or_start_ready():
                 self._day_first_bar_seen = False  # consumed
-                self.state = "SCANNING"
-                self.scan_bar_count = 1
-
-                # Initialize window from first bar
-                if not self._init_window_from_bar():
-                    # Bar too wide, window reset. Next bar will re-init.
-                    pass
+                self.state = "WINDOW_FORMING"
+                self.or_bar_count = 0
+                self.or_highs = []
+                self.or_lows = []
+                self.or_opens = []
+                self.or_closes = []
+                self.or_atr_values = []
 
                 if self.p.print_signals:
-                    print('%s [%s] SCANNING: looking for %d-bar consolidation'
-                          % (dt, self.data._name, self.p.consolidation_bars))
+                    print('%s [%s] OR FORMING: collecting %d bars'
+                          % (dt, self.data._name, self.p.or_candles))
 
-        # ---- STATE: SCANNING ----
-        elif self.state == "SCANNING":
-            self.scan_bar_count += 1
+                # Include this bar as first OR bar
+                self._collect_or_bar()
 
-            bar_high = float(self.data.high[0])
-            bar_low = float(self.data.low[0])
-            bar_close = float(self.data.close[0])
-            bar_open = float(self.data.open[0])
+        # ---- STATE: WINDOW_FORMING ----
+        elif self.state == "WINDOW_FORMING":
+            self._collect_or_bar()
 
-            # Re-init after soft reset (window_high is None)
-            if self.window_high is None:
-                self._init_window_from_bar()
-                return
+            if self.or_bar_count >= self.p.or_candles:
+                # OR complete -> compute values
+                self.or_hh = max(self.or_highs)
+                self.or_ll = min(self.or_lows)
+                self.or_height = self.or_hh - self.or_ll
+                self.or_end_bar = len(self)
 
-            # Update plot: show window levels while scanning
-            self._update_plot_lines(hh=self.window_high, ll=self.window_low)
+                # Compute quality metrics (always, for logging)
+                self.or_er = calculate_or_efficiency(
+                    self.or_opens, self.or_closes,
+                    self.or_highs, self.or_lows,
+                )
+                if self.or_atr_values:
+                    self.or_atr_avg = sum(self.or_atr_values) / len(self.or_atr_values)
+                else:
+                    self.or_atr_avg = atr_avg
 
-            # Check containment: bar must stay within window bounds
-            break_above = bar_high > self.window_high
-            break_below = bar_low < self.window_low
+                if self.p.print_signals:
+                    print(
+                        '%s [%s] OR COMPLETE: HH=%.5f LL=%.5f '
+                        'Height=%.5f ER=%.4f ATR=%.6f'
+                        % (dt, self.data._name, self.or_hh, self.or_ll,
+                           self.or_height, self.or_er,
+                           self.or_atr_avg)
+                    )
 
-            if break_above or break_below:
-                # Window broken -- adapt bounds, reset counter
-                if break_above:
-                    self.window_high = bar_high
-                if break_below:
-                    self.window_low = bar_low
-                self.window_height = self.window_high - self.window_low
-                self.consol_count = 1
-                self.window_closes = [bar_close]
-                self.window_opens = [bar_open]
-
-                # Early rejection: window too wide after break
-                if self.p.use_window_height_filter:
-                    height_pips = self.window_height / self.p.pip_value
-                    if height_pips > self.p.window_height_max:
-                        self._soft_reset_window()
-
-                if self.p.print_signals and self.window_high is not None:
-                    print('%s [%s] WINDOW BREAK: H=%.5f L=%.5f Height=%.1f pips'
-                          % (dt, self.data._name, self.window_high,
-                             self.window_low,
-                             self.window_height / self.p.pip_value))
-            else:
-                # Bar contained -- increment counter
-                self.consol_count += 1
-                self.window_closes.append(bar_close)
-                self.window_opens.append(bar_open)
-
-                if self.consol_count >= self.p.consolidation_bars:
-                    # Consolidation confirmed!
-                    self.window_height = self.window_high - self.window_low
-
-                    # Compute ER of the window
-                    if len(self.window_closes) >= 2:
-                        self.window_er = calculate_window_efficiency(
-                            self.window_opens, self.window_closes,
-                        )
-                    else:
-                        self.window_er = 0.0
-
-                    # Store ATR average at window completion
-                    self.window_atr_avg = atr_avg
-
+                # Quality check
+                if self._check_or_quality():
+                    self.state = "ARMED"
+                    self.highs_since_or = []
+                    self.closes_since_or = []
+                    self.lows_since_or = []
+                    self.armed_bar_count = 0
                     if self.p.print_signals:
-                        print(
-                            '%s [%s] CONSOLIDATION CONFIRMED: H=%.5f L=%.5f '
-                            'Height=%.1f pips ER=%.4f (%d bars, scan=%d)'
-                            % (dt, self.data._name, self.window_high,
-                               self.window_low,
-                               self.window_height / self.p.pip_value,
-                               self.window_er, self.consol_count,
-                               self.scan_bar_count))
+                        print('%s [%s] ARMED: waiting pullback+breakout > %.5f'
+                              % (dt, self.data._name, self.or_hh))
+                else:
+                    self._reset_state()  # OR rejected, wait tomorrow
 
-                    # Quality check
-                    if self._check_window_quality():
-                        self.state = "ARMED"
-                        self.armed_bar_count = 0
-                        if self.p.print_signals:
-                            print('%s [%s] ARMED: waiting breakout > %.5f'
-                                  % (dt, self.data._name, self.window_high))
-                    else:
-                        # Window rejected by quality filter -- start fresh
-                        self._soft_reset_window()
-
-        # ---- STATE: ARMED (waiting breakout above window high) ----
+        # ---- STATE: ARMED (simple pullback: close<HH then close>HH) ----
         elif self.state == "ARMED":
             self.armed_bar_count += 1
 
-            # Update plot: show window levels while armed
-            self._update_plot_lines(hh=self.window_high, ll=self.window_low)
+            # Update plot: show OR levels while armed
+            self._update_plot_lines(hh=self.or_hh, ll=self.or_ll)
 
-            bar_high = float(self.data.high[0])
-            bar_low = float(self.data.low[0])
-            bar_close = float(self.data.close[0])
+            # Track bar data for pullback metrics
+            self.highs_since_or.append(float(self.data.high[0]))
+            self.closes_since_or.append(float(self.data.close[0]))
+            self.lows_since_or.append(float(self.data.low[0]))
 
-            # Check breakout above window high
-            if bar_close > self.window_high:
-                # Breakout detected! Check candle size filter
-                candle_height = bar_high - bar_low
-                min_candle = self.p.breakout_offset_mult * self.window_height
+            current_close = float(self.data.close[0])
 
-                if self.p.breakout_offset_mult <= 0 or candle_height >= min_candle:
+            if not self._pullback_seen:
+                # Phase 1: wait for close below OR_HH (pullback)
+                if current_close < self.or_hh:
+                    self._pullback_seen = True
                     if self.p.print_signals:
-                        print('%s [%s] BREAKOUT: close=%.5f > window=%.5f, '
-                              'candle=%.1f pips (min=%.1f)'
-                              % (dt, self.data._name, bar_close,
-                                 self.window_high,
-                                 candle_height / self.p.pip_value,
-                                 min_candle / self.p.pip_value))
-                    self._execute_entry(dt, atr_avg, candle_height)
+                        print('%s [%s] PULLBACK SEEN: close=%.5f < OR_HH=%.5f'
+                              % (dt, self.data._name, current_close,
+                                 self.or_hh))
+            else:
+                # Phase 2: wait for close above OR_HH (breakout)
+                if current_close > self.or_hh:
+                    if self.p.print_signals:
+                        print('%s [%s] BREAKOUT: close=%.5f > OR_HH=%.5f'
+                              % (dt, self.data._name, current_close,
+                                 self.or_hh))
+                    self._execute_entry(dt, atr_avg)
                     self._reset_state()
                     return
-                else:
-                    if self.p.print_signals:
-                        print('%s [%s] BREAKOUT REJECTED: candle=%.1f pips '
-                              '< min=%.1f pips'
-                              % (dt, self.data._name,
-                                 candle_height / self.p.pip_value,
-                                 min_candle / self.p.pip_value))
 
-            # Check if pattern broken (close below window low)
-            if bar_close < self.window_low:
+            # Timeout
+            if self.armed_bar_count > self.p.pullback_max_bars:
                 if self.p.print_signals:
-                    print('%s [%s] PATTERN BROKEN: close=%.5f < window_low=%.5f'
-                          % (dt, self.data._name, bar_close, self.window_low))
-                self.state = "SCANNING"
-                self._soft_reset_window()
-                self.armed_bar_count = 0
+                    print('%s [%s] ARMED TIMEOUT after %d bars'
+                          % (dt, self.data._name, self.armed_bar_count))
+                self._reset_state()
+
+    def _collect_or_bar(self):
+        """Collect current bar data into OR arrays."""
+        self.or_highs.append(float(self.data.high[0]))
+        self.or_lows.append(float(self.data.low[0]))
+        self.or_opens.append(float(self.data.open[0]))
+        self.or_closes.append(float(self.data.close[0]))
+        current_atr = float(self.atr[0]) if not math.isnan(float(self.atr[0])) else 0
+        if current_atr > 0:
+            self.or_atr_values.append(current_atr)
+        self.or_bar_count += 1
 
     # =====================================================================
     # ORDER / TRADE NOTIFICATIONS
@@ -993,7 +1023,8 @@ class CERESStrategy(bt.Strategy):
 
         if order.status == order.Completed:
             if order == self.order and order.isbuy():
-                # Entry fill
+                # Entry fill (must be a BUY -- day-change close also uses
+                # self.order but is a SELL, must go to the else branch)
                 self.last_entry_price = order.executed.price
                 self.last_entry_bar = len(self)
                 self._entry_fill_bar = len(self)
@@ -1252,7 +1283,7 @@ class CERESStrategy(bt.Strategy):
 
         # --- Print Summary ---
         print("\n" + "=" * 70)
-        print("=== CERES STRATEGY SUMMARY (v1.0 Mobile Window) ===")
+        print("=== CERES STRATEGY SUMMARY ===")
         print("=" * 70)
 
         print("Total Trades: %d" % self.trades)
@@ -1313,22 +1344,27 @@ class CERESStrategy(bt.Strategy):
         print("\n" + "=" * 70)
         print("STRATEGY CONFIGURATION")
         print("=" * 70)
-        print("  Consolidation: %d bars, delay=%d bars after open"
-              % (self.p.consolidation_bars, self.p.delay_bars))
-        if self.p.breakout_offset_mult > 0:
-            print("  Breakout Offset: %.2f (min candle/window_height)"
-                  % self.p.breakout_offset_mult)
-        else:
-            print("  Breakout Offset: DISABLED (any close > window_high)")
+        print("  OR: %d candles, delay=%d bars after day open"
+              % (self.p.or_candles, self.p.delay_bars))
+        print("  Pullback: simple (close<HH then close>HH), max_bars=%d"
+              % self.p.pullback_max_bars)
         print("  SL Mode: %s | Buffer: %.1f pips"
               % (self.p.sl_mode, self.p.sl_buffer_pips))
         print("  TP Mode: %s" % self.p.tp_mode)
-        if self.p.use_window_height_filter:
-            print("  Window Height Filter: %.1f-%.1f pips"
-                  % (self.p.window_height_min, self.p.window_height_max))
-        if self.p.use_window_er_filter:
-            print("  Window ER Filter: %.2f-%.2f"
-                  % (self.p.window_er_min, self.p.window_er_max))
+        if self.p.use_or_height_filter:
+            print("  OR Height Filter: %.1f-%.1f pips"
+                  % (self.p.or_height_min, self.p.or_height_max))
+        if self.p.use_pb_angle_filter:
+            print("  PB Angle Filter: %.1f-%.1f deg"
+                  % (self.p.pb_angle_min, self.p.pb_angle_max))
+        if self.p.use_pb_depth_filter:
+            print("  PB Depth Filter: %.1f-%.1f%%"
+                  % (self.p.pb_depth_min, self.p.pb_depth_max))
+        if self.p.allowed_pb_bars:
+            print("  Allowed PB Bars: %s" % list(self.p.allowed_pb_bars))
+        if self.p.use_er_or_filter:
+            print("  ER OR Filter: %.2f-%.2f"
+                  % (self.p.er_or_min, self.p.er_or_max))
         if self.p.use_er_htf_filter:
             print("  ER HTF Filter: >= %.2f (period=%d, tf=%dm)"
                   % (self.p.er_htf_threshold, self.p.er_htf_period,

@@ -1,8 +1,8 @@
 """
-CERES Strategy Analyzer (v1.0 - Mobile Window)
+CERES Strategy Analyzer
 
-Comprehensive analysis tool for CERES v1.0 strategy optimization.
-Analyzes trade logs to find optimal parameters for Consolidation Window + Breakout entries.
+Comprehensive analysis tool for CERES strategy optimization.
+Analyzes trade logs to find optimal parameters for Opening Range + Pullback entries.
 
 Usage:
     python analyze_ceres.py                           # Analyze latest CERES log
@@ -10,18 +10,15 @@ Usage:
     python analyze_ceres.py --all                     # Analyze all CERES logs combined
 
 Key Parameters to Analyze:
-- Window Height ranges (consolidation zone size in pips)
-- Window ER ranges (Efficiency Ratio - how "sideways" the window is)
-- Consolidation Bars (how many bars formed the window)
-- Scan Bars (total bars spent in SCANNING state)
-- Armed Bars (bars waiting for breakout once armed)
-- Breakout Candle height (size of the breakout candle)
+- OR Height ranges (Opening Range size)
+- OR ER ranges (Efficiency Ratio of the OR)
+- OR ATR ranges (volatility during OR)
 - SL pips ranges
 - Entry hour / Day of week
 - Exit reason distribution
 
 Author: Ivan
-Version: 2.0.0 (adapted for CERES v1.0 mobile window)
+Version: 1.0.0
 """
 import os
 import sys
@@ -81,69 +78,52 @@ def find_all_logs(log_dir, prefix='CERES_trades_'):
                    if f.startswith(prefix) and f.endswith('.txt')])
 
 
-def _detect_version(content):
-    """Detect log version: 'v1.0' (mobile window) or 'legacy' (OR-based)."""
-    if 'Window High:' in content and 'Consolidation Bars:' in content:
-        return 'v1.0'
-    if 'OR HH:' in content:
-        return 'legacy'
-    return 'unknown'
-
-
 def parse_config_header(content):
     """Parse configuration header from CERES trade log."""
     config = {}
 
-    version = _detect_version(content)
-    config['version'] = version
+    # Opening Range
+    match = re.search(
+        r'Opening Range: (\d+) candles, open=(\d+):(\d+) UTC', content)
+    if match:
+        config['or_candles'] = int(match.group(1))
+        config['open_hour'] = int(match.group(2))
+        config['open_minute'] = int(match.group(3))
 
-    if version == 'v1.0':
-        # Consolidation Window
-        match = re.search(
-            r'Consolidation: (\d+) bars, delay=(\d+) bars', content)
-        if match:
-            config['consolidation_bars'] = int(match.group(1))
-            config['delay_bars'] = int(match.group(2))
-
-        # Window Height Filter
-        match = re.search(
-            r'Window Height Filter: ENABLED \| Range: ([\d.]+)-([\d.]+) pips',
-            content)
-        if match:
-            config['window_height_filter'] = True
-            config['window_height_min'] = float(match.group(1))
-            config['window_height_max'] = float(match.group(2))
-        else:
-            config['window_height_filter'] = False
-
-        # Window ER Filter
-        match = re.search(
-            r'Window ER Filter: ENABLED \| Range: ([\d.]+)-([\d.]+)', content)
-        if match:
-            config['window_er_filter'] = True
-            config['window_er_min'] = float(match.group(1))
-            config['window_er_max'] = float(match.group(2))
-        else:
-            config['window_er_filter'] = False
-
-        # Breakout Offset
-        match = re.search(
-            r'Breakout Offset: ([\d.]+) \(min candle/window_height\)', content)
-        if match:
-            config['breakout_offset_mult'] = float(match.group(1))
-        else:
-            config['breakout_offset_mult'] = 0.0
-
+    # PB Angle filter
+    match = re.search(r'PB Angle Filter: ENABLED \| Range: ([\-\d.]+)-([\-\d.]+) deg', content)
+    if match:
+        config['pb_angle_filter'] = True
+        config['pb_angle_min'] = float(match.group(1))
+        config['pb_angle_max'] = float(match.group(2))
     else:
-        # Legacy OR-based config
-        match = re.search(
-            r'Opening Range: (\d+) candles, open=(\d+):(\d+) UTC', content)
-        if match:
-            config['or_candles'] = int(match.group(1))
-            config['open_hour'] = int(match.group(2))
-            config['open_minute'] = int(match.group(3))
+        config['pb_angle_filter'] = 'PB Angle Filter: DISABLED' not in content
 
-    # ER HTF filter (common)
+    # PB Depth filter
+    match = re.search(r'PB Depth Filter: ENABLED \| Range: ([\d.]+)-([\d.]+)%', content)
+    if match:
+        config['pb_depth_filter'] = True
+        config['pb_depth_min'] = float(match.group(1))
+        config['pb_depth_max'] = float(match.group(2))
+    else:
+        config['pb_depth_filter'] = False
+
+    # Allowed PB Bars
+    match = re.search(r'Allowed PB Bars: \[([\d, ]+)\]', content)
+    if match:
+        config['allowed_pb_bars'] = [int(x.strip()) for x in match.group(1).split(',')]
+    else:
+        config['allowed_pb_bars'] = []
+
+    # ER OR filter
+    match = re.search(r'ER OR Filter: ENABLED \| (?:Threshold|Range): ([\d.]+)(?:-([\d.]+))?', content)
+    if match:
+        config['er_or_filter'] = True
+        config['er_or_threshold'] = float(match.group(1))
+    else:
+        config['er_or_filter'] = False
+
+    # ER HTF filter
     match = re.search(
         r'ER HTF Filter: ENABLED \| Threshold: ([\d.]+), Period: (\d+), TF: (\d+)m',
         content)
@@ -154,6 +134,31 @@ def parse_config_header(content):
         config['er_htf_tf'] = int(match.group(3))
     else:
         config['er_htf_filter'] = False
+
+    # Pullback (new Ogle format or legacy)
+    match = re.search(r'Pullback Candles: (\d+) bearish, max_bars=(\d+), max_retries=(\d+)', content)
+    if match:
+        config['pb_candles'] = int(match.group(1))
+        config['pb_max'] = int(match.group(2))
+        config['pb_retries'] = int(match.group(3))
+    else:
+        # Legacy format
+        match = re.search(r'Pullback: min=(\d+), max=(\d+) bars', content)
+        if match:
+            config['pb_min'] = int(match.group(1))
+            config['pb_max'] = int(match.group(2))
+
+    # Window config (new Ogle format)
+    match = re.search(r'Window: periods=(\d+), offset_mult=([\d.]+), buffer=([\d.]+) pips', content)
+    if match:
+        config['window_periods'] = int(match.group(1))
+        config['offset_mult'] = float(match.group(2))
+        config['breakout_buffer'] = float(match.group(3))
+    else:
+        # Legacy breakout buffer
+        match = re.search(r'Breakout Buffer: ([\d.]+) pips', content)
+        if match:
+            config['breakout_buffer'] = float(match.group(1))
 
     # SL Mode
     match = re.search(r'SL Mode: (\w+)', content)
@@ -219,42 +224,51 @@ def print_config(config):
         print('No configuration found in log header')
         return
 
-    version = config.get('version', 'unknown')
-    print('Log Format: %s' % version)
-
-    if version == 'v1.0':
-        print('Consolidation: %d bars, delay=%d' % (
-            config.get('consolidation_bars', 0),
-            config.get('delay_bars', 0)))
-        print('Window Height Filter: %s' % (
-            'ENABLED %.1f-%.1f pips' % (
-                config.get('window_height_min', 0),
-                config.get('window_height_max', 0))
-            if config.get('window_height_filter') else 'DISABLED'))
-        print('Window ER Filter: %s' % (
-            'ENABLED %.2f-%.2f' % (
-                config.get('window_er_min', 0),
-                config.get('window_er_max', 0))
-            if config.get('window_er_filter') else 'DISABLED'))
-        print('Breakout Offset: %s' % (
-            '%.2f' % config['breakout_offset_mult']
-            if config.get('breakout_offset_mult', 0) > 0 else 'DISABLED'))
-    else:
-        if 'or_candles' in config:
-            print('OR: %d candles, open=%d:%02d UTC' % (
-                config['or_candles'], config.get('open_hour', 0),
-                config.get('open_minute', 0)))
+    if 'or_candles' in config:
+        print('OR: %d candles, open=%d:%02d UTC' % (
+            config['or_candles'], config.get('open_hour', 0),
+            config.get('open_minute', 0)))
 
     if config.get('sl_mode'):
         print('SL Mode: %s' % config['sl_mode'])
     if config.get('tp_mode'):
         print('TP Mode: %s' % config['tp_mode'])
+
+    # Pullback config (new Ogle format or legacy)
+    if config.get('pb_candles') is not None:
+        print('Pullback: %d bearish candles, max_bars=%d, max_retries=%d' % (
+            config['pb_candles'], config.get('pb_max', 0),
+            config.get('pb_retries', 0)))
+    elif config.get('pb_min') is not None:
+        print('Pullback: min=%d, max=%d bars (legacy)' % (
+            config['pb_min'], config.get('pb_max', 0)))
+
+    if config.get('window_periods') is not None:
+        print('Window: periods=%d, offset_mult=%.2f, buffer=%.1f pips' % (
+            config['window_periods'], config.get('offset_mult', 0),
+            config.get('breakout_buffer', 0)))
+    elif config.get('breakout_buffer') is not None:
+        print('Breakout Buffer: %.1f pips' % config['breakout_buffer'])
+
     if config.get('pip_value'):
         print('Pip Value: %s' % config['pip_value'])
     if config.get('risk_pct'):
         print('Risk: %s%%' % config['risk_pct'])
 
     print('\nFilters:')
+    print('  PB Angle Filter: %s' % (
+        'ENABLED %.1f-%.1f deg' % (config.get('pb_angle_min', 0),
+                                    config.get('pb_angle_max', 0))
+        if config.get('pb_angle_filter') else 'DISABLED'))
+    print('  PB Depth Filter: %s' % (
+        'ENABLED %.1f-%.1f%%' % (config.get('pb_depth_min', 0),
+                                  config.get('pb_depth_max', 0))
+        if config.get('pb_depth_filter') else 'DISABLED'))
+    print('  Allowed PB Bars: %s' % (
+        config['allowed_pb_bars'] if config.get('allowed_pb_bars') else 'ALL'))
+    print('  ER OR Filter:    %s' % (
+        'ENABLED >= %.2f' % config.get('er_or_threshold', 0)
+        if config.get('er_or_filter') else 'DISABLED'))
     print('  ER HTF Filter:   %s' % (
         'ENABLED >= %.2f (period=%d, %dm)' % (
             config.get('er_htf_threshold', 0),
@@ -279,9 +293,9 @@ def print_config(config):
 
 def parse_ceres_log(filepath):
     """
-    Parse CERES trade log file. Supports v1.0 (mobile window) and legacy (OR) formats.
+    Parse CERES trade log file.
 
-    v1.0 format:
+    Expected format (v0.7+):
         ENTRY #N
         Time: YYYY-MM-DD HH:MM:SS
         Entry Price: X.XXXXX
@@ -289,57 +303,57 @@ def parse_ceres_log(filepath):
         Take Profit: X.XXXXX | NONE (EOD)
         SL Pips: XX.X
         ATR (avg): X.XXXXXX
-        Window High: X.XXXXX
-        Window Low: X.XXXXX
-        Window Height: X.XXXXX
-        Window ER: X.XXXX
-        Window ATR Avg: X.XXXXXX
+        OR HH: X.XXXXX
+        OR LL: X.XXXXX
+        OR Height: X.XXXXX
+        OR ER: X.XXXX
+        OR ATR Avg: X.XXXXXX
         SL Mode: xxx
         TP Mode: xxx
-        Consolidation Bars: N
-        Scan Bars: N
-        Armed Bars: N
-        Breakout Candle: X.XXXXX
+        PB Bars: N
+        PB Angle: XX.XX
+        PB Depth: XX.X%
+        Rearm Count: N
         --------------------------------------------------
 
-    Legacy formats (OR-based) are also supported for backward compatibility.
+        EXIT #N
+        Time: YYYY-MM-DD HH:MM:SS
+        Exit Reason: REASON
+        P&L: $X,XXX.XX
+
+    Also supports legacy formats (v0.7 without Rearm Count, and older with OR Angle).
     """
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    version = _detect_version(content)
-    format_version = None
+    # Parse entries - flexible regex for CERES format
+    # Try v0.8 format first (with Rearm Count)
+    entries = re.findall(
+        r'ENTRY #(\d+)\s*\n'
+        r'Time: ([\d-]+ [\d:]+)\s*\n'
+        r'Entry Price: ([\d.]+)\s*\n'
+        r'Stop Loss: ([\d.]+)\s*\n'
+        r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
+        r'SL Pips: ([\d.]+)\s*\n'
+        r'ATR \(avg\): ([\d.]+)\s*\n'
+        r'OR HH: ([\d.]+)\s*\n'
+        r'OR LL: ([\d.]+)\s*\n'
+        r'OR Height: ([\d.]+)\s*\n'
+        r'OR ER: ([\d.]+)\s*\n'
+        r'OR ATR Avg: ([\d.]+)\s*\n'
+        r'SL Mode: (\w+)\s*\n'
+        r'TP Mode: (\w+)\s*\n'
+        r'PB Bars: (\d+)\s*\n'
+        r'PB Angle: ([-\d.]+)\s*\n'
+        r'PB Depth: ([\d.]+)%\s*\n'
+        r'Rearm Count: (\d+)',
+        content,
+        re.IGNORECASE
+    )
+    format_version = 'v08' if entries else None
 
-    if version == 'v1.0':
-        # v1.0 Mobile Window format
-        entries = re.findall(
-            r'ENTRY #(\d+)\s*\n'
-            r'Time: ([\d-]+ [\d:]+)\s*\n'
-            r'Entry Price: ([\d.]+)\s*\n'
-            r'Stop Loss: ([\d.]+)\s*\n'
-            r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
-            r'SL Pips: ([\d.]+)\s*\n'
-            r'ATR \(avg\): ([\d.]+)\s*\n'
-            r'Window High: ([\d.]+)\s*\n'
-            r'Window Low: ([\d.]+)\s*\n'
-            r'Window Height: ([\d.]+)\s*\n'
-            r'Window ER: ([\d.]+)\s*\n'
-            r'Window ATR Avg: ([\d.]+)\s*\n'
-            r'SL Mode: (\w+)\s*\n'
-            r'TP Mode: (\w+)\s*\n'
-            r'Consolidation Bars: (\d+)\s*\n'
-            r'Scan Bars: (\d+)\s*\n'
-            r'Armed Bars: (\d+)\s*\n'
-            r'Breakout Candle: ([\d.]+)',
-            content,
-            re.IGNORECASE
-        )
-        format_version = 'v1.0' if entries else None
-
-    if not format_version:
-        # ---- Legacy OR-based formats (backward compat) ----
-
-        # v0.8: with Rearm Count
+    if not entries:
+        # Fallback: v0.7 format (no Rearm Count, no OR Angle, with PB fields)
         entries = re.findall(
             r'ENTRY #(\d+)\s*\n'
             r'Time: ([\d-]+ [\d:]+)\s*\n'
@@ -357,67 +371,60 @@ def parse_ceres_log(filepath):
             r'TP Mode: (\w+)\s*\n'
             r'PB Bars: (\d+)\s*\n'
             r'PB Angle: ([-\d.]+)\s*\n'
-            r'PB Depth: ([\d.]+)%\s*\n'
-            r'Rearm Count: (\d+)',
+            r'PB Depth: ([\d.]+)%',
             content,
             re.IGNORECASE
         )
-        format_version = 'v08' if entries else None
-
-        if not entries:
-            # v0.7: no Rearm Count
-            entries = re.findall(
-                r'ENTRY #(\d+)\s*\n'
-                r'Time: ([\d-]+ [\d:]+)\s*\n'
-                r'Entry Price: ([\d.]+)\s*\n'
-                r'Stop Loss: ([\d.]+)\s*\n'
-                r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
-                r'SL Pips: ([\d.]+)\s*\n'
-                r'ATR \(avg\): ([\d.]+)\s*\n'
-                r'OR HH: ([\d.]+)\s*\n'
-                r'OR LL: ([\d.]+)\s*\n'
-                r'OR Height: ([\d.]+)\s*\n'
-                r'OR ER: ([\d.]+)\s*\n'
-                r'OR ATR Avg: ([\d.]+)\s*\n'
-                r'SL Mode: (\w+)\s*\n'
-                r'TP Mode: (\w+)\s*\n'
-                r'PB Bars: (\d+)\s*\n'
-                r'PB Angle: ([-\d.]+)\s*\n'
-                r'PB Depth: ([\d.]+)%',
-                content,
-                re.IGNORECASE
-            )
-            format_version = 'v07' if entries else None
-
-        if not entries:
-            # Oldest: with OR Angle
-            entries = re.findall(
-                r'ENTRY #(\d+)\s*\n'
-                r'Time: ([\d-]+ [\d:]+)\s*\n'
-                r'Entry Price: ([\d.]+)\s*\n'
-                r'Stop Loss: ([\d.]+)\s*\n'
-                r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
-                r'SL Pips: ([\d.]+)\s*\n'
-                r'ATR \(avg\): ([\d.]+)\s*\n'
-                r'OR HH: ([\d.]+)\s*\n'
-                r'OR LL: ([\d.]+)\s*\n'
-                r'OR Height: ([\d.]+)\s*\n'
-                r'OR Angle: ([-\d.]+)\s*\n'
-                r'OR ER: ([\d.]+)\s*\n'
-                r'OR ATR Avg: ([\d.]+)\s*\n'
-                r'SL Mode: (\w+)\s*\n'
-                r'TP Mode: (\w+)',
-                content,
-                re.IGNORECASE
-            )
-            format_version = 'legacy' if entries else None
+        format_version = 'new' if entries else None
 
     if not entries:
-        print('WARNING: No entries parsed from %s' % filepath)
-        config = parse_config_header(content)
-        return [], config
+        # Fallback: legacy format with OR Angle + PB fields
+        entries = re.findall(
+            r'ENTRY #(\d+)\s*\n'
+            r'Time: ([\d-]+ [\d:]+)\s*\n'
+            r'Entry Price: ([\d.]+)\s*\n'
+            r'Stop Loss: ([\d.]+)\s*\n'
+            r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
+            r'SL Pips: ([\d.]+)\s*\n'
+            r'ATR \(avg\): ([\d.]+)\s*\n'
+            r'OR HH: ([\d.]+)\s*\n'
+            r'OR LL: ([\d.]+)\s*\n'
+            r'OR Height: ([\d.]+)\s*\n'
+            r'OR Angle: ([-\d.]+)\s*\n'
+            r'OR ER: ([\d.]+)\s*\n'
+            r'OR ATR Avg: ([\d.]+)\s*\n'
+            r'SL Mode: (\w+)\s*\n'
+            r'TP Mode: (\w+)\s*\n'
+            r'PB Bars: (\d+)\s*\n'
+            r'PB Angle: ([-\d.]+)\s*\n'
+            r'PB Depth: ([\d.]+)%',
+            content,
+            re.IGNORECASE
+        )
+        format_version = 'legacy_pb' if entries else None
 
-    print('Parsed format: %s (%d entries)' % (format_version, len(entries)))
+    if not entries:
+        # Fallback: oldest format with OR Angle, no PB fields
+        entries = re.findall(
+            r'ENTRY #(\d+)\s*\n'
+            r'Time: ([\d-]+ [\d:]+)\s*\n'
+            r'Entry Price: ([\d.]+)\s*\n'
+            r'Stop Loss: ([\d.]+)\s*\n'
+            r'Take Profit: ([\d.]+|NONE[^\n]*)\s*\n'
+            r'SL Pips: ([\d.]+)\s*\n'
+            r'ATR \(avg\): ([\d.]+)\s*\n'
+            r'OR HH: ([\d.]+)\s*\n'
+            r'OR LL: ([\d.]+)\s*\n'
+            r'OR Height: ([\d.]+)\s*\n'
+            r'OR Angle: ([-\d.]+)\s*\n'
+            r'OR ER: ([\d.]+)\s*\n'
+            r'OR ATR Avg: ([\d.]+)\s*\n'
+            r'SL Mode: (\w+)\s*\n'
+            r'TP Mode: (\w+)',
+            content,
+            re.IGNORECASE
+        )
+        format_version = 'legacy' if entries else None
 
     # Parse exits
     exits = re.findall(
@@ -429,6 +436,7 @@ def parse_ceres_log(filepath):
         re.IGNORECASE
     )
 
+    # Build exit lookup
     exit_dict = {int(ex[0]): ex for ex in exits}
 
     trades = []
@@ -439,7 +447,9 @@ def parse_ceres_log(filepath):
         tp_str = entry[4]
         tp_val = float(tp_str) if tp_str.replace('.', '').isdigit() else None
 
-        if format_version == 'v1.0':
+        if format_version == 'v08':
+            # v0.8 format: no OR Angle, groups 10=or_er, 11=or_atr_avg,
+            # 12=sl_mode, 13=tp_mode, 14=pb_bars, 15=pb_angle, 16=pb_depth, 17=rearm_count
             trade = {
                 'id': trade_id,
                 'datetime': entry_time,
@@ -448,34 +458,11 @@ def parse_ceres_log(filepath):
                 'tp': tp_val,
                 'sl_pips': float(entry[5]),
                 'atr': float(entry[6]),
-                'window_high': float(entry[7]),
-                'window_low': float(entry[8]),
-                'window_height': float(entry[9]),
-                'window_er': float(entry[10]),
-                'window_atr_avg': float(entry[11]),
-                'sl_mode': entry[12],
-                'tp_mode': entry[13],
-                'consol_bars': int(entry[14]),
-                'scan_bars': int(entry[15]),
-                'armed_bars': int(entry[16]),
-                'breakout_candle': float(entry[17]),
-                'hour': entry_time.hour,
-                'day_of_week': entry_time.weekday(),
-            }
-        elif format_version == 'v08':
-            trade = {
-                'id': trade_id,
-                'datetime': entry_time,
-                'entry_price': float(entry[2]),
-                'sl': float(entry[3]),
-                'tp': tp_val,
-                'sl_pips': float(entry[5]),
-                'atr': float(entry[6]),
-                'window_high': float(entry[7]),
-                'window_low': float(entry[8]),
-                'window_height': float(entry[9]),
-                'window_er': float(entry[10]),
-                'window_atr_avg': float(entry[11]),
+                'or_hh': float(entry[7]),
+                'or_ll': float(entry[8]),
+                'or_height': float(entry[9]),
+                'or_er': float(entry[10]),
+                'or_atr_avg': float(entry[11]),
                 'sl_mode': entry[12],
                 'tp_mode': entry[13],
                 'hour': entry_time.hour,
@@ -485,7 +472,9 @@ def parse_ceres_log(filepath):
                 'pb_depth_pct': float(entry[16]),
                 'rearm_count': int(entry[17]),
             }
-        elif format_version == 'v07':
+        elif format_version == 'new':
+            # v0.7 format: no OR Angle, groups 10=or_er, 11=or_atr_avg,
+            # 12=sl_mode, 13=tp_mode, 14=pb_bars, 15=pb_angle, 16=pb_depth
             trade = {
                 'id': trade_id,
                 'datetime': entry_time,
@@ -494,11 +483,11 @@ def parse_ceres_log(filepath):
                 'tp': tp_val,
                 'sl_pips': float(entry[5]),
                 'atr': float(entry[6]),
-                'window_high': float(entry[7]),
-                'window_low': float(entry[8]),
-                'window_height': float(entry[9]),
-                'window_er': float(entry[10]),
-                'window_atr_avg': float(entry[11]),
+                'or_hh': float(entry[7]),
+                'or_ll': float(entry[8]),
+                'or_height': float(entry[9]),
+                'or_er': float(entry[10]),
+                'or_atr_avg': float(entry[11]),
                 'sl_mode': entry[12],
                 'tp_mode': entry[13],
                 'hour': entry_time.hour,
@@ -508,7 +497,8 @@ def parse_ceres_log(filepath):
                 'pb_depth_pct': float(entry[16]),
             }
         else:
-            # Legacy: OR Angle at group 10
+            # Legacy formats: have OR Angle at group 10 (skip it)
+            # groups 11=or_er, 12=or_atr_avg, 13=sl_mode, 14=tp_mode
             trade = {
                 'id': trade_id,
                 'datetime': entry_time,
@@ -517,18 +507,23 @@ def parse_ceres_log(filepath):
                 'tp': tp_val,
                 'sl_pips': float(entry[5]),
                 'atr': float(entry[6]),
-                'window_high': float(entry[7]),
-                'window_low': float(entry[8]),
-                'window_height': float(entry[9]),
-                'window_er': float(entry[11]),
-                'window_atr_avg': float(entry[12]),
+                'or_hh': float(entry[7]),
+                'or_ll': float(entry[8]),
+                'or_height': float(entry[9]),
+                'or_er': float(entry[11]),
+                'or_atr_avg': float(entry[12]),
                 'sl_mode': entry[13],
                 'tp_mode': entry[14],
                 'hour': entry_time.hour,
                 'day_of_week': entry_time.weekday(),
             }
+            # Add PB fields if legacy_pb format
+            if format_version == 'legacy_pb':
+                trade['pb_bars'] = int(entry[15])
+                trade['pb_angle'] = float(entry[16])
+                trade['pb_depth_pct'] = float(entry[17])
 
-        # Match exit
+        # Match with exit
         if trade_id in exit_dict:
             ex = exit_dict[trade_id]
             if ex[1] != 'N/A':
@@ -541,9 +536,10 @@ def parse_ceres_log(filepath):
 
         trades.append(trade)
 
-    # Filter to closed trades only
+    # Filter to only closed trades
     closed_trades = [t for t in trades if 'pnl' in t]
 
+    # Parse configuration header
     config = parse_config_header(content)
 
     return closed_trades, config
@@ -584,12 +580,7 @@ def calculate_metrics(trades):
 
 def _print_range_table(trades, key, step, label, fmt='%.0f'):
     """Generic range analysis for any numeric key. Reusable."""
-    valid_trades = [t for t in trades if key in t]
-    if not valid_trades:
-        print('No data available for %s' % label)
-        return
-
-    values = [t[key] for t in valid_trades]
+    values = [t[key] for t in trades]
     min_v = min(values)
     max_v = max(values)
 
@@ -604,7 +595,7 @@ def _print_range_table(trades, key, step, label, fmt='%.0f'):
 
     while current <= max_v + step:
         range_max = current + step
-        range_trades = [t for t in valid_trades if current <= t[key] < range_max]
+        range_trades = [t for t in trades if current <= t[key] < range_max]
         if range_trades:
             m = calculate_metrics(range_trades)
             range_str = '%s-%s' % (fmt % current, fmt % range_max)
@@ -622,34 +613,35 @@ def _print_range_table(trades, key, step, label, fmt='%.0f'):
             format_pf(best_pf)))
 
 
-def analyze_by_window_height(trades, pip_value=0.01):
-    """Analyze performance by Window Height (consolidation zone size)."""
-    print_section('ANALYSIS BY WINDOW HEIGHT (pips)')
+def analyze_by_or_height(trades, pip_value=0.01):
+    """Analyze performance by Opening Range height."""
+    print_section('ANALYSIS BY OR HEIGHT')
     if not trades:
         print('No trades to analyze')
         return
+    # Compute OR height in pips for clearer ranges
     for t in trades:
-        t['_window_height_pips'] = t['window_height'] / pip_value if pip_value > 0 else 0
+        t['_or_height_pips'] = t['or_height'] / pip_value if pip_value > 0 else 0
     step = 50.0 if pip_value <= 0.01 else 5.0
-    _print_range_table(trades, '_window_height_pips', step, 'Window Height (pips)')
+    _print_range_table(trades, '_or_height_pips', step, 'OR Height (pips)')
 
 
-def analyze_by_window_er(trades, step=0.1):
-    """Analyze performance by Window Efficiency Ratio."""
-    print_section('ANALYSIS BY WINDOW EFFICIENCY RATIO')
+def analyze_by_or_er(trades, step=0.1):
+    """Analyze performance by Opening Range Efficiency Ratio."""
+    print_section('ANALYSIS BY OR EFFICIENCY RATIO')
     if not trades:
         print('No trades to analyze')
         return
-    _print_range_table(trades, 'window_er', step, 'Window ER', fmt='%.2f')
+    _print_range_table(trades, 'or_er', step, 'OR ER', fmt='%.2f')
 
 
-def analyze_by_window_atr(trades, step=0.5):
-    """Analyze performance by ATR during consolidation window."""
-    print_section('ANALYSIS BY WINDOW ATR AVG')
+def analyze_by_or_atr(trades, step=0.5):
+    """Analyze performance by ATR during Opening Range."""
+    print_section('ANALYSIS BY OR ATR AVG')
     if not trades:
         print('No trades to analyze')
         return
-    _print_range_table(trades, 'window_atr_avg', step, 'Window ATR', fmt='%.4f')
+    _print_range_table(trades, 'or_atr_avg', step, 'OR ATR', fmt='%.4f')
 
 
 def analyze_by_atr_range(trades, step=0.5):
@@ -668,61 +660,6 @@ def analyze_by_sl_pips(trades, step=10.0):
         print('No trades to analyze')
         return
     _print_range_table(trades, 'sl_pips', step, 'SL Pips', fmt='%.0f')
-
-
-def analyze_by_consol_bars(trades):
-    """Analyze performance by number of consolidation bars that formed the window."""
-    print_section('ANALYSIS BY CONSOLIDATION BARS')
-    consol_trades = [t for t in trades if 'consol_bars' in t]
-    if not consol_trades:
-        print('No consolidation data available (requires v1.0 log)')
-        return
-    _print_range_table(consol_trades, 'consol_bars', 1, 'Consol Bars', fmt='%.0f')
-
-
-def analyze_by_scan_bars(trades, step=5):
-    """Analyze performance by total bars spent in SCANNING state."""
-    print_section('ANALYSIS BY SCAN BARS (time to form window)')
-    scan_trades = [t for t in trades if 'scan_bars' in t]
-    if not scan_trades:
-        print('No scan data available (requires v1.0 log)')
-        return
-    _print_range_table(scan_trades, 'scan_bars', step, 'Scan Bars', fmt='%.0f')
-
-
-def analyze_by_armed_bars(trades, step=1):
-    """Analyze performance by bars spent in ARMED state (waiting for breakout)."""
-    print_section('ANALYSIS BY ARMED BARS (wait for breakout)')
-    armed_trades = [t for t in trades if 'armed_bars' in t]
-    if not armed_trades:
-        print('No armed data available (requires v1.0 log)')
-        return
-    _print_range_table(armed_trades, 'armed_bars', step, 'Armed Bars', fmt='%.0f')
-
-
-def analyze_by_breakout_candle(trades, pip_value=0.01):
-    """Analyze performance by breakout candle height."""
-    print_section('ANALYSIS BY BREAKOUT CANDLE HEIGHT (pips)')
-    bk_trades = [t for t in trades if 'breakout_candle' in t]
-    if not bk_trades:
-        print('No breakout candle data available (requires v1.0 log)')
-        return
-    for t in bk_trades:
-        t['_bk_candle_pips'] = t['breakout_candle'] / pip_value if pip_value > 0 else 0
-    step = 20.0 if pip_value <= 0.01 else 2.0
-    _print_range_table(bk_trades, '_bk_candle_pips', step, 'BK Candle (pips)')
-
-
-def analyze_by_breakout_ratio(trades):
-    """Analyze by breakout candle height / window height (offset_mult equivalent)."""
-    print_section('ANALYSIS BY BREAKOUT RATIO (candle/window_height)')
-    bk_trades = [t for t in trades if 'breakout_candle' in t and t.get('window_height', 0) > 0]
-    if not bk_trades:
-        print('No breakout data available (requires v1.0 log)')
-        return
-    for t in bk_trades:
-        t['_bk_ratio'] = t['breakout_candle'] / t['window_height']
-    _print_range_table(bk_trades, '_bk_ratio', 0.25, 'BK Ratio', fmt='%.2f')
 
 
 def analyze_by_hour(trades):
@@ -808,6 +745,59 @@ def analyze_by_exit_reason(trades):
             format_pf(m['pf']), m['avg_pnl']))
 
 
+def analyze_by_pb_bars(trades):
+    """Analyze performance by pullback bars count."""
+    print_section('ANALYSIS BY PULLBACK BARS')
+    pb_trades = [t for t in trades if 'pb_bars' in t]
+    if not pb_trades:
+        print('No pullback data available (regenerate trade log)')
+        return
+    _print_range_table(pb_trades, 'pb_bars', 1, 'PB Bars', fmt='%.0f')
+
+
+def analyze_by_pb_angle(trades, step=10.0):
+    """Analyze performance by pullback angle."""
+    print_section('ANALYSIS BY PULLBACK ANGLE (degrees)')
+    pb_trades = [t for t in trades if 'pb_angle' in t]
+    if not pb_trades:
+        print('No pullback data available (regenerate trade log)')
+        return
+    _print_range_table(pb_trades, 'pb_angle', step, 'PB Angle')
+
+
+def analyze_by_pb_depth(trades, step=10.0):
+    """Analyze performance by pullback depth (% of OR height)."""
+    print_section('ANALYSIS BY PULLBACK DEPTH (% of OR Height)')
+    pb_trades = [t for t in trades if 'pb_depth_pct' in t]
+    if not pb_trades:
+        print('No pullback data available (regenerate trade log)')
+        return
+    _print_range_table(pb_trades, 'pb_depth_pct', step, 'PB Depth %')
+
+
+def analyze_by_rearm_count(trades):
+    """Analyze performance by rearm count (0 = first pullback, 1+ = re-armed)."""
+    print_section('ANALYSIS BY REARM COUNT')
+    rc_trades = [t for t in trades if 'rearm_count' in t]
+    if not rc_trades:
+        print('No rearm data available (requires v0.8+ trade log)')
+        return
+
+    rearm_groups = defaultdict(list)
+    for t in rc_trades:
+        rearm_groups[t['rearm_count']].append(t)
+
+    print('\n%-12s %8s %6s %8s %8s %10s' % (
+        'Rearms', 'Trades', 'Wins', 'WR%', 'PF', 'Avg PnL'))
+    print('-' * 55)
+
+    for count in sorted(rearm_groups.keys()):
+        m = calculate_metrics(rearm_groups[count])
+        print('%-12d %8d %6d %7.1f%% %8s %+10.1f' % (
+            count, m['n'], m['wins'], m['wr'],
+            format_pf(m['pf']), m['avg_pnl']))
+
+
 def analyze_by_sl_mode(trades):
     """Analyze performance by SL mode."""
     print_section('ANALYSIS BY SL MODE')
@@ -830,7 +820,7 @@ def analyze_by_sl_mode(trades):
             format_pf(m['pf']), m['avg_pnl']))
 
 
-def print_summary(trades, config=None):
+def print_summary(trades):
     """Print overall summary."""
     print_section('OVERALL SUMMARY')
     if not trades:
@@ -854,17 +844,15 @@ def print_summary(trades, config=None):
     dates = sorted([t['datetime'] for t in trades])
     print('\nDate Range: %s to %s' % (dates[0], dates[-1]))
 
-    # Window Height stats
-    heights = [t['window_height'] for t in trades if 'window_height' in t]
-    if heights:
-        print('\nWindow Height Range: %.5f to %.5f' % (min(heights), max(heights)))
-        print('Window Height Avg:   %.5f' % (sum(heights) / len(heights)))
+    # OR Height stats
+    heights = [t['or_height'] for t in trades]
+    print('\nOR Height Range:  %.5f to %.5f' % (min(heights), max(heights)))
+    print('OR Height Avg:    %.5f' % (sum(heights) / len(heights)))
 
-    # Window ER stats
-    ers = [t['window_er'] for t in trades if 'window_er' in t]
-    if ers:
-        print('\nWindow ER Range:     %.4f to %.4f' % (min(ers), max(ers)))
-        print('Window ER Avg:       %.4f' % (sum(ers) / len(ers)))
+    # OR ER stats
+    ers = [t['or_er'] for t in trades]
+    print('\nOR ER Range:      %.4f to %.4f' % (min(ers), max(ers)))
+    print('OR ER Avg:        %.4f' % (sum(ers) / len(ers)))
 
     # SL pips stats
     sl_pips = [t['sl_pips'] for t in trades]
@@ -877,26 +865,6 @@ def print_summary(trades, config=None):
         print('\nBars Held Range:  %d to %d' % (min(bars), max(bars)))
         print('Bars Held Avg:    %.1f' % (sum(bars) / len(bars)))
 
-    # v1.0 specific stats
-    consol = [t['consol_bars'] for t in trades if 'consol_bars' in t]
-    if consol:
-        print('\nConsolidation Bars: %d to %d (avg %.1f)' % (
-            min(consol), max(consol), sum(consol) / len(consol)))
-    scan = [t['scan_bars'] for t in trades if 'scan_bars' in t]
-    if scan:
-        print('Scan Bars:          %d to %d (avg %.1f)' % (
-            min(scan), max(scan), sum(scan) / len(scan)))
-    armed = [t['armed_bars'] for t in trades if 'armed_bars' in t]
-    if armed:
-        print('Armed Bars:         %d to %d (avg %.1f)' % (
-            min(armed), max(armed), sum(armed) / len(armed)))
-    bk = [t['breakout_candle'] for t in trades if 'breakout_candle' in t]
-    if bk:
-        pip_value = config.get('pip_value', 0.01) if config else 0.01
-        bk_pips = [b / pip_value for b in bk]
-        print('Breakout Candle:    %.1f to %.1f pips (avg %.1f)' % (
-            min(bk_pips), max(bk_pips), sum(bk_pips) / len(bk_pips)))
-
 
 # =============================================================================
 # MAIN
@@ -904,7 +872,7 @@ def print_summary(trades, config=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Analyze CERES strategy trade logs (v1.0 mobile window)')
+        description='Analyze CERES strategy trade logs')
     parser.add_argument('logfile', nargs='?',
                         help='Specific log file to analyze')
     parser.add_argument('--all', action='store_true',
@@ -954,31 +922,29 @@ def main():
     # Configuration
     print_config(config)
 
-    # Overall summary
-    print_summary(trades, config)
+    # Run all analyses
+    print_summary(trades)
 
-    # Window-specific analyses (v1.0)
+    # CERES-specific analyses
     pip_value = config.get('pip_value', 0.01)
-    analyze_by_window_height(trades, pip_value=pip_value)
-    analyze_by_window_er(trades)
+    analyze_by_or_height(trades, pip_value=pip_value)
+    analyze_by_or_er(trades)
 
+    # ATR step: ETF ~0.1-3.0, forex ~0.0005
     atr_step = 0.5 if pip_value >= 0.01 else 0.0001
-    analyze_by_window_atr(trades, step=atr_step)
+    analyze_by_or_atr(trades, step=atr_step)
     analyze_by_atr_range(trades, step=atr_step)
     analyze_by_sl_pips(trades)
     analyze_by_sl_mode(trades)
-
-    # Temporal analyses
     analyze_by_hour(trades)
     analyze_by_day(trades)
     analyze_by_exit_reason(trades)
 
-    # v1.0: State machine analyses
-    analyze_by_consol_bars(trades)
-    analyze_by_scan_bars(trades)
-    analyze_by_armed_bars(trades)
-    analyze_by_breakout_candle(trades, pip_value=pip_value)
-    analyze_by_breakout_ratio(trades)
+    # Pullback analyses (only if data available)
+    analyze_by_pb_bars(trades)
+    analyze_by_pb_angle(trades)
+    analyze_by_pb_depth(trades)
+    analyze_by_rearm_count(trades)
 
 
 if __name__ == '__main__':

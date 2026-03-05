@@ -124,8 +124,7 @@ def parse_log(filepath):
 
     # --- Parse ENTRIES based on strategy type ---
     if strategy == 'ceres':
-        # CERES: Entry Price, SL, TP (or NONE), SL Pips, ATR (avg), OR fields
-        # Try new format first (no OR Angle, with PB fields)
+        # CERES v1.0: Mobile Window format
         entries = re.findall(
             r'ENTRY #(\d+)\n'
             r'Time: ([\d-]+ [\d:]+)\n'
@@ -134,14 +133,30 @@ def parse_log(filepath):
             r'Take Profit: [^\n]+\n'
             r'SL Pips: ([\d.]+)\n'
             r'ATR(?:\s*\(avg\))?: ([\d.]+)\n'
-            r'OR HH: [\d.]+\n'
-            r'OR LL: [\d.]+\n'
-            r'OR Height: [\d.]+\n'
-            r'OR ER: [\d.]+',
+            r'Window High: [\d.]+\n'
+            r'Window Low: [\d.]+\n'
+            r'Window Height: [\d.]+\n'
+            r'Window ER: [\d.]+',
             content
         )
         if not entries:
-            # Fallback: legacy format with OR Angle
+            # Fallback: legacy OR format (no OR Angle)
+            entries = re.findall(
+                r'ENTRY #(\d+)\n'
+                r'Time: ([\d-]+ [\d:]+)\n'
+                r'Entry Price: [\d.]+\n'
+                r'Stop Loss: [\d.]+\n'
+                r'Take Profit: [^\n]+\n'
+                r'SL Pips: ([\d.]+)\n'
+                r'ATR(?:\s*\(avg\))?: ([\d.]+)\n'
+                r'OR HH: [\d.]+\n'
+                r'OR LL: [\d.]+\n'
+                r'OR Height: [\d.]+\n'
+                r'OR ER: [\d.]+',
+                content
+            )
+        if not entries:
+            # Fallback: oldest OR format with OR Angle
             entries = re.findall(
                 r'ENTRY #(\d+)\n'
                 r'Time: ([\d-]+ [\d:]+)\n'

@@ -2859,13 +2859,13 @@ STRATEGIES_CONFIG = {
     # =========================================================================
 
     'GLD_CERES': {
-        'active': False,
+        'active': True,
         'strategy_name': 'CERES',
         'asset_name': 'GLD',
         'data_path': 'data/GLD_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -2875,48 +2875,38 @@ STRATEGIES_CONFIG = {
         'debug_mode': False,
 
         'params': {
-            # Opening Range
+            # Consolidation Window
             'delay_bars': 0,
-            'or_candles': 15,
+            'consolidation_bars': 15,
 
-            # Quality Filters
-            'use_or_height_filter': False,
-            'or_height_min': 10.0,
-            'or_height_max': 200.0,
+            # Window Quality Filters
+            'use_window_height_filter': True,
+            'window_height_min': 50.0,
+            'window_height_max': 100.0,
 
-            'use_pb_angle_filter': False,
-            'pb_angle_min': 10.0,
-            'pb_angle_max': 60.0,
-
-            'use_pb_depth_filter': False,
-            'pb_depth_min': 0.0,
-            'pb_depth_max': 60.0,
-
-            'allowed_pb_bars': [],
-
-            'use_er_or_filter': False,
-            'er_or_min': 0.0,
-            'er_or_max': 1.0,
+            'use_window_er_filter': True,
+            'window_er_min': 0.0,
+            'window_er_max': 0.30,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
-            # Pullback (simple: close<HH then close>HH)
-            'pullback_max_bars': 20,
+            # Breakout
+            'breakout_offset_mult': 0.0,
 
             # Stop Loss
-            'sl_mode': 'or_low',
+            'sl_mode': 'window_low',
             'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
             'sl_atr_mult': 3.0,
 
             # Take Profit
-            'tp_mode': 'none',
-            'tp_or_mult': 1.5,
+            'tp_mode': 'window_height_mult',
+            'tp_window_mult': 1.5,
             'tp_fixed_pips': 50.0,
-            'tp_atr_mult': 10.0,
+            'tp_atr_mult': 8.0,
 
             # EOD Close
             'use_eod_close': True,
@@ -2925,13 +2915,13 @@ STRATEGIES_CONFIG = {
 
             # Standard Filters
             'use_time_filter': False,
-            'allowed_hours': [14, 15, 17, 18, 19],
+            'allowed_hours': [],
             'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
 
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 70.0,
-            'sl_pips_max': 90.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 60.0,
+            'sl_pips_max': 110.0,
 
             # ATR
             'atr_length': 14,
