@@ -3099,9 +3099,9 @@ STRATEGIES_CONFIG = {
             'use_bk_candle_filter': True,
             'bk_candle_min': 20.0,
             'bk_candle_max': 60.0,
-            'use_bk_ratio_filter': False,
+            'use_bk_ratio_filter': True,
             'bk_ratio_min': 0.0,
-            'bk_ratio_max': 1.0,
+            'bk_ratio_max': 0.25,
 
             # Stop Loss
             'sl_mode': 'atr_mult',

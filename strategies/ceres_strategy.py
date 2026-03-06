@@ -1010,7 +1010,12 @@ class CERESStrategy(bt.Strategy):
                 candle_height = bar_high - bar_low
                 min_candle = self.p.breakout_offset_mult * self.window_height
 
-                if self.p.breakout_offset_mult <= 0 or candle_height >= min_candle:
+                # Skip breakout_offset_mult when bk_ratio_filter is active
+                # (bk_ratio_min replaces breakout_offset_mult as min ratio)
+                offset_ok = (self.p.use_bk_ratio_filter
+                             or self.p.breakout_offset_mult <= 0
+                             or candle_height >= min_candle)
+                if offset_ok:
                     # BK candle pips filter
                     candle_pips = candle_height / self.p.pip_value
                     if (self.p.use_bk_candle_filter
