@@ -136,6 +136,7 @@ class CERESStrategy(bt.Strategy):
         er_htf_timeframe_minutes=60,
 
         # --- Breakout ---
+        use_body_breakout=False,    # Require candle body (not wick) above window_high
         breakout_offset_mult=0.0,   # Min candle range / window height (0=disabled)
 
         # --- Stop Loss ---
@@ -309,6 +310,7 @@ class CERESStrategy(bt.Strategy):
                 f.write("ER HTF Filter: DISABLED\n")
 
             # Breakout
+            f.write("Body Breakout: %s\n" % ("ENABLED" if self.p.use_body_breakout else "DISABLED"))
             if self.p.breakout_offset_mult > 0:
                 f.write("Breakout Offset: %.2f (min candle/window_height)\n"
                         % self.p.breakout_offset_mult)
@@ -949,7 +951,16 @@ class CERESStrategy(bt.Strategy):
             bar_close = float(self.data.close[0])
 
             # Check breakout above window high
-            if bar_close > self.window_high:
+            # Body breakout: require min(open, close) above window_high
+            bar_open = float(self.data.open[0])
+            body_low = min(bar_open, bar_close)
+
+            if self.p.use_body_breakout:
+                breakout_ok = body_low > self.window_high
+            else:
+                breakout_ok = bar_close > self.window_high
+
+            if breakout_ok:
                 # Breakout detected! Check candle size filter
                 candle_height = bar_high - bar_low
                 min_candle = self.p.breakout_offset_mult * self.window_height
@@ -1315,6 +1326,7 @@ class CERESStrategy(bt.Strategy):
         print("=" * 70)
         print("  Consolidation: %d bars, delay=%d bars after open"
               % (self.p.consolidation_bars, self.p.delay_bars))
+        print("  Body Breakout: %s" % ("ENABLED" if self.p.use_body_breakout else "DISABLED"))
         if self.p.breakout_offset_mult > 0:
             print("  Breakout Offset: %.2f (min candle/window_height)"
                   % self.p.breakout_offset_mult)

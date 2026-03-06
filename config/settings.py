@@ -2894,6 +2894,7 @@ STRATEGIES_CONFIG = {
             'er_htf_timeframe_minutes': 15,
 
             # Breakout
+            'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
 
             # Stop Loss
@@ -2959,57 +2960,48 @@ STRATEGIES_CONFIG = {
         'debug_mode': False,
 
         'params': {
-            # Opening Range
-            'delay_bars': 0,                   # 0 = OR starts at first bar of day (DST-agnostic)
-            'or_candles': 15,                  # 15 x 5min = 75min OR window
+            # Consolidation Window (v1.0)
+            'delay_bars': 0,
+            'consolidation_bars': 15,
 
-            # Quality Filters (all OFF for baseline)
-            'use_or_height_filter': False,
-            'or_height_min': 10.0,
-            'or_height_max': 200.0,
+            # Window Quality Filters (ALL OFF for baseline)
+            'use_window_height_filter': False,
+            'window_height_min': 10.0,
+            'window_height_max': 200.0,
 
-            'use_pb_angle_filter': False,
-            'pb_angle_min': 10.0,
-            'pb_angle_max': 60.0,
-
-            'use_pb_depth_filter': False,
-            'pb_depth_min': 0.0,
-            'pb_depth_max': 60.0,
-
-            'allowed_pb_bars': [],             # Empty = all allowed
-
-            'use_er_or_filter': False,
-            'er_or_min': 0.0,
-            'er_or_max': 0.9,
+            'use_window_er_filter': False,
+            'window_er_min': 0.0,
+            'window_er_max': 0.9,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
-            # Pullback (simple: close<HH then close>HH)
-            'pullback_max_bars': 20,
+            # Breakout
+            'use_body_breakout': False,
+            'breakout_offset_mult': 0.0,
 
-            # Stop Loss  (options: 'or_low' | 'fixed_pips' | 'atr_mult')
-            'sl_mode': 'or_low',
+            # Stop Loss
+            'sl_mode': 'window_low',
             'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
             'sl_atr_mult': 3.0,
 
-            # Take Profit  (options: 'none' | 'or_height_mult' | 'fixed_pips' | 'atr_mult')
-            'tp_mode': 'none',                 # EOD close only
-            'tp_or_mult': 1.5,
+            # Take Profit
+            'tp_mode': 'none',
+            'tp_window_mult': 1.5,
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 10.0,
 
-            # EOD Close (UTC) - 20:45 = 15 min before US close
+            # EOD Close (UTC)
             'use_eod_close': True,
             'eod_close_hour': 20,
             'eod_close_minute': 45,
 
             # Standard Filters
             'use_time_filter': False,
-            'allowed_hours': [14, 15, 17, 18, 19],
+            'allowed_hours': [],
             'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
 
@@ -3037,7 +3029,7 @@ STRATEGIES_CONFIG = {
     },
 
     'DIA_CERES': {
-        'active': False,
+        'active': True,
         'strategy_name': 'CERES',
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
@@ -3053,46 +3045,37 @@ STRATEGIES_CONFIG = {
         'debug_mode': False,
 
         'params': {
-            # Opening Range: 12 bars x 5min = 60min (full first hour)
+            # Consolidation Window (v1.0)
             'delay_bars': 0,
-            'or_candles': 12,
+            'consolidation_bars': 15,
 
-            # Quality Filters (ALL OFF for baseline)
-            'use_or_height_filter': False,
-            'or_height_min': 10.0,
-            'or_height_max': 9999.0,
+            # Window Quality Filters (ALL OFF for baseline)
+            'use_window_height_filter': False,
+            'window_height_min': 10.0,
+            'window_height_max': 9999.0,
 
-            'use_pb_angle_filter': False,
-            'pb_angle_min': -90.0,
-            'pb_angle_max': 90.0,
-
-            'use_pb_depth_filter': False,
-            'pb_depth_min': 0.0,
-            'pb_depth_max': 100.0,
-
-            'allowed_pb_bars': [],
-
-            'use_er_or_filter': False,
-            'er_or_min': 0.0,
-            'er_or_max': 1.0,
+            'use_window_er_filter': False,
+            'window_er_min': 0.0,
+            'window_er_max': 1.0,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
-            # Pullback (simple: close<HH then close>HH)
-            'pullback_max_bars': 50,
+            # Breakout
+            'use_body_breakout': False,
+            'breakout_offset_mult': 0.0,
 
-            # Stop Loss: OR low (natural intraday support)
-            'sl_mode': 'or_low',
+            # Stop Loss
+            'sl_mode': 'window_low',
             'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
             'sl_atr_mult': 3.0,
 
-            # Take Profit: none (EOD close captures full intraday move)
+            # Take Profit
             'tp_mode': 'none',
-            'tp_or_mult': 1.5,
+            'tp_window_mult': 1.5,
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 10.0,
 
@@ -3147,46 +3130,37 @@ STRATEGIES_CONFIG = {
         'debug_mode': False,
 
         'params': {
-            # Opening Range: 12 bars x 5min = 60min
+            # Consolidation Window (v1.0)
             'delay_bars': 0,
-            'or_candles': 12,
+            'consolidation_bars': 12,
 
-            # Quality Filters (ALL OFF for baseline)
-            'use_or_height_filter': False,
-            'or_height_min': 10.0,
-            'or_height_max': 9999.0,
+            # Window Quality Filters (ALL OFF for baseline)
+            'use_window_height_filter': False,
+            'window_height_min': 10.0,
+            'window_height_max': 9999.0,
 
-            'use_pb_angle_filter': False,
-            'pb_angle_min': -90.0,
-            'pb_angle_max': 90.0,
-
-            'use_pb_depth_filter': False,
-            'pb_depth_min': 0.0,
-            'pb_depth_max': 100.0,
-
-            'allowed_pb_bars': [],
-
-            'use_er_or_filter': False,
-            'er_or_min': 0.0,
-            'er_or_max': 1.0,
+            'use_window_er_filter': False,
+            'window_er_min': 0.0,
+            'window_er_max': 1.0,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
-            # Pullback (simple: close<HH then close>HH)
-            'pullback_max_bars': 50,
+            # Breakout
+            'use_body_breakout': False,
+            'breakout_offset_mult': 0.0,
 
-            # Stop Loss: OR low (natural intraday support)
-            'sl_mode': 'or_low',
+            # Stop Loss
+            'sl_mode': 'window_low',
             'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
             'sl_atr_mult': 3.0,
 
-            # Take Profit: none (EOD close)
+            # Take Profit
             'tp_mode': 'none',
-            'tp_or_mult': 1.5,
+            'tp_window_mult': 1.5,
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 10.0,
 
