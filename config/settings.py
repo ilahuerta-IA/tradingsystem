@@ -2905,6 +2905,9 @@ STRATEGIES_CONFIG = {
             'use_bk_candle_filter': False,
             'bk_candle_min': 0.0,
             'bk_candle_max': 9999.0,
+            'use_bk_ratio_filter': False,
+            'bk_ratio_min': 0.0,
+            'bk_ratio_max': 1.0,
 
             # Stop Loss
             'sl_mode': 'window_low',
@@ -2999,6 +3002,9 @@ STRATEGIES_CONFIG = {
             'use_bk_candle_filter': False,
             'bk_candle_min': 0.0,
             'bk_candle_max': 9999.0,
+            'use_bk_ratio_filter': False,
+            'bk_ratio_min': 0.0,
+            'bk_ratio_max': 1.0,
 
             # Stop Loss
             'sl_mode': 'window_low',
@@ -3068,9 +3074,9 @@ STRATEGIES_CONFIG = {
             'consolidation_bars': 15,
 
             # Window Quality Filters (ALL OFF for baseline)
-            'use_window_height_filter': False,
+            'use_window_height_filter': True,
             'window_height_min': 20.0,
-            'window_height_max': 26.0,
+            'window_height_max': 500.0,
 
             'use_window_er_filter': False,
             'window_er_min': 0.0,
@@ -3089,22 +3095,25 @@ STRATEGIES_CONFIG = {
 
             # Breakout
             'use_body_breakout': False,
-            'breakout_offset_mult': 0.0,
+            'breakout_offset_mult': 0.25,
             'use_bk_candle_filter': True,
             'bk_candle_min': 20.0,
-            'bk_candle_max': 100.0,
+            'bk_candle_max': 60.0,
+            'use_bk_ratio_filter': False,
+            'bk_ratio_min': 0.0,
+            'bk_ratio_max': 1.0,
 
             # Stop Loss
-            'sl_mode': 'window_low',
+            'sl_mode': 'atr_mult',
             'sl_buffer_pips': 1.0,
             'sl_fixed_pips': 30.0,
-            'sl_atr_mult': 3.0,
+            'sl_atr_mult': 2.0,
 
             # Take Profit
-            'tp_mode': 'none',
+            'tp_mode': 'atr_mult',
             'tp_window_mult': 1.5,
             'tp_fixed_pips': 50.0,
-            'tp_atr_mult': 10.0,
+            'tp_atr_mult': 5.0,
 
             # EOD Close (UTC) — 20:45 = ~15 min before NYSE close
             'use_eod_close': True,
@@ -3187,6 +3196,9 @@ STRATEGIES_CONFIG = {
             'use_bk_candle_filter': False,
             'bk_candle_min': 0.0,
             'bk_candle_max': 9999.0,
+            'use_bk_ratio_filter': False,
+            'bk_ratio_min': 0.0,
+            'bk_ratio_max': 1.0,
 
             # Stop Loss
             'sl_mode': 'window_low',

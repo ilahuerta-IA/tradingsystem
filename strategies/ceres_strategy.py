@@ -147,6 +147,9 @@ class CERESStrategy(bt.Strategy):
         use_bk_candle_filter=False, # Filter breakout candle height in pips
         bk_candle_min=0.0,          # Min breakout candle height (pips)
         bk_candle_max=9999.0,       # Max breakout candle height (pips)
+        use_bk_ratio_filter=False,  # Filter breakout candle/window ratio
+        bk_ratio_min=0.0,           # Min ratio (candle_height / window_height)
+        bk_ratio_max=1.0,           # Max ratio
 
         # --- Stop Loss ---
         sl_mode='window_low',       # 'window_low' | 'fixed_pips' | 'atr_mult'
@@ -341,6 +344,12 @@ class CERESStrategy(bt.Strategy):
                     self.p.bk_candle_min, self.p.bk_candle_max))
             else:
                 f.write("BK Candle Filter: DISABLED\n")
+
+            if self.p.use_bk_ratio_filter:
+                f.write("BK Ratio Filter: ENABLED | Range: %.2f-%.2f\n" % (
+                    self.p.bk_ratio_min, self.p.bk_ratio_max))
+            else:
+                f.write("BK Ratio Filter: DISABLED\n")
 
             # SL / TP
             f.write("SL Mode: %s | Buffer: %.1f pips" % (
@@ -1011,6 +1020,26 @@ class CERESStrategy(bt.Strategy):
                                   'out of range %.1f-%.1f'
                                   % (dt, self.data._name, candle_pips,
                                      self.p.bk_candle_min, self.p.bk_candle_max))
+                    # BK ratio filter (candle_height / window_height)
+                    elif (self.p.use_bk_ratio_filter and self.window_height > 0):
+                        bk_ratio = candle_height / self.window_height
+                        if not (self.p.bk_ratio_min <= bk_ratio <= self.p.bk_ratio_max):
+                            if self.p.print_signals:
+                                print('%s [%s] BREAKOUT REJECTED: bk_ratio=%.4f '
+                                      'out of range %.2f-%.2f'
+                                      % (dt, self.data._name, bk_ratio,
+                                         self.p.bk_ratio_min, self.p.bk_ratio_max))
+                        else:
+                            if self.p.print_signals:
+                                print('%s [%s] BREAKOUT: close=%.5f > window=%.5f, '
+                                      'candle=%.1f pips (min=%.1f)'
+                                      % (dt, self.data._name, bar_close,
+                                         self.window_high,
+                                         candle_pips,
+                                         min_candle / self.p.pip_value))
+                            self._execute_entry(dt, atr_avg, candle_height)
+                            self._reset_state()
+                            return
                     else:
                         if self.p.print_signals:
                             print('%s [%s] BREAKOUT: close=%.5f > window=%.5f, '
