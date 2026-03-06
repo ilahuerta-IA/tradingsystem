@@ -144,6 +144,9 @@ class CERESStrategy(bt.Strategy):
         # --- Breakout ---
         use_body_breakout=False,    # Require candle body (not wick) above window_high
         breakout_offset_mult=0.0,   # Min candle range / window height (0=disabled)
+        use_bk_candle_filter=False, # Filter breakout candle height in pips
+        bk_candle_min=0.0,          # Min breakout candle height (pips)
+        bk_candle_max=9999.0,       # Max breakout candle height (pips)
 
         # --- Stop Loss ---
         sl_mode='window_low',       # 'window_low' | 'fixed_pips' | 'atr_mult'
@@ -332,6 +335,12 @@ class CERESStrategy(bt.Strategy):
                         % self.p.breakout_offset_mult)
             else:
                 f.write("Breakout Offset: DISABLED (any close > window_high)\n")
+
+            if self.p.use_bk_candle_filter:
+                f.write("BK Candle Filter: ENABLED | Range: %.1f-%.1f pips\n" % (
+                    self.p.bk_candle_min, self.p.bk_candle_max))
+            else:
+                f.write("BK Candle Filter: DISABLED\n")
 
             # SL / TP
             f.write("SL Mode: %s | Buffer: %.1f pips" % (
@@ -991,16 +1000,26 @@ class CERESStrategy(bt.Strategy):
                 min_candle = self.p.breakout_offset_mult * self.window_height
 
                 if self.p.breakout_offset_mult <= 0 or candle_height >= min_candle:
-                    if self.p.print_signals:
-                        print('%s [%s] BREAKOUT: close=%.5f > window=%.5f, '
-                              'candle=%.1f pips (min=%.1f)'
-                              % (dt, self.data._name, bar_close,
-                                 self.window_high,
-                                 candle_height / self.p.pip_value,
-                                 min_candle / self.p.pip_value))
-                    self._execute_entry(dt, atr_avg, candle_height)
-                    self._reset_state()
-                    return
+                    # BK candle pips filter
+                    candle_pips = candle_height / self.p.pip_value
+                    if (self.p.use_bk_candle_filter
+                            and not (self.p.bk_candle_min <= candle_pips <= self.p.bk_candle_max)):
+                        if self.p.print_signals:
+                            print('%s [%s] BREAKOUT REJECTED: bk_candle=%.1f pips '
+                                  'out of range %.1f-%.1f'
+                                  % (dt, self.data._name, candle_pips,
+                                     self.p.bk_candle_min, self.p.bk_candle_max))
+                    else:
+                        if self.p.print_signals:
+                            print('%s [%s] BREAKOUT: close=%.5f > window=%.5f, '
+                                  'candle=%.1f pips (min=%.1f)'
+                                  % (dt, self.data._name, bar_close,
+                                     self.window_high,
+                                     candle_pips,
+                                     min_candle / self.p.pip_value))
+                        self._execute_entry(dt, atr_avg, candle_height)
+                        self._reset_state()
+                        return
                 else:
                     if self.p.print_signals:
                         print('%s [%s] BREAKOUT REJECTED: candle=%.1f pips '

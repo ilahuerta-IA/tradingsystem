@@ -2902,6 +2902,9 @@ STRATEGIES_CONFIG = {
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
+            'use_bk_candle_filter': False,
+            'bk_candle_min': 0.0,
+            'bk_candle_max': 9999.0,
 
             # Stop Loss
             'sl_mode': 'window_low',
@@ -2993,6 +2996,9 @@ STRATEGIES_CONFIG = {
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
+            'use_bk_candle_filter': False,
+            'bk_candle_min': 0.0,
+            'bk_candle_max': 9999.0,
 
             # Stop Loss
             'sl_mode': 'window_low',
@@ -3084,6 +3090,9 @@ STRATEGIES_CONFIG = {
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
+            'use_bk_candle_filter': False,
+            'bk_candle_min': 0.0,
+            'bk_candle_max': 9999.0,
 
             # Stop Loss
             'sl_mode': 'window_low',
@@ -3175,6 +3184,9 @@ STRATEGIES_CONFIG = {
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
+            'use_bk_candle_filter': False,
+            'bk_candle_min': 0.0,
+            'bk_candle_max': 9999.0,
 
             # Stop Loss
             'sl_mode': 'window_low',
