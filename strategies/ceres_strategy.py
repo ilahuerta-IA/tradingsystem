@@ -590,13 +590,14 @@ class CERESStrategy(bt.Strategy):
 
         if current_minutes >= eod_minutes:
             self.last_exit_reason = "EOD_CLOSE"
-            if self.stop_order:
-                self.cancel(self.stop_order)
-                self.stop_order = None
-            if self.limit_order:
-                self.cancel(self.limit_order)
-                self.limit_order = None
-            self.close()
+            # Use OCO to avoid race condition: cancel+close can both fill
+            oco_ref = self.stop_order or self.limit_order
+            if oco_ref:
+                self.close(oco=oco_ref)
+            else:
+                self.close()
+            self.stop_order = None
+            self.limit_order = None
 
             if self.p.print_signals:
                 print(
@@ -800,13 +801,14 @@ class CERESStrategy(bt.Strategy):
             # Force-close any overnight position (DST-safe EOD)
             if self.position and self.p.use_eod_close:
                 self.last_exit_reason = "EOD_CLOSE"
-                if self.stop_order:
-                    self.cancel(self.stop_order)
-                    self.stop_order = None
-                if self.limit_order:
-                    self.cancel(self.limit_order)
-                    self.limit_order = None
-                self.order = self.close()
+                # Use OCO to avoid race condition: cancel+close can both fill
+                oco_ref = self.stop_order or self.limit_order
+                if oco_ref:
+                    self.order = self.close(oco=oco_ref)
+                else:
+                    self.order = self.close()
+                self.stop_order = None
+                self.limit_order = None
                 if self.p.print_signals:
                     print('%s [%s] === EOD CLOSE (day change) @ %.2f ==='
                           % (dt, self.data._name, self.data.close[0]))
