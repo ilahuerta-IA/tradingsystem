@@ -3092,11 +3092,11 @@ STRATEGIES_CONFIG = {
             'er_htf_timeframe_minutes': 15,
 
             # Scan / Armed limits
-            'use_max_scan_bars': False,
-            'min_scan_bars': 0,
-            'max_scan_bars': 50,
+            'use_max_scan_bars': True,
+            'min_scan_bars': 5,
+            'max_scan_bars': 25,
             'use_max_armed_bars': True,
-            'min_armed_bars': 0,
+            'min_armed_bars': 7,
             'max_armed_bars': 17,
 
             # Breakout

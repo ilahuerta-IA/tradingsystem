@@ -1012,6 +1012,18 @@ class CERESStrategy(bt.Strategy):
                 breakout_ok = bar_close > self.window_high
 
             if breakout_ok:
+                # Min armed bars: breakout too early → pattern unstable, reset
+                if (self.p.use_max_armed_bars
+                        and self.armed_bar_count < self.p.min_armed_bars):
+                    if self.p.print_signals:
+                        print('%s [%s] BREAKOUT REJECTED: armed=%d < min %d, reset'
+                              % (dt, self.data._name, self.armed_bar_count,
+                                 self.p.min_armed_bars))
+                    self.state = "SCANNING"
+                    self._soft_reset_window()
+                    self.armed_bar_count = 0
+                    return
+
                 # Breakout detected! Check candle size filter
                 candle_height = bar_high - bar_low
                 min_candle = self.p.breakout_offset_mult * self.window_height
