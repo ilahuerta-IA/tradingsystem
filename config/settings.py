@@ -2893,6 +2893,12 @@ STRATEGIES_CONFIG = {
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
+            # Scan / Armed limits
+            'use_max_scan_bars': False,
+            'max_scan_bars': 50,
+            'use_max_armed_bars': False,
+            'max_armed_bars': 30,
+
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
@@ -2978,6 +2984,12 @@ STRATEGIES_CONFIG = {
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
+            # Scan / Armed limits
+            'use_max_scan_bars': False,
+            'max_scan_bars': 50,
+            'use_max_armed_bars': False,
+            'max_armed_bars': 30,
+
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
@@ -3035,7 +3047,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/DIA_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 1),
 
         'starting_cash': 100000.0,
 
@@ -3051,8 +3063,8 @@ STRATEGIES_CONFIG = {
 
             # Window Quality Filters (ALL OFF for baseline)
             'use_window_height_filter': False,
-            'window_height_min': 10.0,
-            'window_height_max': 9999.0,
+            'window_height_min': 20.0,
+            'window_height_max': 26.0,
 
             'use_window_er_filter': False,
             'window_er_min': 0.0,
@@ -3062,6 +3074,12 @@ STRATEGIES_CONFIG = {
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
+
+            # Scan / Armed limits
+            'use_max_scan_bars': False,
+            'max_scan_bars': 50,
+            'use_max_armed_bars': False,
+            'max_armed_bars': 30,
 
             # Breakout
             'use_body_breakout': False,
@@ -3147,6 +3165,12 @@ STRATEGIES_CONFIG = {
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
+
+            # Scan / Armed limits
+            'use_max_scan_bars': False,
+            'max_scan_bars': 50,
+            'use_max_armed_bars': False,
+            'max_armed_bars': 30,
 
             # Breakout
             'use_body_breakout': False,

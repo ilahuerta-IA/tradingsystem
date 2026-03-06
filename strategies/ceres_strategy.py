@@ -135,6 +135,12 @@ class CERESStrategy(bt.Strategy):
         er_htf_period=10,
         er_htf_timeframe_minutes=60,
 
+        # --- Scan / Armed limits ---
+        use_max_scan_bars=False,    # Limit how long the consolidation can last
+        max_scan_bars=50,           # Max bars in SCANNING before reset
+        use_max_armed_bars=False,   # Limit how long to wait for breakout
+        max_armed_bars=30,          # Max bars in ARMED before reset
+
         # --- Breakout ---
         use_body_breakout=False,    # Require candle body (not wick) above window_high
         breakout_offset_mult=0.0,   # Min candle range / window height (0=disabled)
@@ -308,6 +314,16 @@ class CERESStrategy(bt.Strategy):
                     self.p.er_htf_timeframe_minutes))
             else:
                 f.write("ER HTF Filter: DISABLED\n")
+
+            # Scan / Armed limits
+            if self.p.use_max_scan_bars:
+                f.write("Max Scan Bars: ENABLED | Max: %d\n" % self.p.max_scan_bars)
+            else:
+                f.write("Max Scan Bars: DISABLED\n")
+            if self.p.use_max_armed_bars:
+                f.write("Max Armed Bars: ENABLED | Max: %d\n" % self.p.max_armed_bars)
+            else:
+                f.write("Max Armed Bars: DISABLED\n")
 
             # Breakout
             f.write("Body Breakout: %s\n" % ("ENABLED" if self.p.use_body_breakout else "DISABLED"))
@@ -939,6 +955,15 @@ class CERESStrategy(bt.Strategy):
                         # Window rejected by quality filter -- start fresh
                         self._soft_reset_window()
 
+            # Max scan bars limit: if consolidation takes too long, reset
+            if (self.state == "SCANNING" and self.p.use_max_scan_bars
+                    and self.scan_bar_count > self.p.max_scan_bars):
+                if self.p.print_signals:
+                    print('%s [%s] SCAN TIMEOUT: %d bars > max %d'
+                          % (dt, self.data._name, self.scan_bar_count,
+                             self.p.max_scan_bars))
+                self._soft_reset_window()
+
         # ---- STATE: ARMED (waiting breakout above window high) ----
         elif self.state == "ARMED":
             self.armed_bar_count += 1
@@ -983,6 +1008,18 @@ class CERESStrategy(bt.Strategy):
                               % (dt, self.data._name,
                                  candle_height / self.p.pip_value,
                                  min_candle / self.p.pip_value))
+
+            # Max armed bars limit: waited too long for breakout, reset
+            if (self.p.use_max_armed_bars
+                    and self.armed_bar_count > self.p.max_armed_bars):
+                if self.p.print_signals:
+                    print('%s [%s] ARMED TIMEOUT: %d bars > max %d'
+                          % (dt, self.data._name, self.armed_bar_count,
+                             self.p.max_armed_bars))
+                self.state = "SCANNING"
+                self._soft_reset_window()
+                self.armed_bar_count = 0
+                return
 
             # Check if pattern broken (close below window low)
             if bar_close < self.window_low:
