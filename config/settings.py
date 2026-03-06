@@ -2895,8 +2895,10 @@ STRATEGIES_CONFIG = {
 
             # Scan / Armed limits
             'use_max_scan_bars': False,
+            'min_scan_bars': 0,
             'max_scan_bars': 50,
             'use_max_armed_bars': False,
+            'min_armed_bars': 0,
             'max_armed_bars': 30,
 
             # Breakout
@@ -2992,8 +2994,10 @@ STRATEGIES_CONFIG = {
 
             # Scan / Armed limits
             'use_max_scan_bars': False,
+            'min_scan_bars': 0,
             'max_scan_bars': 50,
             'use_max_armed_bars': False,
+            'min_armed_bars': 0,
             'max_armed_bars': 30,
 
             # Breakout
@@ -3059,7 +3063,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/DIA_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -3071,11 +3075,11 @@ STRATEGIES_CONFIG = {
         'params': {
             # Consolidation Window (v1.0)
             'delay_bars': 0,
-            'consolidation_bars': 15,
+            'consolidation_bars': 7,
 
             # Window Quality Filters (ALL OFF for baseline)
             'use_window_height_filter': True,
-            'window_height_min': 20.0,
+            'window_height_min': 150.0,
             'window_height_max': 500.0,
 
             'use_window_er_filter': False,
@@ -3089,16 +3093,18 @@ STRATEGIES_CONFIG = {
 
             # Scan / Armed limits
             'use_max_scan_bars': False,
+            'min_scan_bars': 0,
             'max_scan_bars': 50,
-            'use_max_armed_bars': False,
-            'max_armed_bars': 30,
+            'use_max_armed_bars': True,
+            'min_armed_bars': 0,
+            'max_armed_bars': 17,
 
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.25,
             'use_bk_candle_filter': True,
             'bk_candle_min': 20.0,
-            'bk_candle_max': 60.0,
+            'bk_candle_max': 40.0,
             'use_bk_ratio_filter': True,
             'bk_ratio_min': 0.0,
             'bk_ratio_max': 0.25,
@@ -3124,11 +3130,11 @@ STRATEGIES_CONFIG = {
             'use_time_filter': False,
             'allowed_hours': [],
             'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'allowed_days': [0, 2, 3, 4],
 
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 5.0,
-            'sl_pips_max': 500.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 70.0,
+            'sl_pips_max': 200.0,
 
             # ATR
             'atr_length': 14,
@@ -3186,8 +3192,10 @@ STRATEGIES_CONFIG = {
 
             # Scan / Armed limits
             'use_max_scan_bars': False,
+            'min_scan_bars': 0,
             'max_scan_bars': 50,
             'use_max_armed_bars': False,
+            'min_armed_bars': 0,
             'max_armed_bars': 30,
 
             # Breakout

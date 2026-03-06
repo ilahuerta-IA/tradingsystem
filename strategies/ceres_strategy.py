@@ -137,8 +137,10 @@ class CERESStrategy(bt.Strategy):
 
         # --- Scan / Armed limits ---
         use_max_scan_bars=False,    # Limit how long the consolidation can last
+        min_scan_bars=0,            # Min bars in SCANNING before allowing ARMED
         max_scan_bars=50,           # Max bars in SCANNING before reset
         use_max_armed_bars=False,   # Limit how long to wait for breakout
+        min_armed_bars=0,           # Min bars in ARMED before allowing breakout
         max_armed_bars=30,          # Max bars in ARMED before reset
 
         # --- Breakout ---
@@ -323,13 +325,13 @@ class CERESStrategy(bt.Strategy):
 
             # Scan / Armed limits
             if self.p.use_max_scan_bars:
-                f.write("Max Scan Bars: ENABLED | Max: %d\n" % self.p.max_scan_bars)
+                f.write("Scan Bars: ENABLED | Min: %d Max: %d\n" % (self.p.min_scan_bars, self.p.max_scan_bars))
             else:
-                f.write("Max Scan Bars: DISABLED\n")
+                f.write("Scan Bars: DISABLED\n")
             if self.p.use_max_armed_bars:
-                f.write("Max Armed Bars: ENABLED | Max: %d\n" % self.p.max_armed_bars)
+                f.write("Armed Bars: ENABLED | Min: %d Max: %d\n" % (self.p.min_armed_bars, self.p.max_armed_bars))
             else:
-                f.write("Max Armed Bars: DISABLED\n")
+                f.write("Armed Bars: DISABLED\n")
 
             # Breakout
             f.write("Body Breakout: %s\n" % ("ENABLED" if self.p.use_body_breakout else "DISABLED"))
@@ -964,8 +966,12 @@ class CERESStrategy(bt.Strategy):
                                self.window_er, self.consol_count,
                                self.scan_bar_count))
 
+                    # Min scan bars gate
+                    if (self.p.use_max_scan_bars
+                            and self.scan_bar_count < self.p.min_scan_bars):
+                        pass  # Not enough scan bars yet, stay SCANNING
                     # Quality check
-                    if self._check_window_quality():
+                    elif self._check_window_quality():
                         self.state = "ARMED"
                         self.armed_bar_count = 0
                         if self.p.print_signals:
