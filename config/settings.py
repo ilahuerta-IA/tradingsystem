@@ -2923,7 +2923,7 @@ STRATEGIES_CONFIG = {
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 8.0,
 
-            # EOD Close
+            # EOD Close (UTC, standard time; DST auto-adjusts -1h)
             'use_eod_close': True,
             'eod_close_hour': 20,
             'eod_close_minute': 45,
@@ -3022,7 +3022,7 @@ STRATEGIES_CONFIG = {
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 10.0,
 
-            # EOD Close (UTC)
+            # EOD Close (UTC, standard time; DST auto-adjusts -1h)
             'use_eod_close': True,
             'eod_close_hour': 20,
             'eod_close_minute': 45,
@@ -3121,7 +3121,7 @@ STRATEGIES_CONFIG = {
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 5.0,
 
-            # EOD Close (UTC) — 20:45 = ~15 min before NYSE close
+            # EOD Close (UTC, standard time; DST auto-adjusts -1h)
             'use_eod_close': True,
             'eod_close_hour': 20,
             'eod_close_minute': 45,
@@ -3220,7 +3220,7 @@ STRATEGIES_CONFIG = {
             'tp_fixed_pips': 50.0,
             'tp_atr_mult': 10.0,
 
-            # EOD Close (UTC)
+            # EOD Close (UTC, standard time; DST auto-adjusts -1h)
             'use_eod_close': True,
             'eod_close_hour': 20,
             'eod_close_minute': 45,
