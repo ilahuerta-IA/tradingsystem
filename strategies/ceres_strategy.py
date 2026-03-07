@@ -1011,6 +1011,29 @@ class CERESStrategy(bt.Strategy):
             bar_low = float(self.data.low[0])
             bar_close = float(self.data.close[0])
 
+            # Max armed bars timeout: check BEFORE breakout to prevent
+            # late entries (breakout on bar 18 with max=17 must not enter)
+            if (self.p.use_max_armed_bars
+                    and self.armed_bar_count > self.p.max_armed_bars):
+                if self.p.print_signals:
+                    print('%s [%s] ARMED TIMEOUT: %d bars > max %d'
+                          % (dt, self.data._name, self.armed_bar_count,
+                             self.p.max_armed_bars))
+                self.state = "SCANNING"
+                self._soft_reset_window()
+                self.armed_bar_count = 0
+                return
+
+            # Check if pattern broken (close below window low)
+            if bar_close < self.window_low:
+                if self.p.print_signals:
+                    print('%s [%s] PATTERN BROKEN: close=%.5f < window_low=%.5f'
+                          % (dt, self.data._name, bar_close, self.window_low))
+                self.state = "SCANNING"
+                self._soft_reset_window()
+                self.armed_bar_count = 0
+                return
+
             # Check breakout above window high
             # Body breakout: require min(open, close) above window_high
             bar_open = float(self.data.open[0])
@@ -1091,27 +1114,6 @@ class CERESStrategy(bt.Strategy):
                               % (dt, self.data._name,
                                  candle_height / self.p.pip_value,
                                  min_candle / self.p.pip_value))
-
-            # Max armed bars limit: waited too long for breakout, reset
-            if (self.p.use_max_armed_bars
-                    and self.armed_bar_count > self.p.max_armed_bars):
-                if self.p.print_signals:
-                    print('%s [%s] ARMED TIMEOUT: %d bars > max %d'
-                          % (dt, self.data._name, self.armed_bar_count,
-                             self.p.max_armed_bars))
-                self.state = "SCANNING"
-                self._soft_reset_window()
-                self.armed_bar_count = 0
-                return
-
-            # Check if pattern broken (close below window low)
-            if bar_close < self.window_low:
-                if self.p.print_signals:
-                    print('%s [%s] PATTERN BROKEN: close=%.5f < window_low=%.5f'
-                          % (dt, self.data._name, bar_close, self.window_low))
-                self.state = "SCANNING"
-                self._soft_reset_window()
-                self.armed_bar_count = 0
 
     # =====================================================================
     # ORDER / TRADE NOTIFICATIONS
