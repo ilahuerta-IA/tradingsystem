@@ -37,7 +37,7 @@ v1.0.0: Mobile consolidation window. Replaces fixed OR + pullback.
 from __future__ import annotations
 import math
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from collections import defaultdict
 
 import backtrader as bt
@@ -258,6 +258,7 @@ class CERESStrategy(bt.Strategy):
         # Day tracking (max 1 trade per day)
         self._today_date = None
         self._traded_today = False
+        self._today_eod_minutes = None  # DST-aware EOD (computed per day)
 
         # ATR history for averaging
         self.atr_history = []
@@ -593,13 +594,12 @@ class CERESStrategy(bt.Strategy):
         """Check and execute EOD forced close."""
         if not self.p.use_eod_close:
             return False
-        if self.p.eod_close_hour is None or self.p.eod_close_minute is None:
+        if self._today_eod_minutes is None:
             return False
 
         current_minutes = dt.hour * 60 + dt.minute
-        eod_minutes = self.p.eod_close_hour * 60 + self.p.eod_close_minute
 
-        if current_minutes >= eod_minutes:
+        if current_minutes >= self._today_eod_minutes:
             self.last_exit_reason = "EOD_CLOSE"
             # Use OCO to avoid race condition: cancel+close can both fill
             oco_ref = self.stop_order or self.limit_order
@@ -614,7 +614,8 @@ class CERESStrategy(bt.Strategy):
                 print(
                     '%s [%s] === EOD CLOSE @ %.2f (forced %d:%02d UTC) ==='
                     % (dt, self.data._name, self.data.close[0],
-                       self.p.eod_close_hour, self.p.eod_close_minute)
+                       self._today_eod_minutes // 60,
+                       self._today_eod_minutes % 60)
                 )
             return True
         return False
@@ -809,6 +810,16 @@ class CERESStrategy(bt.Strategy):
         # Day change detection -> reset daily tracking
         today = dt.date()
         if today != self._today_date:
+            # Compute DST-aware EOD for this trading day
+            # NYSE ETFs: DST session starts ~13:30 UTC, standard ~14:30 UTC
+            if self.p.use_eod_close and self.p.eod_close_hour is not None:
+                base_eod = self.p.eod_close_hour * 60 + self.p.eod_close_minute
+                if dt.hour < 14:
+                    # DST detected: session starts 1h earlier -> EOD 1h earlier
+                    self._today_eod_minutes = base_eod - 60
+                else:
+                    self._today_eod_minutes = base_eod
+
             # Force-close any overnight position (DST-safe EOD)
             if self.position and self.p.use_eod_close:
                 self.last_exit_reason = "EOD_CLOSE"
@@ -869,10 +880,9 @@ class CERESStrategy(bt.Strategy):
 
         # Stop scanning at EOD time (no point entering right before close)
         if self.state in ("SCANNING", "ARMED"):
-            if self.p.use_eod_close:
+            if self.p.use_eod_close and self._today_eod_minutes is not None:
                 current_minutes = dt.hour * 60 + dt.minute
-                eod_minutes = self.p.eod_close_hour * 60 + self.p.eod_close_minute
-                if current_minutes >= eod_minutes:
+                if current_minutes >= self._today_eod_minutes:
                     self._reset_state()
                     return
 
@@ -1119,18 +1129,31 @@ class CERESStrategy(bt.Strategy):
                 self.last_entry_bar = len(self)
                 self._entry_fill_bar = len(self)
 
+                # Bracket orders expire at EOD to prevent overnight fills
+                eod_valid = None
+                if (self.p.use_eod_close
+                        and self._today_eod_minutes is not None):
+                    fill_dt = self._get_datetime()
+                    eod_h, eod_m = divmod(self._today_eod_minutes, 60)
+                    eod_valid = datetime.combine(
+                        fill_dt.date(),
+                        dt_time(eod_h, eod_m),
+                    )
+
                 # Place SL (and TP if configured)
                 if self.take_level:
                     self.limit_order = self.sell(
                         size=order.executed.size,
                         exectype=bt.Order.Limit,
                         price=self.take_level,
+                        valid=eod_valid,
                     )
                     self.stop_order = self.sell(
                         size=order.executed.size,
                         exectype=bt.Order.Stop,
                         price=self.stop_level,
                         oco=self.limit_order,
+                        valid=eod_valid,
                     )
                 else:
                     # SL only, no TP
@@ -1138,6 +1161,7 @@ class CERESStrategy(bt.Strategy):
                         size=order.executed.size,
                         exectype=bt.Order.Stop,
                         price=self.stop_level,
+                        valid=eod_valid,
                     )
 
                 self.order = None
