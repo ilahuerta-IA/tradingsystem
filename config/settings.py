@@ -3062,12 +3062,12 @@ STRATEGIES_CONFIG = {
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
 
-        'from_date': datetime.datetime(2025, 6, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
 
         'starting_cash': 100000.0,
 
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -3075,16 +3075,16 @@ STRATEGIES_CONFIG = {
         'params': {
             # Consolidation Window (v1.0)
             'delay_bars': 0,
-            'consolidation_bars': 7,
+            'consolidation_bars': 10,
 
             # Window Quality Filters (ALL OFF for baseline)
             'use_window_height_filter': True,
-            'window_height_min': 150.0,
-            'window_height_max': 500.0,
+            'window_height_min': 100.0,
+            'window_height_max': 150.0,
 
             'use_window_er_filter': False,
-            'window_er_min': 0.0,
-            'window_er_max': 1.0,
+            'window_er_min': 0.00,
+            'window_er_max': 0.30,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
@@ -3092,20 +3092,20 @@ STRATEGIES_CONFIG = {
             'er_htf_timeframe_minutes': 15,
 
             # Scan / Armed limits
-            'use_max_scan_bars': True,
+            'use_max_scan_bars': False,
             'min_scan_bars': 5,
             'max_scan_bars': 25,
-            'use_max_armed_bars': True,
+            'use_max_armed_bars': False,
             'min_armed_bars': 7,
             'max_armed_bars': 17,
 
             # Breakout
             'use_body_breakout': False,
             'breakout_offset_mult': 0.25,
-            'use_bk_candle_filter': True,
+            'use_bk_candle_filter': False,
             'bk_candle_min': 20.0,
             'bk_candle_max': 40.0,
-            'use_bk_ratio_filter': True,
+            'use_bk_ratio_filter': False,
             'bk_ratio_min': 0.0,
             'bk_ratio_max': 0.25,
 
@@ -3132,7 +3132,7 @@ STRATEGIES_CONFIG = {
             'use_day_filter': False,
             'allowed_days': [0, 2, 3, 4],
 
-            'use_sl_pips_filter': True,
+            'use_sl_pips_filter': False,
             'sl_pips_min': 70.0,
             'sl_pips_max': 200.0,
 

@@ -541,8 +541,10 @@ def parse_ceres_log(filepath):
 
         trades.append(trade)
 
-    # Filter to closed trades only
-    closed_trades = [t for t in trades if 'pnl' in t]
+    # Filter to closed trades only (exclude Margin/Canceled/Rejected)
+    skip_reasons = {'Margin', 'Canceled', 'Rejected'}
+    closed_trades = [t for t in trades
+                     if 'pnl' in t and t.get('exit_reason') not in skip_reasons]
 
     config = parse_config_header(content)
 
