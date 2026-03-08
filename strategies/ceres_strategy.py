@@ -196,6 +196,7 @@ class CERESStrategy(bt.Strategy):
         lot_size=1,
         is_etf=True,
         margin_pct=20.0,
+        leverage=500.0,
 
         # --- Debug ---
         print_signals=False,

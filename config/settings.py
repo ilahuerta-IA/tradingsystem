@@ -3070,8 +3070,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
 
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
+        'from_date': datetime.datetime(2021, 1, 1),
+        'to_date': datetime.datetime(2021, 12, 1),
 
         'starting_cash': 100000.0,
 
@@ -3095,8 +3095,8 @@ STRATEGIES_CONFIG = {
             'window_er_max': 0.30,
 
             'use_window_atr_filter': False,
-            'window_atr_min': 0.0,
-            'window_atr_max': 9999.0,
+            'window_atr_min': 0.3,
+            'window_atr_max': 0.6,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
@@ -3118,8 +3118,8 @@ STRATEGIES_CONFIG = {
             'bk_candle_min': 20.0,
             'bk_candle_max': 40.0,
             'use_bk_ratio_filter': False,
-            'bk_ratio_min': 0.0,
-            'bk_ratio_max': 0.25,
+            'bk_ratio_min': 0.25,
+            'bk_ratio_max': 0.50,
 
             # Stop Loss
             'sl_mode': 'atr_mult',
@@ -3140,9 +3140,9 @@ STRATEGIES_CONFIG = {
 
             # Standard Filters (ALL OFF for baseline)
             'use_time_filter': False,
-            'allowed_hours': [],
+            'allowed_hours': [16, 18, 19, 20],
             'use_day_filter': False,
-            'allowed_days': [0, 2, 3, 4],
+            'allowed_days': [1, 2, 3, 4],
 
             'use_sl_pips_filter': False,
             'sl_pips_min': 70.0,
@@ -3262,6 +3262,115 @@ STRATEGIES_CONFIG = {
             'jpy_rate': 1.0,
             'is_etf': True,
             'margin_pct': 20.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+            'plot_entry_exit_lines': False,
+        }
+    },
+
+    # =================================================================
+    # CERES — FOREX (XAUUSD with EOD close to avoid swap)
+    # =================================================================
+
+    'XAUUSD_CERES': {
+        'active': True,
+        'strategy_name': 'CERES',
+        'asset_name': 'XAUUSD',
+        'data_path': 'data/XAUUSD_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'params': {
+            # Consolidation Window (v1.0)
+            'delay_bars': 0,
+            'consolidation_bars': 10,
+
+            # Window Quality Filters (ALL OFF for baseline)
+            'use_window_height_filter': False,
+            'window_height_min': 0.0,
+            'window_height_max': 9999.0,
+
+            'use_window_er_filter': False,
+            'window_er_min': 0.0,
+            'window_er_max': 1.0,
+
+            'use_window_atr_filter': False,
+            'window_atr_min': 0.0,
+            'window_atr_max': 9999.0,
+
+            'use_er_htf_filter': False,
+            'er_htf_threshold': 0.35,
+            'er_htf_period': 10,
+            'er_htf_timeframe_minutes': 60,
+
+            # Scan / Armed limits
+            'use_max_scan_bars': False,
+            'min_scan_bars': 0,
+            'max_scan_bars': 50,
+            'use_max_armed_bars': False,
+            'min_armed_bars': 0,
+            'max_armed_bars': 30,
+
+            # Breakout
+            'use_body_breakout': False,
+            'breakout_offset_mult': 0.0,
+            'use_bk_candle_filter': False,
+            'bk_candle_min': 0.0,
+            'bk_candle_max': 9999.0,
+            'use_bk_ratio_filter': False,
+            'bk_ratio_min': 0.0,
+            'bk_ratio_max': 1.0,
+
+            # Stop Loss
+            'sl_mode': 'window_low',
+            'sl_buffer_pips': 100.0,
+            'sl_fixed_pips': 500.0,
+            'sl_atr_mult': 3.0,
+
+            # Take Profit
+            'tp_mode': 'none',
+            'tp_window_mult': 1.5,
+            'tp_fixed_pips': 1000.0,
+            'tp_atr_mult': 8.0,
+
+            # EOD Close (UTC, before 22:00 rollover to avoid swap)
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 45,
+
+            # Standard Filters
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 0.0,
+            'sl_pips_max': 9999.0,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # Risk management
+            'risk_percent': 0.01,
+
+            # XAUUSD: 1 lot = 100 oz, pip = $0.01, margin 5% (20:1)
+            'pip_value': 0.01,
+            'lot_size': 100,
+            'jpy_rate': 1.0,
+            'is_etf': False,
+            'leverage': 20.0,
 
             # Debug
             'print_signals': False,

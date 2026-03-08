@@ -179,9 +179,12 @@ def run_backtest(config_name):
             commission=broker_config['commission_per_lot'],
             is_jpy_pair=is_jpy,
             jpy_rate=params.get('jpy_rate', 150.0) if is_jpy else 1.0,
+            lot_size=params.get('lot_size', 100000),
+            leverage=params.get('leverage', 500.0),
         )
         cerebro.broker.addcommissioninfo(commission)
         print(f'Commission: ${broker_config["commission_per_lot"]}/lot (Forex)')
+        print(f'Margin: {100.0 / params.get("leverage", 500.0):.2f}%')
     
     # Get strategy class
     strategy_name = config.get('strategy_name', 'SunsetOgle')
