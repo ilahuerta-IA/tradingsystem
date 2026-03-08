@@ -2888,6 +2888,10 @@ STRATEGIES_CONFIG = {
             'window_er_min': 0.0,
             'window_er_max': 0.30,
 
+            'use_window_atr_filter': False,
+            'window_atr_min': 0.0,
+            'window_atr_max': 9999.0,
+
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
@@ -2986,6 +2990,10 @@ STRATEGIES_CONFIG = {
             'use_window_er_filter': False,
             'window_er_min': 0.0,
             'window_er_max': 0.9,
+
+            'use_window_atr_filter': False,
+            'window_atr_min': 0.0,
+            'window_atr_max': 9999.0,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
@@ -3086,15 +3094,19 @@ STRATEGIES_CONFIG = {
             'window_er_min': 0.00,
             'window_er_max': 0.30,
 
+            'use_window_atr_filter': False,
+            'window_atr_min': 0.0,
+            'window_atr_max': 9999.0,
+
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,
             'er_htf_period': 10,
             'er_htf_timeframe_minutes': 15,
 
             # Scan / Armed limits
-            'use_max_scan_bars': False,
-            'min_scan_bars': 5,
-            'max_scan_bars': 25,
+            'use_max_scan_bars': True,
+            'min_scan_bars': 35,
+            'max_scan_bars': 55,
             'use_max_armed_bars': False,
             'min_armed_bars': 7,
             'max_armed_bars': 17,
@@ -3184,6 +3196,10 @@ STRATEGIES_CONFIG = {
             'use_window_er_filter': False,
             'window_er_min': 0.0,
             'window_er_max': 1.0,
+
+            'use_window_atr_filter': False,
+            'window_atr_min': 0.0,
+            'window_atr_max': 9999.0,
 
             'use_er_htf_filter': False,
             'er_htf_threshold': 0.35,

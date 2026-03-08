@@ -130,6 +130,10 @@ class CERESStrategy(bt.Strategy):
         window_er_min=0.0,
         window_er_max=1.0,
 
+        use_window_atr_filter=False, # ATR of the consolidation window
+        window_atr_min=0.0,
+        window_atr_max=9999.0,
+
         use_er_htf_filter=False,    # ER in higher timeframe (macro context)
         er_htf_threshold=0.3,
         er_htf_period=10,
@@ -316,6 +320,12 @@ class CERESStrategy(bt.Strategy):
                         % (self.p.window_er_min, self.p.window_er_max))
             else:
                 f.write("Window ER Filter: DISABLED\n")
+
+            if self.p.use_window_atr_filter:
+                f.write("Window ATR Filter: ENABLED | Range: %.4f-%.4f\n"
+                        % (self.p.window_atr_min, self.p.window_atr_max))
+            else:
+                f.write("Window ATR Filter: DISABLED\n")
 
             if self.p.use_er_htf_filter:
                 f.write("ER HTF Filter: ENABLED | Threshold: %.2f, Period: %d, TF: %dm\n" % (
@@ -654,6 +664,18 @@ class CERESStrategy(bt.Strategy):
                              self.p.window_er_min, self.p.window_er_max))
                 return False
 
+        # Window ATR filter
+        if self.p.use_window_atr_filter:
+            if self.window_atr_avg is None:
+                return False
+            if not (self.p.window_atr_min <= self.window_atr_avg <= self.p.window_atr_max):
+                if self.p.print_signals:
+                    dt = self._get_datetime()
+                    print('%s [%s] WINDOW REJECTED: atr=%.4f (need %.4f-%.4f)'
+                          % (dt, self.data._name, self.window_atr_avg,
+                             self.p.window_atr_min, self.p.window_atr_max))
+                return False
+
         # ER in higher timeframe
         if self.p.use_er_htf_filter:
             if self.htf_er is not None:
@@ -979,7 +1001,8 @@ class CERESStrategy(bt.Strategy):
                     # Min scan bars gate
                     if (self.p.use_max_scan_bars
                             and self.scan_bar_count < self.p.min_scan_bars):
-                        pass  # Not enough scan bars yet, stay SCANNING
+                        # Keep consol_count frozen at consolidation_bars
+                        self.consol_count = self.p.consolidation_bars
                     # Quality check
                     elif self._check_window_quality():
                         self.state = "ARMED"
@@ -1477,6 +1500,9 @@ class CERESStrategy(bt.Strategy):
         if self.p.use_window_er_filter:
             print("  Window ER Filter: %.2f-%.2f"
                   % (self.p.window_er_min, self.p.window_er_max))
+        if self.p.use_window_atr_filter:
+            print("  Window ATR Filter: %.4f-%.4f"
+                  % (self.p.window_atr_min, self.p.window_atr_max))
         if self.p.use_er_htf_filter:
             print("  ER HTF Filter: >= %.2f (period=%d, tf=%dm)"
                   % (self.p.er_htf_threshold, self.p.er_htf_period,

@@ -126,6 +126,16 @@ def parse_config_header(content):
         else:
             config['window_er_filter'] = False
 
+        # Window ATR Filter
+        match = re.search(
+            r'Window ATR Filter: ENABLED \| Range: ([\d.]+)-([\d.]+)', content)
+        if match:
+            config['window_atr_filter'] = True
+            config['window_atr_min'] = float(match.group(1))
+            config['window_atr_max'] = float(match.group(2))
+        else:
+            config['window_atr_filter'] = False
+
         # Breakout Offset
         match = re.search(
             r'Breakout Offset: ([\d.]+) \(min candle/window_height\)', content)
@@ -236,6 +246,11 @@ def print_config(config):
                 config.get('window_er_min', 0),
                 config.get('window_er_max', 0))
             if config.get('window_er_filter') else 'DISABLED'))
+        print('Window ATR Filter: %s' % (
+            'ENABLED %.4f-%.4f' % (
+                config.get('window_atr_min', 0),
+                config.get('window_atr_max', 0))
+            if config.get('window_atr_filter') else 'DISABLED'))
         print('Breakout Offset: %s' % (
             '%.2f' % config['breakout_offset_mult']
             if config.get('breakout_offset_mult', 0) > 0 else 'DISABLED'))
@@ -584,6 +599,24 @@ def calculate_metrics(trades):
     }
 
 
+def _auto_step(trades, key, target_bins=8):
+    """Compute a nice step size for ~target_bins bins from actual data range."""
+    import math
+    values = [t[key] for t in trades if key in t]
+    if not values:
+        return 1.0
+    span = max(values) - min(values)
+    if span <= 0:
+        return 1.0
+    raw = span / target_bins
+    mag = 10 ** math.floor(math.log10(raw))
+    for nice in [1, 2, 2.5, 5, 10]:
+        step = nice * mag
+        if span / step <= target_bins * 1.5:
+            return step
+    return raw
+
+
 def _print_range_table(trades, key, step, label, fmt='%.0f'):
     """Generic range analysis for any numeric key. Reusable."""
     valid_trades = [t for t in trades if key in t]
@@ -645,21 +678,23 @@ def analyze_by_window_er(trades, step=0.1):
     _print_range_table(trades, 'window_er', step, 'Window ER', fmt='%.2f')
 
 
-def analyze_by_window_atr(trades, step=0.5):
+def analyze_by_window_atr(trades):
     """Analyze performance by ATR during consolidation window."""
     print_section('ANALYSIS BY WINDOW ATR AVG')
     if not trades:
         print('No trades to analyze')
         return
+    step = _auto_step(trades, 'window_atr_avg')
     _print_range_table(trades, 'window_atr_avg', step, 'Window ATR', fmt='%.4f')
 
 
-def analyze_by_atr_range(trades, step=0.5):
+def analyze_by_atr_range(trades):
     """Analyze performance by entry ATR average."""
     print_section('ANALYSIS BY ENTRY ATR RANGE')
     if not trades:
         print('No trades to analyze')
         return
+    step = _auto_step(trades, 'atr')
     _print_range_table(trades, 'atr', step, 'ATR', fmt='%.4f')
 
 
@@ -964,9 +999,8 @@ def main():
     analyze_by_window_height(trades, pip_value=pip_value)
     analyze_by_window_er(trades)
 
-    atr_step = 0.5 if pip_value >= 0.01 else 0.0001
-    analyze_by_window_atr(trades, step=atr_step)
-    analyze_by_atr_range(trades, step=atr_step)
+    analyze_by_window_atr(trades)
+    analyze_by_atr_range(trades)
     analyze_by_sl_pips(trades)
     analyze_by_sl_mode(trades)
 
