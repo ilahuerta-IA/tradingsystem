@@ -190,6 +190,11 @@ class GEMINIStrategy(bt.Strategy):
         print_signals=False,
         export_reports=True,
         
+        # EOD Close (for swap-heavy assets like XAUUSD)
+        use_eod_close=False,
+        eod_close_hour=None,       # None = disabled, e.g. 20 for 20:45 UTC
+        eod_close_minute=0,
+
         # Plot options
         plot_entry_exit_lines=True,
         plot_reference_chart=False,    # Show USDCHF chart in plot
@@ -446,6 +451,11 @@ class GEMINIStrategy(bt.Strategy):
                 self.trade_report_file.write(f"Day Filter: {days}\n")
             else:
                 self.trade_report_file.write("Day Filter: DISABLED\n")
+            if self.p.use_eod_close and self.p.eod_close_hour is not None:
+                self.trade_report_file.write(
+                    f"EOD Close: {self.p.eod_close_hour:02d}:{self.p.eod_close_minute:02d} UTC\n")
+            else:
+                self.trade_report_file.write("EOD Close: DISABLED\n")
             self.trade_report_file.write("\n")
             print(f"[GEMINI] Trade report: {report_path}")
         except Exception as e:
@@ -699,6 +709,32 @@ class GEMINIStrategy(bt.Strategy):
             print(f"[GEMINI] {dt} ENTRY @ {entry_price:.5f} | ROC_angle={roc_angle:.1f}° | Harm_angle={harmony_angle:.1f}° | SL={self.stop_level:.5f}")
 
     # =========================================================================
+    # EOD CLOSE
+    # =========================================================================
+
+    def _check_eod_close(self, dt) -> bool:
+        """Check and execute EOD forced close if enabled."""
+        if not self.p.use_eod_close or self.p.eod_close_hour is None:
+            return False
+
+        current_minutes = dt.hour * 60 + dt.minute
+        eod_minutes = self.p.eod_close_hour * 60 + self.p.eod_close_minute
+
+        if current_minutes >= eod_minutes:
+            self._execute_exit(dt, 'EOD_CLOSE')
+            if self.p.print_signals:
+                print(f'[GEMINI] {dt} === EOD CLOSE @ {self.primary_data.close[0]:.5f} ===')
+            return True
+        return False
+
+    def _is_past_eod(self, dt) -> bool:
+        """Check if current time is past EOD (block new entries)."""
+        if not self.p.use_eod_close or self.p.eod_close_hour is None:
+            return False
+        eod_minutes = self.p.eod_close_hour * 60 + self.p.eod_close_minute
+        return dt.hour * 60 + dt.minute >= eod_minutes
+
+    # =========================================================================
     # EXIT LOGIC
     # =========================================================================
     
@@ -825,20 +861,30 @@ class GEMINIStrategy(bt.Strategy):
         
         # State machine
         if self.state == "IN_POSITION":
-            # Check exit conditions
-            exit_reason = self._check_exit_conditions()
-            if exit_reason:
-                self._execute_exit(dt, exit_reason)
-                
-            # Update plot lines while in position
+            # Check EOD close first (for swap-heavy assets)
+            if self._check_eod_close(dt):
+                pass  # Exit handled
             else:
-                self._update_plot_lines(
-                    self.last_entry_price, 
-                    self.stop_level, 
-                    self.take_level
-                )
+                # Check exit conditions (SL/TP)
+                exit_reason = self._check_exit_conditions()
+                if exit_reason:
+                    self._execute_exit(dt, exit_reason)
+
+                # Update plot lines while in position
+                else:
+                    self._update_plot_lines(
+                        self.last_entry_price, 
+                        self.stop_level, 
+                        self.take_level
+                    )
         
         elif self.state == "SCANNING":
+            # Block entries past EOD time (avoid immediate close)
+            if self._is_past_eod(dt):
+                # Still detect crosses (update state) but don't enter
+                self._detect_kama_cross()
+                return
+
             # === NEW ENTRY SYSTEM ===
             # Step 1: TRIGGER - Detect KAMA cross
             if self._detect_kama_cross():

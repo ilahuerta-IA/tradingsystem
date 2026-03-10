@@ -195,6 +195,9 @@ def run_backtest(config_name):
     
     StrategyClass = STRATEGY_REGISTRY[strategy_name]
     
+    # Remove broker-only keys that strategies don't declare
+    params.pop('leverage', None)
+    
     # Auto-inject asset-specific params
     params['is_jpy_pair'] = is_jpy
     params['is_etf'] = is_etf

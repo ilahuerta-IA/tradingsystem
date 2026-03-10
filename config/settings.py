@@ -2682,6 +2682,101 @@ STRATEGIES_CONFIG = {
     },
 
     # =========================================================================
+    # GEMINI_E (EOD Close) — For swap-heavy assets (XAUUSD, etc.)
+    # Same GEMINI logic + forced close before swap rollover
+    # =========================================================================
+
+    'XAUUSD_GEMINI_E': {
+        'active': True,
+        'strategy_name': 'GEMINI',
+        'asset_name': 'XAUUSD',
+        'data_path': 'data/XAUUSD_5m_5Yea.csv',
+
+        # Reference: USDJPY (safe-haven inverse correlation)
+        'reference_data_path': 'data/USDJPY_5m_5Yea.csv',
+        'reference_symbol': 'USDJPY',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'params': {
+            # === ROC SETTINGS ===
+            'roc_period_primary': 5,
+            'roc_period_reference': 5,
+            'harmony_scale': 10000,
+
+            # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
+            # Baseline: wide open, user optimizes later
+            'allowed_cross_bars': [],       # Empty = all bars allowed
+            'entry_roc_angle_min': 5.0,
+            'entry_roc_angle_max': 80.0,
+            'entry_harmony_angle_min': 5.0,
+            'entry_harmony_angle_max': 80.0,
+            'roc_angle_scale': 1.0,
+            'harmony_angle_scale': 1.0,
+
+            # === KAMA SETTINGS ===
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+
+            # === ATR for SL/TP ===
+            'atr_length': 14,
+            'atr_sl_multiplier': 5.0,
+            'atr_tp_multiplier': 10.0,
+
+            # === FILTERS (baseline: minimal, user optimizes later) ===
+            'use_time_filter': False,
+            'allowed_hours': [],
+
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 50,
+            'sl_pips_max': 500,
+
+            'use_atr_filter': False,
+            'atr_min': 0.1,
+            'atr_max': 10.0,
+            'atr_avg_period': 20,
+
+            # === EOD CLOSE (avoid swap -$75/lot/day) ===
+            'use_eod_close': True,
+            'eod_close_hour': 20,       # 20:45 UTC (before 22:00 rollover)
+            'eod_close_minute': 45,
+
+            # === ASSET CONFIG — XAUUSD ===
+            # pip_value: 0.01, lot_size: 100 oz, leverage: 20 (5% margin)
+            # Broker: FOREX.com GLOBAL, spread ~1.37 pts
+            # Swap long: -$75/lot/day, Swap short: +$44.2/lot/day
+            'pip_value': 0.01,
+            'lot_size': 100,
+            'leverage': 20,
+            'jpy_rate': 150.0,
+            'is_etf': False,
+            'margin_pct': 5.0,
+
+            # Risk
+            'risk_percent': 0.01,
+
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+
+            # Plot options
+            'plot_roc_multiplier': 500,
+            'plot_harmony_multiplier': 15.0,
+        }
+    },
+
+    # =========================================================================
     # GEMINI_S (Sync Mode) — Correlation SYNC (same direction) pairs
     # sync_mode=True: Harmony = ROC_primary * ROC_reference (positive = synced)
     # =========================================================================
@@ -2859,7 +2954,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
 
     'GLD_CERES': {
-        'active': True,
+        'active': False,
         'strategy_name': 'CERES',
         'asset_name': 'GLD',
         'data_path': 'data/GLD_5m_5Yea.csv',
@@ -3065,7 +3160,7 @@ STRATEGIES_CONFIG = {
     },
 
     'DIA_CERES': {
-        'active': True,
+        'active': False,
         'strategy_name': 'CERES',
         'asset_name': 'DIA',
         'data_path': 'data/DIA_5m_5Yea.csv',
@@ -3275,7 +3370,7 @@ STRATEGIES_CONFIG = {
     # =================================================================
 
     'XAUUSD_CERES': {
-        'active': True,
+        'active': False,
         'strategy_name': 'CERES',
         'asset_name': 'XAUUSD',
         'data_path': 'data/XAUUSD_5m_5Yea.csv',
@@ -3296,9 +3391,9 @@ STRATEGIES_CONFIG = {
             'consolidation_bars': 10,
 
             # Window Quality Filters (ALL OFF for baseline)
-            'use_window_height_filter': False,
-            'window_height_min': 0.0,
-            'window_height_max': 9999.0,
+            'use_window_height_filter': True,
+            'window_height_min': 250.0,
+            'window_height_max': 300.0,
 
             'use_window_er_filter': False,
             'window_er_min': 0.0,
@@ -3315,7 +3410,7 @@ STRATEGIES_CONFIG = {
 
             # Scan / Armed limits
             'use_max_scan_bars': False,
-            'min_scan_bars': 0,
+            'min_scan_bars': 45,
             'max_scan_bars': 50,
             'use_max_armed_bars': False,
             'min_armed_bars': 0,
@@ -3325,33 +3420,33 @@ STRATEGIES_CONFIG = {
             'use_body_breakout': False,
             'breakout_offset_mult': 0.0,
             'use_bk_candle_filter': False,
-            'bk_candle_min': 0.0,
-            'bk_candle_max': 9999.0,
-            'use_bk_ratio_filter': False,
+            'bk_candle_min': 40.0,
+            'bk_candle_max': 80.0,
+            'use_bk_ratio_filter': True,
             'bk_ratio_min': 0.0,
-            'bk_ratio_max': 1.0,
+            'bk_ratio_max': 0.25,
 
             # Stop Loss
-            'sl_mode': 'window_low',
+            'sl_mode': 'atr_mult',
             'sl_buffer_pips': 100.0,
             'sl_fixed_pips': 500.0,
             'sl_atr_mult': 3.0,
 
             # Take Profit
-            'tp_mode': 'none',
+            'tp_mode': 'atr_mult',
             'tp_window_mult': 1.5,
             'tp_fixed_pips': 1000.0,
             'tp_atr_mult': 8.0,
 
             # EOD Close (UTC, before 22:00 rollover to avoid swap)
             'use_eod_close': True,
-            'eod_close_hour': 20,
+            'eod_close_hour': 21,
             'eod_close_minute': 45,
 
             # Standard Filters
             'use_time_filter': False,
             'allowed_hours': [],
-            'use_day_filter': True,
+            'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
 
             'use_sl_pips_filter': False,
