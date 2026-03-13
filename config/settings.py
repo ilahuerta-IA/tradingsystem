@@ -2687,7 +2687,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
 
     'XAUUSD_GEMINI_E': {
-        'active': True,
+        'active': False,  # DESCARTADO 2026-03-13: correlacion -0.36 insuficiente, optimizacion = overfitting por anio
         'strategy_name': 'GEMINI',
         'asset_name': 'XAUUSD',
         'data_path': 'data/XAUUSD_5m_5Yea.csv',
@@ -2713,11 +2713,11 @@ STRATEGIES_CONFIG = {
 
             # === ENTRY SYSTEM: KAMA Cross + Angle Confirmation ===
             # Baseline: wide open, user optimizes later
-            'allowed_cross_bars': [],       # Empty = all bars allowed
-            'entry_roc_angle_min': 5.0,
-            'entry_roc_angle_max': 80.0,
-            'entry_harmony_angle_min': 5.0,
-            'entry_harmony_angle_max': 80.0,
+            'allowed_cross_bars': [1, 2, 3, 6, 7, 8],       # Empty = all bars allowed
+            'entry_roc_angle_min': 15.0,
+            'entry_roc_angle_max': 20.0,
+            'entry_harmony_angle_min': 20.0,
+            'entry_harmony_angle_max': 25.0,
             'roc_angle_scale': 1.0,
             'harmony_angle_scale': 1.0,
 
@@ -2728,17 +2728,17 @@ STRATEGIES_CONFIG = {
 
             # === ATR for SL/TP ===
             'atr_length': 14,
-            'atr_sl_multiplier': 5.0,
-            'atr_tp_multiplier': 10.0,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 6.0,
 
             # === FILTERS (baseline: minimal, user optimizes later) ===
-            'use_time_filter': False,
-            'allowed_hours': [],
+            'use_time_filter': True,
+            'allowed_hours': [0, 1, 2, 3, 4, 12, 13, 14, 17],
 
-            'use_day_filter': True,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': False,
+            'allowed_days': [0, 2, 3, 4],
 
-            'use_sl_pips_filter': False,
+            'use_sl_pips_filter': True,
             'sl_pips_min': 50,
             'sl_pips_max': 500,
 
@@ -2772,7 +2772,7 @@ STRATEGIES_CONFIG = {
 
             # Plot options
             'plot_roc_multiplier': 500,
-            'plot_harmony_multiplier': 15.0,
+            'plot_harmony_multiplier': 60.0,
         }
     },
 
