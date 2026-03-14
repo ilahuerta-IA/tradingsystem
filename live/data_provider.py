@@ -102,8 +102,8 @@ class DataProvider:
         provider.wait_for_candle_close('EURUSD')
     """
     
-    # Minimum bars needed for indicators (EMA 120 + buffer)
-    MIN_BARS_FOR_INDICATORS = 150
+    # Minimum bars needed for indicators (EMA 120 needs deep warmup to match BT)
+    MIN_BARS_FOR_INDICATORS = 500
     
     # Default timeframe
     DEFAULT_TIMEFRAME = Timeframe.M5

@@ -116,7 +116,8 @@ class SunsetOgleChecker(BaseChecker):
         tr3 = abs(low - close.shift(1))
         
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        return tr.rolling(window=self.params["atr_length"]).mean()
+        # Wilder's RMA (matches backtrader bt.ind.ATR default SmoothedMovingAverage)
+        return tr.ewm(alpha=1.0 / self.params["atr_length"], adjust=False).mean()
     
     def _calculate_angle(self, ema_confirm: pd.Series) -> float:
         """Calculate EMA angle in degrees."""
@@ -296,8 +297,8 @@ class SunsetOgleChecker(BaseChecker):
                         self.reset_state()
                         return self._create_no_signal(reason)
                 
-                # Calculate SL/TP
-                entry_price = self.window_top
+                # Calculate SL/TP — use close[0] to match backtrader entry_price
+                entry_price = float(df["close"].iloc[-1])
                 stop_loss = current_low - (current_atr * self.params["sl_mult"])
                 take_profit = current_high + (current_atr * self.params["tp_mult"])
                 

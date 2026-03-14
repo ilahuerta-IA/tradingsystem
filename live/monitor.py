@@ -343,7 +343,7 @@ class LiveTradingMonitor:
             bars = self.data_provider.get_bars(
                 symbol=self.symbol,
                 timeframe=Timeframe.M5,
-                count=200  # Extra for indicators
+                count=500  # Enough history for EMA warmup (matches BT depth)
             )
             
             if bars.empty:

@@ -181,28 +181,22 @@ class GEMINIChecker(BaseChecker):
         return ema
     
     def _calculate_atr(self, df: pd.DataFrame) -> float:
-        """Calculate ATR from DataFrame."""
-        high = df["high"].values
-        low = df["low"].values
-        close = df["close"].values
+        """Calculate ATR using Wilder's RMA (matches backtrader bt.ind.ATR)."""
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
         
         if len(close) < 2:
             return 0.0
         
-        # True Range
-        tr_values = []
-        for i in range(1, min(len(close), self.atr_length + 1)):
-            tr = max(
-                high[-i] - low[-i],
-                abs(high[-i] - close[-i - 1]),
-                abs(low[-i] - close[-i - 1])
-            )
-            tr_values.append(tr)
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         
-        if not tr_values:
-            return 0.0
-        
-        return sum(tr_values) / len(tr_values)
+        # Wilder's RMA (matches backtrader bt.ind.ATR default SmoothedMovingAverage)
+        atr_series = tr.ewm(alpha=1.0 / self.atr_length, adjust=False).mean()
+        return float(atr_series.iloc[-1]) if len(atr_series) > 0 else 0.0
     
     def _calculate_roc(self, prices: list, period: int) -> float:
         """Calculate Rate of Change."""

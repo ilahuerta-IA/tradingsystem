@@ -105,7 +105,8 @@ class KOIChecker(BaseChecker):
         
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         atr_period = self.params.get("atr_length", 14)
-        return tr.rolling(window=atr_period).mean()
+        # Wilder's RMA (matches backtrader bt.ind.ATR default SmoothedMovingAverage)
+        return tr.ewm(alpha=1.0 / atr_period, adjust=False).mean()
     
     def _calculate_cci(self, df: pd.DataFrame) -> pd.Series:
         """Calculate CCI (Commodity Channel Index)."""
@@ -353,7 +354,8 @@ class KOIChecker(BaseChecker):
             # Check for breakout
             if current_high > self.breakout_level:
                 # Breakout confirmed - generate signal
-                entry_price = self.breakout_level
+                # Use close[0] to match backtrader entry_price calculation
+                entry_price = float(df["close"].iloc[-1])
                 atr_for_sl = self.pattern_atr if self.pattern_atr else current_atr
                 
                 # ATR Filter (matching backtest _execute_entry behavior)
