@@ -1747,6 +1747,99 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    'TLT_SEDNA': {
+        'active': True,  # New: pending optimization. Template from DIA_SEDNA.
+        'strategy_name': 'SEDNA',
+        'asset_name': 'TLT',
+        'data_path': 'data/TLT_5m_5Yea.csv',
+        
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
+        
+        'starting_cash': 100000.0,
+        
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        
+        'params': {
+            # KAMA settings
+            'kama_period': 10,
+            'kama_fast': 2,
+            'kama_slow': 30,
+            'hl2_ema_period': 1,  # EMA period for KAMA comparison (1 = raw HL2)
+            
+            # CCI settings (optional momentum filter)
+            'use_cci_filter': False,
+            'cci_period': 20,
+            'cci_threshold': 100,
+            'cci_max_threshold': 999,
+            
+            # ATR
+            'atr_length': 14,
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 8.0,
+            
+            # Breakout Window
+            'use_breakout_window': True,
+            'breakout_window_candles': 7,
+            'breakout_level_offset_pips': 1.0,
+            
+            # === FILTERS ===
+            
+            # Time Filter
+            'use_time_filter': False,
+            'allowed_hours': [13, 14, 15, 17, 18, 19, 20],
+            
+            # Day Filter (0=Monday, 6=Sunday)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 3, 4],
+            
+            # SL Pips Filter
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 10,
+            'sl_pips_max': 200,
+            
+            # ATR Filter (uses average ATR)
+            'use_atr_filter': False,
+            'atr_min': 0.30,
+            'atr_max': 0.75,
+            'atr_avg_period': 20,
+            
+            # === HTF FILTER (Higher Timeframe Efficiency Ratio) ===
+            'use_htf_filter': True,
+            'htf_timeframe_minutes': 15,
+            'htf_er_period': 10,
+            'htf_er_threshold': 0.45,
+            
+            # === PULLBACK DETECTION ===
+            'use_pullback_filter': True,
+            'pullback_min_bars': 1,
+            'pullback_max_bars': 4,
+            
+            # === EXIT CONDITIONS ===
+            'use_kama_exit': False,
+            
+            # ETF Asset config
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+            
+            # EOD close (UTC) - close open positions before market close
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+            
+            # Risk
+            'risk_percent': 0.01,
+            
+            # Debug & Reporting
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
     'GLD_SEDNA': {
         'active': False,  # Eliminated: portfolio score 0.54, worst score, 2025 negative, PF dropped 1.86->1.69
         'strategy_name': 'SEDNA',
