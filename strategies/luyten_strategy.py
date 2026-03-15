@@ -109,6 +109,8 @@ class LUYTENStrategy(bt.Strategy):
         # Signal bar flag: breakout confirmed, enter on NEXT bar
         self._signal_pending = False
         self._signal_atr_avg = 0.0
+        self._signal_bk_above_pips = 0.0
+        self._signal_bk_body_pips = 0.0
 
         # Day-start detection
         self._day_first_bar_seen = False
@@ -207,7 +209,8 @@ class LUYTENStrategy(bt.Strategy):
             print("Trade reporting init failed: %s" % e)
 
     def _record_trade_entry(self, dt, entry_price, size, atr_avg, sl_pips,
-                            consolidation_high, consol_bars):
+                            consolidation_high, consol_bars,
+                            bk_above_pips, bk_body_pips):
         """Record entry details to log and trade_reports list."""
         entry = {
             'entry_time': dt,
@@ -219,6 +222,8 @@ class LUYTENStrategy(bt.Strategy):
             'take_level': self.take_level,
             'consolidation_high': consolidation_high,
             'consol_bars': consol_bars,
+            'bk_above_pips': bk_above_pips,
+            'bk_body_pips': bk_body_pips,
         }
         self.trade_reports.append(entry)
         self._current_trade_idx = len(self.trade_reports) - 1
@@ -239,6 +244,8 @@ class LUYTENStrategy(bt.Strategy):
             f.write("ATR (avg): %.6f\n" % atr_avg)
             f.write("Consolidation High: %.5f\n" % consolidation_high)
             f.write("Consolidation Bars: %d\n" % consol_bars)
+            f.write("BK Above Pips: %.1f\n" % bk_above_pips)
+            f.write("BK Body Pips: %.1f\n" % bk_body_pips)
             f.write("-" * 50 + "\n\n")
             f.flush()
         except Exception:
@@ -297,6 +304,8 @@ class LUYTENStrategy(bt.Strategy):
         self.consol_count = 0
         self._signal_pending = False
         self._signal_atr_avg = 0.0
+        self._signal_bk_above_pips = 0.0
+        self._signal_bk_body_pips = 0.0
 
     # =====================================================================
     # EOD CLOSE
@@ -335,7 +344,7 @@ class LUYTENStrategy(bt.Strategy):
     # ENTRY EXECUTION
     # =====================================================================
 
-    def _execute_entry(self, dt, atr_avg):
+    def _execute_entry(self, dt, atr_avg, bk_above_pips, bk_body_pips):
         """Validate filters, size position, and send buy order."""
 
         # Day/Time filter
@@ -405,6 +414,7 @@ class LUYTENStrategy(bt.Strategy):
         self._record_trade_entry(
             dt, entry_price, bt_size, atr_avg, sl_pips,
             self.consolidation_high, self.consol_count,
+            bk_above_pips, bk_body_pips,
         )
 
         if self.p.print_signals:
@@ -466,6 +476,8 @@ class LUYTENStrategy(bt.Strategy):
             self._day_first_bar_seen = True
             self._signal_pending = False
             self._signal_atr_avg = 0.0
+            self._signal_bk_above_pips = 0.0
+            self._signal_bk_body_pips = 0.0
 
             # New day always starts in IDLE -> begin consolidation
             self._reset_state()
@@ -503,7 +515,9 @@ class LUYTENStrategy(bt.Strategy):
         # Check signal pending (breakout confirmed on PREVIOUS bar, enter now)
         if self._signal_pending:
             self._signal_pending = False
-            self._execute_entry(dt, self._signal_atr_avg)
+            self._execute_entry(dt, self._signal_atr_avg,
+                                self._signal_bk_above_pips,
+                                self._signal_bk_body_pips)
             self._reset_state()
             return
 
@@ -565,6 +579,8 @@ class LUYTENStrategy(bt.Strategy):
                     # Signal confirmed! Enter on NEXT bar's open
                     self._signal_pending = True
                     self._signal_atr_avg = atr_avg
+                    self._signal_bk_above_pips = above_dist
+                    self._signal_bk_body_pips = body_size
 
                     if self.p.print_signals:
                         print(

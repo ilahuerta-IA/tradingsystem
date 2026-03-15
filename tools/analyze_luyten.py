@@ -219,7 +219,9 @@ def parse_luyten_log(filepath):
         r'SL Pips: ([\d.]+)\s*\n'
         r'ATR \(avg\): ([\d.]+)\s*\n'
         r'Consolidation High: ([\d.]+)\s*\n'
-        r'Consolidation Bars: (\d+)',
+        r'Consolidation Bars: (\d+)\s*\n'
+        r'(?:BK Above Pips: ([\d.]+)\s*\n)?'
+        r'(?:BK Body Pips: ([\d.]+))?',
         re.MULTILINE
     )
 
@@ -250,6 +252,8 @@ def parse_luyten_log(filepath):
             'atr': float(match.group(7)),
             'consolidation_high': float(match.group(8)),
             'consol_bars': int(match.group(9)),
+            'bk_above_pips': float(match.group(10)) if match.group(10) else None,
+            'bk_body_pips': float(match.group(11)) if match.group(11) else None,
             'hour': dt.hour,
             'day_of_week': dt.weekday(),
         }
@@ -509,6 +513,28 @@ def analyze_by_consolidation_high(trades, pip_value=0.01):
     _print_range_table(trades, '_above_pips', step, 'Above Consol (pips)', fmt='%.1f')
 
 
+def analyze_by_bk_above(trades):
+    """Analyze performance by breakout above-consolidation-high distance (pips)."""
+    print_section('ANALYSIS BY BK ABOVE PIPS')
+    valid = [t for t in trades if t.get('bk_above_pips') is not None]
+    if not valid:
+        print('No BK Above Pips data available (re-run backtest to generate)')
+        return
+    step = _auto_step(valid, 'bk_above_pips')
+    _print_range_table(valid, 'bk_above_pips', step, 'BK Above Pips', fmt='%.1f')
+
+
+def analyze_by_bk_body(trades):
+    """Analyze performance by breakout candle body size (pips)."""
+    print_section('ANALYSIS BY BK BODY PIPS')
+    valid = [t for t in trades if t.get('bk_body_pips') is not None]
+    if not valid:
+        print('No BK Body Pips data available (re-run backtest to generate)')
+        return
+    step = _auto_step(valid, 'bk_body_pips')
+    _print_range_table(valid, 'bk_body_pips', step, 'BK Body Pips', fmt='%.1f')
+
+
 def print_summary(trades, config=None):
     """Print overall summary."""
     print_section('OVERALL SUMMARY')
@@ -618,6 +644,8 @@ def main():
     analyze_by_sl_pips(trades)
     analyze_by_consol_bars(trades)
     analyze_by_consolidation_high(trades)
+    analyze_by_bk_above(trades)
+    analyze_by_bk_body(trades)
 
     # Temporal analyses
     analyze_by_hour(trades)
