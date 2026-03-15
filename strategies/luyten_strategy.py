@@ -322,13 +322,14 @@ class LUYTENStrategy(bt.Strategy):
 
         if current_minutes >= self._today_eod_minutes:
             self.last_exit_reason = "EOD_CLOSE"
-            oco_ref = self.stop_order or self.limit_order
-            if oco_ref:
-                self.close(oco=oco_ref)
-            else:
-                self.close()
-            self.stop_order = None
-            self.limit_order = None
+            # Explicit cancel bracket orders, then close position
+            if self.stop_order:
+                self.cancel(self.stop_order)
+                self.stop_order = None
+            if self.limit_order:
+                self.cancel(self.limit_order)
+                self.limit_order = None
+            self.order = self.close()
 
             if self.p.print_signals:
                 print(
@@ -512,15 +513,6 @@ class LUYTENStrategy(bt.Strategy):
                     self._reset_state()
                     return
 
-        # Check signal pending (breakout confirmed on PREVIOUS bar, enter now)
-        if self._signal_pending:
-            self._signal_pending = False
-            self._execute_entry(dt, self._signal_atr_avg,
-                                self._signal_bk_above_pips,
-                                self._signal_bk_body_pips)
-            self._reset_state()
-            return
-
         # ---- STATE: IDLE ----
         if self.state == "IDLE":
             if self._day_first_bar_seen:
@@ -562,12 +554,12 @@ class LUYTENStrategy(bt.Strategy):
             bar_open = float(self.data.open[0])
             bar_close = float(self.data.close[0])
 
-            # Green candle whose body crosses above consolidation_high
+            # Green candle that closes above consolidation_high
+            # Accepts both cross-breakout (open below) and gap-breakout (open above)
             is_green = bar_close > bar_open
-            open_below = bar_open < self.consolidation_high
             close_above = bar_close > self.consolidation_high
 
-            if is_green and open_below and close_above:
+            if is_green and close_above:
                 # Check breakout filters
                 above_dist = (bar_close - self.consolidation_high) / self.p.pip_value
                 body_size = (bar_close - bar_open) / self.p.pip_value
@@ -576,12 +568,7 @@ class LUYTENStrategy(bt.Strategy):
                 body_ok = body_size >= self.p.bk_body_min_pips
 
                 if above_ok and body_ok:
-                    # Signal confirmed! Enter on NEXT bar's open
-                    self._signal_pending = True
-                    self._signal_atr_avg = atr_avg
-                    self._signal_bk_above_pips = above_dist
-                    self._signal_bk_body_pips = body_size
-
+                    # Breakout confirmed! Place buy now, fills at next bar's open
                     if self.p.print_signals:
                         print(
                             '%s [%s] BREAKOUT SIGNAL: close=%.5f > consol=%.5f, '
@@ -589,6 +576,9 @@ class LUYTENStrategy(bt.Strategy):
                             % (dt, self.data._name, bar_close,
                                self.consolidation_high, above_dist, body_size)
                         )
+                    self._execute_entry(dt, atr_avg, above_dist, body_size)
+                    self._reset_state()
+                    return
                 else:
                     if self.p.print_signals:
                         print(

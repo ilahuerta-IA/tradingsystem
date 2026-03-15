@@ -3577,11 +3577,11 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/TLT_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 1),
+        'to_date': datetime.datetime(2021, 12, 31),
 
         'starting_cash': 100000.0,
 
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -3591,16 +3591,16 @@ STRATEGIES_CONFIG = {
             'consolidation_bars': 6,
 
             # Breakout filters (0 = disabled for baseline)
-            'bk_above_min_pips': 0.0,
-            'bk_body_min_pips': 0.0,
+            'bk_above_min_pips': 1.0,
+            'bk_body_min_pips': 4.0,
 
             # ATR
             'atr_length': 14,
             'atr_avg_period': 20,
 
             # SL / TP (ATR-based)
-            'atr_sl_multiplier': 2.0,
-            'atr_tp_multiplier': 4.0,
+            'atr_sl_multiplier': 1.5,
+            'atr_tp_multiplier': 3.0,
             'sl_buffer_pips': 0.0,
 
             # EOD Close (UTC, standard time; DST auto-adjusts -1h)
@@ -3614,9 +3614,9 @@ STRATEGIES_CONFIG = {
             'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
 
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 0.0,
-            'sl_pips_max': 9999.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 30.0,
+            'sl_pips_max': 40.0,
 
             # Risk management
             'risk_percent': 0.01,

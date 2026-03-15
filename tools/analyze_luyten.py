@@ -643,7 +643,6 @@ def main():
     analyze_by_atr_range(trades)
     analyze_by_sl_pips(trades)
     analyze_by_consol_bars(trades)
-    analyze_by_consolidation_high(trades)
     analyze_by_bk_above(trades)
     analyze_by_bk_body(trades)
 

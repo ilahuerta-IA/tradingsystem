@@ -612,14 +612,14 @@ class CERESStrategy(bt.Strategy):
 
         if current_minutes >= self._today_eod_minutes:
             self.last_exit_reason = "EOD_CLOSE"
-            # Use OCO to avoid race condition: cancel+close can both fill
-            oco_ref = self.stop_order or self.limit_order
-            if oco_ref:
-                self.close(oco=oco_ref)
-            else:
-                self.close()
-            self.stop_order = None
-            self.limit_order = None
+            # Explicit cancel bracket orders, then close position
+            if self.stop_order:
+                self.cancel(self.stop_order)
+                self.stop_order = None
+            if self.limit_order:
+                self.cancel(self.limit_order)
+                self.limit_order = None
+            self.order = self.close()
 
             if self.p.print_signals:
                 print(
