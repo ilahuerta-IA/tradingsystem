@@ -35,6 +35,7 @@ from strategies.sunset_ogle import SunsetOgleStrategy
 from strategies.koi_strategy import KOIStrategy
 from strategies.sedna_strategy import SEDNAStrategy
 from strategies.gemini_strategy import GEMINIStrategy
+from strategies.luyten_strategy import LUYTENStrategy
 from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
@@ -47,6 +48,7 @@ STRATEGY_REGISTRY = {
     'KOI': KOIStrategy,
     'SEDNA': SEDNAStrategy,
     'GEMINI': GEMINIStrategy,
+    'LUYTEN': LUYTENStrategy,
 }
 
 # =============================================================================

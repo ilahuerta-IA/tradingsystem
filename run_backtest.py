@@ -21,6 +21,7 @@ from strategies.gliese_strategy import GLIESEStrategy
 from strategies.helix_strategy import HELIXStrategy
 from strategies.gemini_strategy import GEMINIStrategy
 from strategies.ceres_strategy import CERESStrategy
+from strategies.luyten_strategy import LUYTENStrategy
 from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
@@ -36,6 +37,7 @@ STRATEGY_REGISTRY = {
     'HELIX': HELIXStrategy,
     'GEMINI': GEMINIStrategy,
     'CERES': CERESStrategy,
+    'LUYTEN': LUYTENStrategy,
 }
 
 

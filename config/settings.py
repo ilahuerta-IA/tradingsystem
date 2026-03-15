@@ -1748,7 +1748,7 @@ STRATEGIES_CONFIG = {
     },
 
     'TLT_SEDNA': {
-        'active': True,  # New: pending optimization. Template from DIA_SEDNA.
+        'active': False,  # New: pending optimization. Template from DIA_SEDNA.
         'strategy_name': 'SEDNA',
         'asset_name': 'TLT',
         'data_path': 'data/TLT_5m_5Yea.csv',
@@ -1778,7 +1778,7 @@ STRATEGIES_CONFIG = {
             # ATR
             'atr_length': 14,
             'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 8.0,
+            'atr_tp_multiplier': 6.0,
             
             # Breakout Window
             'use_breakout_window': True,
@@ -1815,7 +1815,7 @@ STRATEGIES_CONFIG = {
             # === PULLBACK DETECTION ===
             'use_pullback_filter': True,
             'pullback_min_bars': 1,
-            'pullback_max_bars': 4,
+            'pullback_max_bars': 40,
             
             # === EXIT CONDITIONS ===
             'use_kama_exit': False,
@@ -3564,6 +3564,73 @@ STRATEGIES_CONFIG = {
             'print_signals': False,
             'export_reports': True,
             'plot_entry_exit_lines': False,
+        }
+    },
+
+    # =========================================================================
+    # TLT -- LUYTEN (Opening Range Breakout simplified)
+    # =========================================================================
+    'TLT_LUYTEN': {
+        'active': True,
+        'strategy_name': 'LUYTEN',
+        'asset_name': 'TLT',
+        'data_path': 'data/TLT_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'params': {
+            # Consolidation (first N bars of day)
+            'consolidation_bars': 6,
+
+            # Breakout filters (0 = disabled for baseline)
+            'bk_above_min_pips': 0.0,
+            'bk_body_min_pips': 0.0,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # SL / TP (ATR-based)
+            'atr_sl_multiplier': 2.0,
+            'atr_tp_multiplier': 4.0,
+            'sl_buffer_pips': 0.0,
+
+            # EOD Close (UTC, standard time; DST auto-adjusts -1h)
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+
+            # Standard Filters (ALL OFF for baseline)
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 0.0,
+            'sl_pips_max': 9999.0,
+
+            # Risk management
+            'risk_percent': 0.01,
+
+            # ETF config
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
         }
     },
 
