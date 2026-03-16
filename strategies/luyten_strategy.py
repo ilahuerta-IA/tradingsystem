@@ -78,6 +78,11 @@ class LUYTENStrategy(bt.Strategy):
         sl_pips_min=0.0,
         sl_pips_max=9999.0,
 
+        # --- ATR Range Filter ---
+        use_atr_range_filter=False,
+        atr_range_min=0.0,
+        atr_range_max=9999.0,
+
         # --- Asset / Risk ---
         risk_percent=0.01,
         pip_value=0.01,
@@ -188,6 +193,12 @@ class LUYTENStrategy(bt.Strategy):
                         % (self.p.sl_pips_min, self.p.sl_pips_max))
             else:
                 f.write("SL Pips Filter: DISABLED\n")
+
+            if self.p.use_atr_range_filter:
+                f.write("ATR Range Filter: %.4f-%.4f\n"
+                        % (self.p.atr_range_min, self.p.atr_range_max))
+            else:
+                f.write("ATR Range Filter: DISABLED\n")
 
             if self.p.use_time_filter:
                 f.write("Time Filter: %s\n" % list(self.p.allowed_hours))
@@ -373,6 +384,15 @@ class LUYTENStrategy(bt.Strategy):
                 print('%s [%s] ENTRY SKIPPED: SL %.5f >= entry %.5f'
                       % (dt, self.data._name, self.stop_level, entry_price))
             return
+
+        # ATR range filter
+        if self.p.use_atr_range_filter:
+            if atr_avg < self.p.atr_range_min or atr_avg > self.p.atr_range_max:
+                if self.p.print_signals:
+                    print('%s [%s] ENTRY SKIPPED: atr_avg=%.4f out of range [%.4f-%.4f]'
+                          % (dt, self.data._name, atr_avg,
+                             self.p.atr_range_min, self.p.atr_range_max))
+                return
 
         # SL pips filter
         sl_pips = abs(entry_price - self.stop_level) / self.p.pip_value
@@ -930,6 +950,9 @@ class LUYTENStrategy(bt.Strategy):
         if self.p.use_sl_pips_filter:
             print("  SL Pips Filter: %.1f-%.1f"
                   % (self.p.sl_pips_min, self.p.sl_pips_max))
+        if self.p.use_atr_range_filter:
+            print("  ATR Range Filter: %.4f-%.4f"
+                  % (self.p.atr_range_min, self.p.atr_range_max))
         if self.p.use_eod_close:
             print("  EOD Close: %d:%02d UTC"
                   % (self.p.eod_close_hour, self.p.eod_close_minute))

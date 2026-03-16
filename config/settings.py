@@ -3570,19 +3570,6 @@ STRATEGIES_CONFIG = {
     # =========================================================================
     # TLT -- LUYTEN (Opening Range Breakout simplified)
     # =========================================================================
-    # Optimized via 3-phase process:
-    #   Phase 1: 210 combos (CBars×BkAbv×TP), IS 2020-2023
-    #   Phase 2: 512 combos (5 params fine grid), IS 2020-2023
-    #   Phase 3: OOS validation 2024-2025 → 80% survival rate
-    #
-    # Best IS (2020-2023): SL=1.5 TP=2.5 BkAbv=2 BkBdy=10 CBars=19
-    #   → PF 1.37, DD 9.6%, Sharpe +0.71, Net +$22,478 (124 trades)
-    #   BUT fails OOS (PF 0.96) — overfitting to BkAbv=2
-    #
-    # Best ROBUST (IS+OOS): SL=1.5 TP=3.0 BkAbv=6 BkBdy=0 CBars=19  ← ACTIVE
-    #   IS:  PF 1.23, DD 15.8%, Sharpe +0.55, Net +$19,943 (142 trades)
-    #   OOS: PF 2.65, DD  2.5%, Sharpe +1.14, Net  +$8,071 (15 trades)
-    #   Both 2024 (PF 2.94) and 2025 (PF 2.34) profitable
     #
     'TLT_LUYTEN': {
         'active': True,
@@ -3591,11 +3578,11 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/TLT_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'to_date': datetime.datetime(2023, 12, 31),
 
         'starting_cash': 100000.0,
 
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -3606,7 +3593,7 @@ STRATEGIES_CONFIG = {
 
             # Breakout filters — optimized: BkAbv=6 (sweet spot), BkBdy=0 (most robust OOS)
             'bk_above_min_pips': 6.0,
-            'bk_body_min_pips': 0.0,
+            'bk_body_min_pips': 5.0,
 
             # ATR
             'atr_length': 14,
@@ -3623,14 +3610,19 @@ STRATEGIES_CONFIG = {
             'eod_close_minute': 50,
 
             # Standard Filters (ALL OFF — no improvement in optimization)
-            'use_time_filter': False,
-            'allowed_hours': [],
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_time_filter': True,
+            'allowed_hours': [15, 16, 18, 19],
+            'use_day_filter': True,
+            'allowed_days': [0, 2, 3, 4],
 
-            'use_sl_pips_filter': False,
-            'sl_pips_min': 20.0,
-            'sl_pips_max': 30.0,
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 100.0,
+
+            # ATR Range Filter — entry ATR must be within range
+            'use_atr_range_filter': False,
+            'atr_range_min': 0.12,
+            'atr_range_max': 0.22,
 
             # Risk management
             'risk_percent': 0.01,
