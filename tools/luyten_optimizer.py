@@ -52,16 +52,16 @@ STARTING_CASH = 100000.0
 # --- Parameter toggles: True = sweep this param, False = use base value ---
 OPTIMIZE_CONSOLIDATION_BARS = True
 OPTIMIZE_BK_ABOVE_MIN_PIPS = True
-OPTIMIZE_BK_BODY_MIN_PIPS = False
-OPTIMIZE_ATR_TP_MULTIPLIER = False
-OPTIMIZE_ATR_SL_MULTIPLIER = False
+OPTIMIZE_BK_BODY_MIN_PIPS = True
+OPTIMIZE_ATR_TP_MULTIPLIER = True
+OPTIMIZE_ATR_SL_MULTIPLIER = True
 
 # --- Sweep ranges: (start, stop_inclusive, step) ---
-RANGE_CONSOLIDATION_BARS = (6, 24, 6)       # 6, 12, 18, 24
-RANGE_BK_ABOVE_MIN_PIPS = (2.0, 10.0, 2.0)  # 2, 4, 6, 8, 10
-RANGE_BK_BODY_MIN_PIPS = (4.0, 20.0, 4.0)   # 4, 8, 12, 16, 20
-RANGE_ATR_TP_MULTIPLIER = (3.0, 6.0, 1.0)   # 3, 4, 5, 6
-RANGE_ATR_SL_MULTIPLIER = (1.0, 3.0, 0.5)   # 1.0, 1.5, 2.0, 2.5, 3.0
+RANGE_CONSOLIDATION_BARS = (15, 21, 2)       # 15,17,19,21 → 4 values (Phase 1 winner zone)
+RANGE_BK_ABOVE_MIN_PIPS = (2.0, 8.0, 2.0)   # 2,4,6,8 → 4 values (10 dropped: no improvement)
+RANGE_BK_BODY_MIN_PIPS = (0.0, 15.0, 5.0)   # 0,5,10,15 → 4 values (new dimension)
+RANGE_ATR_TP_MULTIPLIER = (2.0, 3.5, 0.5)   # 2.0,2.5,3.0,3.5 → 4 values (fine step)
+RANGE_ATR_SL_MULTIPLIER = (1.5, 2.0, 0.5)   # 1.5,2.0 → 2 values (1.0=margin, 2.5=too wide)
 
 # --- Base params (used when param is NOT being optimized) ---
 BASE_PARAMS = {

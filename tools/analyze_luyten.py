@@ -327,11 +327,17 @@ def calculate_metrics(trades):
 
 
 def _auto_step(trades, key, target_bins=8):
-    """Compute a nice step size for ~target_bins bins from actual data range."""
-    values = [t[key] for t in trades if key in t]
+    """Compute a nice step size for ~target_bins bins from actual data range.
+    Uses 5th-95th percentile to ignore outliers that inflate the range."""
+    values = sorted([t[key] for t in trades if key in t])
     if not values:
         return 1.0
-    span = max(values) - min(values)
+    # Use percentile range to avoid outlier-inflated bins
+    lo = values[max(0, int(len(values) * 0.05))]
+    hi = values[min(len(values) - 1, int(len(values) * 0.95))]
+    span = hi - lo
+    if span <= 0:
+        span = max(values) - min(values)
     if span <= 0:
         return 1.0
     raw = span / target_bins
