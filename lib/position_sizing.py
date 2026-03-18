@@ -147,6 +147,7 @@ JPY_PAIRS = [
 ETF_SYMBOLS = [
     'DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM',
     'XLE', 'EWZ', 'XLU', 'SLV',
+    'AUS200',
 ]
 
 

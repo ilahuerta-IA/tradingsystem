@@ -3571,8 +3571,87 @@ STRATEGIES_CONFIG = {
     # TLT -- LUYTEN (Opening Range Breakout simplified)
     # =========================================================================
     #
-    'TLT_LUYTEN': {
+    'AUS200_LUYTEN': {
         'active': True,
+        'strategy_name': 'LUYTEN',
+        'asset_name': 'AUS200',
+        'data_path': 'data/AUS200_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        # Override broker config for CFD index (AUS200 Darwinex Zero)
+        'broker_config_key': 'darwinex_zero_cfd_index',
+
+        'params': {
+            # Consolidation -- start with TLT value (time-based, not price-based)
+            'consolidation_bars': 19,
+
+            # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
+            # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
+            # AUS200 0.06% of ~8000 = ~5 pts
+            'bk_above_min_pips': 5.0,
+            'bk_body_min_pips': 0.0,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # SL / TP -- ATR multipliers (same ratios as TLT)
+            'atr_sl_multiplier': 1.5,
+            'atr_tp_multiplier': 3.0,
+            'sl_buffer_pips': 0.0,
+
+            # EOD Close (UTC) -- AUS200 CFD gap ~21:00-22:50 UTC
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+
+            # Standard Filters -- start permissive, optimize later
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            # SL pips filter -- scaled from TLT
+            # TLT: 10-100 pips * 0.01 = 0.10-1.00 (0.1%-1.0% of ~$100)
+            # AUS200: 0.1%-1.0% of ~8000 = 8-80 pts
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 8.0,
+            'sl_pips_max': 80.0,
+
+            # ATR Range Filter -- scaled from TLT
+            # TLT: 0.12-0.22 on ~$100 price = 0.12%-0.22%
+            # AUS200: 0.12%-0.22% of ~8000 = ~10-18 pts
+            'use_atr_range_filter': True,
+            'atr_range_min': 10.0,
+            'atr_range_max': 18.0,
+
+            # Risk management
+            'risk_percent': 0.01,
+
+            # CFD index config
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 5.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'TLT_LUYTEN': {
+        'active': False,
         'strategy_name': 'LUYTEN',
         'asset_name': 'TLT',
         'data_path': 'data/TLT_5m_5Yea.csv',
@@ -3582,7 +3661,7 @@ STRATEGIES_CONFIG = {
 
         'starting_cash': 100000.0,
 
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -3593,7 +3672,7 @@ STRATEGIES_CONFIG = {
 
             # Breakout filters — optimized: BkAbv=6 (sweet spot), BkBdy=0 (most robust OOS)
             'bk_above_min_pips': 6.0,
-            'bk_body_min_pips': 5.0,
+            'bk_body_min_pips': 0.0,
 
             # ATR
             'atr_length': 14,
@@ -3606,21 +3685,21 @@ STRATEGIES_CONFIG = {
 
             # EOD Close (UTC, standard time; DST auto-adjusts -1h)
             'use_eod_close': True,
-            'eod_close_hour': 20,
+            'eod_close_hour': 18,
             'eod_close_minute': 50,
 
             # Standard Filters (ALL OFF — no improvement in optimization)
-            'use_time_filter': True,
+            'use_time_filter': False,
             'allowed_hours': [15, 16, 18, 19],
             'use_day_filter': True,
-            'allowed_days': [0, 2, 3, 4],
+            'allowed_days': [2, 3, 4],
 
             'use_sl_pips_filter': True,
             'sl_pips_min': 10.0,
             'sl_pips_max': 100.0,
 
             # ATR Range Filter — entry ATR must be within range
-            'use_atr_range_filter': False,
+            'use_atr_range_filter': True,
             'atr_range_min': 0.12,
             'atr_range_max': 0.22,
 
@@ -3653,5 +3732,12 @@ BROKER_CONFIG = {
         'commission_per_contract': 0.02,  # USD per contract
         'leverage': 5.0,
         'margin_percent': 20.0,
-    }
+    },
+    'darwinex_zero_cfd_index': {
+        # AUS200: 2.75 AUD/order/contract, contract=10xIndex
+        # Per BT share (1 unit): 2.75/10 = 0.275 AUD per order
+        'commission_per_contract': 0.275,
+        'leverage': 20.0,
+        'margin_percent': 5.0,
+    },
 }

@@ -25,8 +25,9 @@ from strategies.luyten_strategy import LUYTENStrategy
 from lib.commission import ForexCommission, ETFCommission, ETFCSVData
 
 
-# ETF symbols list
-ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV']
+# ETF symbols list (includes CFD indices treated as ETF-like for data loading)
+ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV',
+               'AUS200']
 
 # Strategy registry
 STRATEGY_REGISTRY = {
@@ -157,8 +158,9 @@ def run_backtest(config_name):
     is_jpy = asset_name.upper().endswith('JPY')
     
     if is_etf:
-        # ETF commission: $0.02/contract
-        broker_config = BROKER_CONFIG.get('darwinex_zero_etf', BROKER_CONFIG['darwinex_zero'])
+        # ETF/CFD index commission
+        broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
+        broker_config = BROKER_CONFIG.get(broker_key, BROKER_CONFIG['darwinex_zero_etf'])
         ETFCommission.total_commission = 0.0
         ETFCommission.total_contracts = 0.0
         ETFCommission.commission_calls = 0
@@ -168,7 +170,7 @@ def run_backtest(config_name):
             margin_pct=broker_config.get('margin_percent', 20.0),
         )
         cerebro.broker.addcommissioninfo(commission)
-        print(f'Commission: ${broker_config.get("commission_per_contract", 0.02)}/contract (ETF)')
+        print(f'Commission: ${broker_config.get("commission_per_contract", 0.02)}/contract ({broker_key})')
         print(f'Margin: {broker_config.get("margin_percent", 20.0)}%')
     else:
         # Forex commission: $2.50/lot

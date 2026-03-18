@@ -1,17 +1,17 @@
 """
-LUYTEN Strategy Optimizer — Grid Search with Yearly Breakdown
+LUYTEN Strategy Optimizer - Grid Search with Yearly Breakdown
 
-Runs parameter grid search over LUYTEN ORB strategy for ETFs.
+Runs parameter grid search over LUYTEN ORB strategy for ETFs/CFD indices.
 Shows per-year stats (PF, Trades, DD, Sharpe, CAGR) for each combo.
 
 Usage:
-    python tools/luyten_optimizer.py
+    python tools/luyten_optimizer.py              # default asset (TLT)
+    python tools/luyten_optimizer.py AUS200       # select AUS200
 
 Configure:
-    1. Set OPTIMIZE_* = True/False to enable/disable each parameter
-    2. Set range + step for each parameter
-    3. Set BASE_PARAMS for fixed values
-    4. Set DATA/DATES at the top
+    1. Add/edit ASSET_PROFILES for each asset
+    2. Set OPTIMIZE_* = True/False to enable/disable each parameter
+    3. Set range + step for each parameter in the profile
 """
 import sys
 import os
@@ -39,15 +39,114 @@ from config.settings import BROKER_CONFIG
 
 
 # =============================================================================
-# CONFIGURATION
+# ASSET PROFILES
 # =============================================================================
 
-# --- Data & Dates ---
-DATA_PATH = 'data/TLT_5m_5Yea.csv'
-ASSET_NAME = 'TLT'
-FROM_DATE = datetime(2020, 1, 1)
-TO_DATE = datetime(2023, 12, 31)
+ASSET_PROFILES = {
+    'TLT': {
+        'data_path': 'data/TLT_5m_5Yea.csv',
+        'broker_config_key': 'darwinex_zero_etf',
+        'from_date': datetime(2020, 1, 1),
+        'to_date': datetime(2023, 12, 31),
+        'ranges': {
+            'consolidation_bars': (15, 21, 2),
+            'bk_above_min_pips': (2.0, 8.0, 2.0),
+            'bk_body_min_pips': (0.0, 15.0, 5.0),
+            'atr_tp_multiplier': (2.0, 3.5, 0.5),
+            'atr_sl_multiplier': (1.5, 2.0, 0.5),
+        },
+        'base_params': {
+            'consolidation_bars': 12,
+            'bk_above_min_pips': 2.0,
+            'bk_body_min_pips': 10.0,
+            'atr_length': 14,
+            'atr_avg_period': 20,
+            'atr_sl_multiplier': 1.5,
+            'atr_tp_multiplier': 3.0,
+            'sl_buffer_pips': 0.0,
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 0.0,
+            'sl_pips_max': 9999.0,
+            'risk_percent': 0.01,
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_jpy_pair': False,
+            'is_etf': True,
+            'margin_pct': 20.0,
+            'print_signals': False,
+            'export_reports': False,
+        },
+    },
+    'AUS200': {
+        'data_path': 'data/AUS200_5m_5Yea.csv',
+        'broker_config_key': 'darwinex_zero_cfd_index',
+        'from_date': datetime(2020, 1, 1),
+        'to_date': datetime(2023, 12, 31),
+        'ranges': {
+            'consolidation_bars': (15, 21, 2),
+            'bk_above_min_pips': (3.0, 7.0, 2.0),
+            'bk_body_min_pips': (0.0, 10.0, 5.0),
+            'atr_tp_multiplier': (2.0, 3.5, 0.5),
+            'atr_sl_multiplier': (1.5, 2.0, 0.5),
+        },
+        'base_params': {
+            'consolidation_bars': 19,
+            'bk_above_min_pips': 5.0,
+            'bk_body_min_pips': 0.0,
+            'atr_length': 14,
+            'atr_avg_period': 20,
+            'atr_sl_multiplier': 1.5,
+            'atr_tp_multiplier': 3.0,
+            'sl_buffer_pips': 0.0,
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 50,
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            'use_sl_pips_filter': True,
+            'sl_pips_min': 8.0,
+            'sl_pips_max': 80.0,
+            'risk_percent': 0.01,
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_jpy_pair': False,
+            'is_etf': True,
+            'margin_pct': 5.0,
+            'print_signals': False,
+            'export_reports': False,
+        },
+    },
+}
+
+# =============================================================================
+# ACTIVE CONFIGURATION (resolved from CLI arg or default)
+# =============================================================================
+
+_asset_arg = sys.argv[1] if len(sys.argv) > 1 else 'TLT'
+if _asset_arg not in ASSET_PROFILES:
+    print("ERROR: Unknown asset '%s'. Available: %s"
+          % (_asset_arg, ', '.join(sorted(ASSET_PROFILES.keys()))))
+    sys.exit(1)
+
+_profile = ASSET_PROFILES[_asset_arg]
+ASSET_NAME = _asset_arg
+DATA_PATH = _profile['data_path']
+BROKER_CONFIG_KEY = _profile['broker_config_key']
+FROM_DATE = _profile['from_date']
+TO_DATE = _profile['to_date']
 STARTING_CASH = 100000.0
+BASE_PARAMS = dict(_profile['base_params'])
 
 # --- Parameter toggles: True = sweep this param, False = use base value ---
 OPTIMIZE_CONSOLIDATION_BARS = True
@@ -56,43 +155,12 @@ OPTIMIZE_BK_BODY_MIN_PIPS = True
 OPTIMIZE_ATR_TP_MULTIPLIER = True
 OPTIMIZE_ATR_SL_MULTIPLIER = True
 
-# --- Sweep ranges: (start, stop_inclusive, step) ---
-RANGE_CONSOLIDATION_BARS = (15, 21, 2)       # 15,17,19,21 → 4 values (Phase 1 winner zone)
-RANGE_BK_ABOVE_MIN_PIPS = (2.0, 8.0, 2.0)   # 2,4,6,8 → 4 values (10 dropped: no improvement)
-RANGE_BK_BODY_MIN_PIPS = (0.0, 15.0, 5.0)   # 0,5,10,15 → 4 values (new dimension)
-RANGE_ATR_TP_MULTIPLIER = (2.0, 3.5, 0.5)   # 2.0,2.5,3.0,3.5 → 4 values (fine step)
-RANGE_ATR_SL_MULTIPLIER = (1.5, 2.0, 0.5)   # 1.5,2.0 → 2 values (1.0=margin, 2.5=too wide)
-
-# --- Base params (used when param is NOT being optimized) ---
-BASE_PARAMS = {
-    'consolidation_bars': 12,
-    'bk_above_min_pips': 2.0,
-    'bk_body_min_pips': 10.0,
-    'atr_length': 14,
-    'atr_avg_period': 20,
-    'atr_sl_multiplier': 1.5,
-    'atr_tp_multiplier': 3.0,
-    'sl_buffer_pips': 0.0,
-    'use_eod_close': True,
-    'eod_close_hour': 20,
-    'eod_close_minute': 50,
-    'use_time_filter': False,
-    'allowed_hours': [],
-    'use_day_filter': False,
-    'allowed_days': [0, 1, 2, 3, 4],
-    'use_sl_pips_filter': False,
-    'sl_pips_min': 0.0,
-    'sl_pips_max': 9999.0,
-    'risk_percent': 0.01,
-    'pip_value': 0.01,
-    'lot_size': 1,
-    'jpy_rate': 1.0,
-    'is_jpy_pair': False,
-    'is_etf': True,
-    'margin_pct': 20.0,
-    'print_signals': False,
-    'export_reports': False,
-}
+# --- Sweep ranges from profile ---
+RANGE_CONSOLIDATION_BARS = _profile['ranges']['consolidation_bars']
+RANGE_BK_ABOVE_MIN_PIPS = _profile['ranges']['bk_above_min_pips']
+RANGE_BK_BODY_MIN_PIPS = _profile['ranges']['bk_body_min_pips']
+RANGE_ATR_TP_MULTIPLIER = _profile['ranges']['atr_tp_multiplier']
+RANGE_ATR_SL_MULTIPLIER = _profile['ranges']['atr_sl_multiplier']
 
 
 # =============================================================================
@@ -168,7 +236,7 @@ def run_single_backtest(params):
 
         cerebro.broker.setcash(STARTING_CASH)
 
-        broker_cfg = BROKER_CONFIG.get('darwinex_zero_etf',
+        broker_cfg = BROKER_CONFIG.get(BROKER_CONFIG_KEY,
                                        BROKER_CONFIG['darwinex_zero'])
         ETFCommission.total_commission = 0.0
         ETFCommission.total_contracts = 0.0
@@ -376,7 +444,7 @@ def print_results(all_results, sweep_keys):
         best = valid[0]
         print('\n' + '=' * 80)
         best_vals = ', '.join('%s=%s' % (k, best[0].get(k)) for k in sweep_keys)
-        print('BEST: %s → PF=%s, Trades=%d, DD=%.1f%%, Sharpe=%.2f, CAGR=%.1f%%'
+        print('BEST: %s -> PF=%s, Trades=%d, DD=%.1f%%, Sharpe=%.2f, CAGR=%.1f%%'
               % (best_vals, fmt_pf(best[1]['pf']), best[1]['trades'],
                  best[1]['max_dd'], best[1]['sharpe'], best[1]['cagr']))
         print('=' * 80)
@@ -485,11 +553,11 @@ def main():
         all_results.append((params, metrics))
 
         if metrics and 'error' not in metrics:
-            print(' → Trades=%d, PF=%s, DD=%.1f%%, Sharpe=%.2f'
+            print(' -> Trades=%d, PF=%s, DD=%.1f%%, Sharpe=%.2f'
                   % (metrics['trades'], fmt_pf(metrics['pf']),
                      metrics['max_dd'], metrics['sharpe']))
         else:
-            print(' → ERROR: %s' % metrics.get('error', 'unknown'))
+            print(' -> ERROR: %s' % metrics.get('error', 'unknown'))
 
     print_results(all_results, sweep_keys)
     save_results_json(all_results, sweep_keys)
