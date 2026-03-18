@@ -378,7 +378,7 @@ class LUYTENStrategy(bt.Strategy):
                       % (dt, self.data._name, dt.hour))
             return
 
-        entry_price = float(self.data.open[0])
+        entry_price = float(self.data.close[0])
 
         # Calculate SL/TP
         sl_buffer = self.p.sl_buffer_pips * self.p.pip_value
