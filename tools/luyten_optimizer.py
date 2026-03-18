@@ -56,6 +56,8 @@ ASSET_PROFILES = {
             'atr_sl_multiplier': (1.5, 2.0, 0.5),
         },
         'base_params': {
+            'session_start_hour': None,
+            'session_start_minute': 0,
             'consolidation_bars': 12,
             'bk_above_min_pips': 2.0,
             'bk_body_min_pips': 10.0,
@@ -98,6 +100,8 @@ ASSET_PROFILES = {
             'atr_sl_multiplier': (1.5, 2.0, 0.5),
         },
         'base_params': {
+            'session_start_hour': 9,
+            'session_start_minute': 0,
             'consolidation_bars': 19,
             'bk_above_min_pips': 5.0,
             'bk_body_min_pips': 0.0,

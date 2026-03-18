@@ -3591,6 +3591,10 @@ STRATEGIES_CONFIG = {
         'broker_config_key': 'darwinex_zero_cfd_index',
 
         'params': {
+            # Session start -- London open 9:00 AM local (DST-adjusted)
+            'session_start_hour': 9,
+            'session_start_minute': 0,
+
             # Consolidation -- start with TLT value (time-based, not price-based)
             'consolidation_bars': 19,
 
