@@ -70,20 +70,20 @@ BASE_PARAMS = {
 # Top 10 candidates from Phase 2 IS optimization
 # Format: (SL, TP, BkAbv, BkBdy, CBars)
 OOS_CANDIDATES = [
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 2.0,  'bk_body_min_pips': 10.0, 'consolidation_bars': 19},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 0.0,  'consolidation_bars': 19},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 5.0,  'consolidation_bars': 19},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 10.0, 'consolidation_bars': 19},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 3.0, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 5.0,  'consolidation_bars': 19},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.0, 'bk_above_min_pips': 8.0,  'bk_body_min_pips': 5.0,  'consolidation_bars': 21},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 3.0, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 0.0,  'consolidation_bars': 19},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 4.0,  'bk_body_min_pips': 10.0, 'consolidation_bars': 19},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.0, 'bk_above_min_pips': 8.0,  'bk_body_min_pips': 0.0,  'consolidation_bars': 21},
-    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.0, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 5.0,  'consolidation_bars': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 2.0,  'bk_body_min_pips': 10.0, 'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 0.0,  'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 5.0,  'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 10.0, 'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 3.0, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 5.0,  'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.0, 'bk_above_min_pips': 8.0,  'bk_body_min_pips': 5.0,  'consolidation_bars_min': 21, 'consolidation_bars_max': 21},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 3.0, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 0.0,  'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.5, 'bk_above_min_pips': 4.0,  'bk_body_min_pips': 10.0, 'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.0, 'bk_above_min_pips': 8.0,  'bk_body_min_pips': 0.0,  'consolidation_bars_min': 21, 'consolidation_bars_max': 21},
+    {'atr_sl_multiplier': 1.5, 'atr_tp_multiplier': 2.0, 'bk_above_min_pips': 6.0,  'bk_body_min_pips': 5.0,  'consolidation_bars_min': 19, 'consolidation_bars_max': 19},
 ]
 
 SWEEP_KEYS = ['atr_sl_multiplier', 'atr_tp_multiplier', 'bk_above_min_pips',
-              'bk_body_min_pips', 'consolidation_bars']
+              'bk_body_min_pips', 'consolidation_bars_min', 'consolidation_bars_max']
 
 
 # =============================================================================
@@ -245,11 +245,11 @@ def main():
         all_results.append((params, metrics))
 
         if metrics and 'error' not in metrics:
-            print(' → Trades=%d, PF=%s, DD=%.1f%%, Sharpe=%.2f'
+            print(' -> Trades=%d, PF=%s, DD=%.1f%%, Sharpe=%.2f'
                   % (metrics['trades'], fmt_pf(metrics['pf']),
                      metrics['max_dd'], metrics['sharpe']))
         else:
-            print(' → ERROR: %s' % metrics.get('error', 'unknown'))
+            print(' -> ERROR: %s' % metrics.get('error', 'unknown'))
 
     # Save JSON
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
