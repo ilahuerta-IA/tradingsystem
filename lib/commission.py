@@ -140,6 +140,50 @@ class ETFCommission(bt.CommInfoBase):
 
 
 # =============================================================================
+# CFD INDEX COMMISSION CLASS - Darwinex Zero CFD Indices
+# =============================================================================
+class CFDIndexCommission(bt.CommInfoBase):
+    """
+    Commission scheme for CFD indices (SP500, AUS200, UK100, etc.).
+    Darwinex Zero specs:
+    - Commission: variable per index (e.g. $0.275 for AUS200)
+    - Margin: 5% (20:1 leverage)
+    - stocklike=False so backtrader uses margin, not full price
+    """
+    params = (
+        ('stocklike', False),
+        ('commtype', bt.CommInfoBase.COMM_FIXED),
+        ('percabs', True),
+        ('leverage', 20.0),
+        ('automargin', True),
+        ('commission', 0.275),
+        ('margin_pct', 5.0),
+        ('mult', 1.0),
+    )
+
+    # Debug counters (class-level)
+    commission_calls = 0
+    total_commission = 0.0
+    total_contracts = 0.0
+
+    def _getcommission(self, size, price, pseudoexec):
+        """Return commission based on contract count."""
+        contracts = abs(size)
+        comm = contracts * self.p.commission
+
+        if not pseudoexec:
+            CFDIndexCommission.commission_calls += 1
+            CFDIndexCommission.total_commission += comm
+            CFDIndexCommission.total_contracts += contracts
+
+        return comm
+
+    def get_margin(self, price):
+        """Return margin requirement per contract."""
+        return price * (self.p.margin_pct / 100.0)
+
+
+# =============================================================================
 # ETF CSV DATA FEED - Fixes Date/Time separate columns issue
 # =============================================================================
 class ETFCSVData(bt.feeds.GenericCSVData):

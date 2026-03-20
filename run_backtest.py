@@ -22,7 +22,7 @@ from strategies.helix_strategy import HELIXStrategy
 from strategies.gemini_strategy import GEMINIStrategy
 from strategies.ceres_strategy import CERESStrategy
 from strategies.luyten_strategy import LUYTENStrategy
-from lib.commission import ForexCommission, ETFCommission, ETFCSVData
+from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
 
 
 # ETF symbols list (includes CFD indices treated as ETF-like for data loading)
@@ -161,14 +161,26 @@ def run_backtest(config_name):
         # ETF/CFD index commission
         broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
         broker_config = BROKER_CONFIG.get(broker_key, BROKER_CONFIG['darwinex_zero_etf'])
-        ETFCommission.total_commission = 0.0
-        ETFCommission.total_contracts = 0.0
-        ETFCommission.commission_calls = 0
-        
-        commission = ETFCommission(
-            commission=broker_config.get('commission_per_contract', 0.02),
-            margin_pct=broker_config.get('margin_percent', 20.0),
-        )
+
+        if 'cfd_index' in broker_key:
+            # CFD indices: stocklike=False so margin is used, not full price
+            CFDIndexCommission.total_commission = 0.0
+            CFDIndexCommission.total_contracts = 0.0
+            CFDIndexCommission.commission_calls = 0
+            commission = CFDIndexCommission(
+                commission=broker_config.get('commission_per_contract', 0.275),
+                margin_pct=broker_config.get('margin_percent', 5.0),
+            )
+        else:
+            # ETFs: stocklike=True (DIA, TLT, GLD, etc.)
+            ETFCommission.total_commission = 0.0
+            ETFCommission.total_contracts = 0.0
+            ETFCommission.commission_calls = 0
+            commission = ETFCommission(
+                commission=broker_config.get('commission_per_contract', 0.02),
+                margin_pct=broker_config.get('margin_percent', 20.0),
+            )
+
         cerebro.broker.addcommissioninfo(commission)
         print(f'Commission: ${broker_config.get("commission_per_contract", 0.02)}/contract ({broker_key})')
         print(f'Margin: {broker_config.get("margin_percent", 20.0)}%')
@@ -240,8 +252,13 @@ def run_backtest(config_name):
     num_trades = len(getattr(strategy, 'trade_reports', []))
     
     if is_etf:
-        total_commission = ETFCommission.total_commission
-        total_contracts = ETFCommission.total_contracts
+        broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
+        if 'cfd_index' in broker_key:
+            total_commission = CFDIndexCommission.total_commission
+            total_contracts = CFDIndexCommission.total_contracts
+        else:
+            total_commission = ETFCommission.total_commission
+            total_contracts = ETFCommission.total_contracts
         avg_commission = total_commission / num_trades if num_trades > 0 else 0
         avg_contracts = total_contracts / num_trades if num_trades > 0 else 0
         

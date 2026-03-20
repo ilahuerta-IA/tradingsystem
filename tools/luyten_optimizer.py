@@ -34,7 +34,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 sys.path.insert(0, PROJECT_ROOT)
 
 from strategies.luyten_strategy import LUYTENStrategy
-from lib.commission import ETFCommission, ETFCSVData
+from lib.commission import ETFCommission, CFDIndexCommission, ETFCSVData
 from config.settings import BROKER_CONFIG
 
 
@@ -256,13 +256,22 @@ def run_single_backtest(params):
 
         broker_cfg = BROKER_CONFIG.get(BROKER_CONFIG_KEY,
                                        BROKER_CONFIG['darwinex_zero'])
-        ETFCommission.total_commission = 0.0
-        ETFCommission.total_contracts = 0.0
-        ETFCommission.commission_calls = 0
-        commission = ETFCommission(
-            commission=broker_cfg.get('commission_per_contract', 0.02),
-            margin_pct=broker_cfg.get('margin_percent', 20.0),
-        )
+        if 'cfd_index' in BROKER_CONFIG_KEY:
+            CFDIndexCommission.total_commission = 0.0
+            CFDIndexCommission.total_contracts = 0.0
+            CFDIndexCommission.commission_calls = 0
+            commission = CFDIndexCommission(
+                commission=broker_cfg.get('commission_per_contract', 0.275),
+                margin_pct=broker_cfg.get('margin_percent', 5.0),
+            )
+        else:
+            ETFCommission.total_commission = 0.0
+            ETFCommission.total_contracts = 0.0
+            ETFCommission.commission_calls = 0
+            commission = ETFCommission(
+                commission=broker_cfg.get('commission_per_contract', 0.02),
+                margin_pct=broker_cfg.get('margin_percent', 20.0),
+            )
         cerebro.broker.addcommissioninfo(commission)
 
         cerebro.addstrategy(LUYTENStrategy, **params)
