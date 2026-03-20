@@ -3591,19 +3591,19 @@ STRATEGIES_CONFIG = {
         'broker_config_key': 'darwinex_zero_cfd_index',
 
         'params': {
-            # Session start -- London open 08:00 UTC (fixed, no DST heuristic)
+            # Session start -- 08:00 UTC winter / 07:00 UTC BST (auto via london_uk DST)
             'session_start_hour': 8,
             'session_start_minute': 0,
-            'use_dst_heuristic': False,  # AUS200 is 24h CFD, NYSE heuristic N/A
+            'dst_mode': 'london_uk',  # shift -1h during UK BST (late Mar - late Oct)
 
             # Consolidation range (min-max bars to reduce overfitting)
-            'consolidation_bars_min': 4,
+            'consolidation_bars_min': 0,
             'consolidation_bars_max': 19,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
             # AUS200 0.06% of ~8000 = ~5 pts
-            'bk_above_min_pips': 3.0,
+            'bk_above_min_pips': 0.0,
             'bk_body_min_pips': 0.0,
 
             # ATR

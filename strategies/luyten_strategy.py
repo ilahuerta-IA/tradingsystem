@@ -9,11 +9,11 @@ consolidation_bars_max bars, pure WAITING_BREAKOUT (no more high updates).
 STATE MACHINE (3 STATES):
     IDLE -> CONSOLIDATION -> WAITING_BREAKOUT -> Entry
 
-1. IDLE: Wait for new trading day
-2. CONSOLIDATION: Record highest HIGH. After consolidation_bars_min,
-   also check for breakout on each bar. If consolidation_bars_max
-   reached without entry, transition to WAITING_BREAKOUT.
-3. WAITING_BREAKOUT: Wait for green candle with:
+1. IDLE: Wait for new trading day + session_start_hour
+2. CONSOLIDATION: Two sub-phases within consolidation_bars_max bars:
+   a) Delay: bars 1..consolidation_bars_min (no observation)
+   b) Observation: bars min+1..max (record highest HIGH, NO entries)
+3. WAITING_BREAKOUT: After max bars, wait for green candle with:
    - open < consolidation_high AND close > consolidation_high
    - close - consolidation_high >= bk_above_min_pips (how far above)
    - close - open >= bk_body_min_pips (minimum candle body)
@@ -31,6 +31,7 @@ ASSETS: ETFs (TLT primary target)
 from __future__ import annotations
 import math
 from pathlib import Path
+import datetime as _dt
 from datetime import datetime, time as dt_time
 from collections import defaultdict
 
@@ -54,7 +55,7 @@ class LUYTENStrategy(bt.Strategy):
         consolidation_bars_max=6,   # max bars updating consol high (then pure wait)
         session_start_hour=None,    # UTC hour to begin consolidation (None = first bar of day)
         session_start_minute=0,     # UTC minute to begin consolidation
-        use_dst_heuristic=True,     # NYSE DST heuristic (dt.hour<14 -> -1h). False for 24h CFDs
+        dst_mode='nyse',            # 'nyse' | 'london_uk' | 'none'
 
         # --- Breakout Filters ---
         bk_above_min_pips=0.0,      # min distance close - consolidation_high
@@ -163,6 +164,44 @@ class LUYTENStrategy(bt.Strategy):
         self._init_trade_reporting()
 
     # =====================================================================
+    # DST OFFSET
+    # =====================================================================
+
+    @staticmethod
+    def _bst_boundaries(year):
+        """Return (bst_start, bst_end) as date objects for *year*.
+
+        BST starts last Sunday of March at 01:00 UTC,
+        BST ends   last Sunday of October at 01:00 UTC.
+        For daily session logic the date boundary is sufficient.
+        """
+        # Last Sunday of March
+        mar31 = _dt.date(year, 3, 31)
+        bst_start = mar31 - _dt.timedelta(days=(mar31.weekday() + 1) % 7)
+        # Last Sunday of October
+        oct31 = _dt.date(year, 10, 31)
+        bst_end = oct31 - _dt.timedelta(days=(oct31.weekday() + 1) % 7)
+        return bst_start, bst_end
+
+    def _dst_offset(self, today):
+        """Return minutes offset to apply to base (winter) hours.
+
+        * 'none'      -> 0
+        * 'nyse'      -> -60 when first bar of day arrives before 14 UTC
+        * 'london_uk' -> -60 during BST (last Sun Mar .. last Sun Oct)
+        """
+        mode = self.p.dst_mode
+        if mode == 'none':
+            return 0
+        if mode == 'nyse':
+            dt = self.data.datetime.datetime(0)
+            return -60 if dt.hour < 14 else 0
+        if mode == 'london_uk':
+            bst_start, bst_end = self._bst_boundaries(today.year)
+            return -60 if bst_start <= today < bst_end else 0
+        return 0
+
+    # =====================================================================
     # TRADE REPORTING
     # =====================================================================
 
@@ -182,7 +221,7 @@ class LUYTENStrategy(bt.Strategy):
             f.write("Generated: %s\n" % datetime.now())
             f.write("\n")
             if self.p.session_start_hour is not None:
-                dst_tag = "DST-adjusted" if self.p.use_dst_heuristic else "fixed UTC"
+                dst_tag = "DST:%s" % self.p.dst_mode
                 f.write("Session Start: %d:%02d UTC (%s)\n"
                         % (self.p.session_start_hour,
                            self.p.session_start_minute, dst_tag))
@@ -479,22 +518,19 @@ class LUYTENStrategy(bt.Strategy):
         # Day change detection
         today = dt.date()
         if today != self._today_date:
-            # Compute EOD for this trading day (DST-aware if heuristic enabled)
+            # Compute DST offset for this trading day
+            dst_offset = self._dst_offset(today)
+
+            # Compute EOD for this trading day (DST-aware)
             if self.p.use_eod_close and self.p.eod_close_hour is not None:
                 base_eod = self.p.eod_close_hour * 60 + self.p.eod_close_minute
-                if self.p.use_dst_heuristic and dt.hour < 14:
-                    self._today_eod_minutes = base_eod - 60
-                else:
-                    self._today_eod_minutes = base_eod
+                self._today_eod_minutes = base_eod + dst_offset
 
-            # Compute session start (DST-aware if heuristic enabled)
+            # Compute session start (DST-aware)
             if self.p.session_start_hour is not None:
                 base_start = (self.p.session_start_hour * 60
                               + self.p.session_start_minute)
-                if self.p.use_dst_heuristic and dt.hour < 14:
-                    self._today_session_start_minutes = base_start - 60
-                else:
-                    self._today_session_start_minutes = base_start
+                self._today_session_start_minutes = base_start + dst_offset
             else:
                 self._today_session_start_minutes = None
 
@@ -568,8 +604,13 @@ class LUYTENStrategy(bt.Strategy):
 
                 self._day_first_bar_seen = False
                 self.state = "CONSOLIDATION"
-                self.consolidation_high = float(self.data.high[0])
                 self.consol_count = 1
+
+                # min=0 -> record high from bar 1; min>0 -> delay first
+                if self.p.consolidation_bars_min == 0:
+                    self.consolidation_high = float(self.data.high[0])
+                else:
+                    self.consolidation_high = float('-inf')
 
                 if self.p.print_signals:
                     print('%s [%s] CONSOLIDATION START: bar 1/%d-%d, high=%.5f'
@@ -579,8 +620,16 @@ class LUYTENStrategy(bt.Strategy):
                              self.consolidation_high))
 
         # ---- STATE: CONSOLIDATION ----
+        # Bars 1..min  = delay (no high recording)
+        # Bars min+1..max = record HIGHs only (NO breakout check)
         elif self.state == "CONSOLIDATION":
             self.consol_count += 1
+
+            # Record high only after delay period
+            if self.consol_count > self.p.consolidation_bars_min:
+                bar_high = float(self.data.high[0])
+                if bar_high > self.consolidation_high:
+                    self.consolidation_high = bar_high
 
             if self.p.print_signals:
                 print('%s [%s] CONSOLIDATION: bar %d/%d-%d, high=%.5f'
@@ -589,18 +638,7 @@ class LUYTENStrategy(bt.Strategy):
                          self.p.consolidation_bars_max,
                          self.consolidation_high))
 
-            # After min bars reached, check breakout BEFORE updating high
-            # (otherwise bar_close <= bar_high <= consolidation_high always)
-            if self.consol_count >= self.p.consolidation_bars_min:
-                if self._check_breakout(dt, atr_avg):
-                    return
-
-            # Update consolidation_high AFTER breakout check
-            bar_high = float(self.data.high[0])
-            if bar_high > self.consolidation_high:
-                self.consolidation_high = bar_high
-
-            # After max bars, stop updating high -> pure WAITING_BREAKOUT
+            # After max bars -> WAITING_BREAKOUT (entries allowed)
             if self.consol_count >= self.p.consolidation_bars_max:
                 self.state = "WAITING_BREAKOUT"
 
@@ -613,7 +651,7 @@ class LUYTENStrategy(bt.Strategy):
             self._check_breakout(dt, atr_avg)
 
     # =====================================================================
-    # BREAKOUT CHECK (shared by CONSOLIDATION and WAITING_BREAKOUT)
+    # BREAKOUT CHECK (WAITING_BREAKOUT state only)
     # =====================================================================
 
     def _check_breakout(self, dt, atr_avg):

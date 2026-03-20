@@ -103,8 +103,9 @@ ASSET_PROFILES = {
             'atr_sl_multiplier': (1.5, 2.0, 0.5),
         },
         'base_params': {
-            'session_start_hour': 9,
+            'session_start_hour': 8,
             'session_start_minute': 0,
+            'dst_mode': 'london_uk',
             'consolidation_bars_min': 15,
             'consolidation_bars_max': 21,
             'bk_above_min_pips': 5.0,
