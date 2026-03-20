@@ -578,12 +578,6 @@ class LUYTENStrategy(bt.Strategy):
 
         # ---- STATE: CONSOLIDATION ----
         elif self.state == "CONSOLIDATION":
-            bar_high = float(self.data.high[0])
-
-            # Track highest HIGH
-            if bar_high > self.consolidation_high:
-                self.consolidation_high = bar_high
-
             self.consol_count += 1
 
             if self.p.print_signals:
@@ -593,10 +587,16 @@ class LUYTENStrategy(bt.Strategy):
                          self.p.consolidation_bars_max,
                          self.consolidation_high))
 
-            # After min bars reached, check for breakout on each bar
+            # After min bars reached, check breakout BEFORE updating high
+            # (otherwise bar_close <= bar_high <= consolidation_high always)
             if self.consol_count >= self.p.consolidation_bars_min:
                 if self._check_breakout(dt, atr_avg):
                     return
+
+            # Update consolidation_high AFTER breakout check
+            bar_high = float(self.data.high[0])
+            if bar_high > self.consolidation_high:
+                self.consolidation_high = bar_high
 
             # After max bars, stop updating high -> pure WAITING_BREAKOUT
             if self.consol_count >= self.p.consolidation_bars_max:
