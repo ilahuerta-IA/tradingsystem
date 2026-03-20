@@ -121,7 +121,7 @@ ASSET_PROFILES = {
             'allowed_hours': [],
             'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
-            'use_sl_pips_filter': True,
+            'use_sl_pips_filter': False,
             'sl_pips_min': 8.0,
             'sl_pips_max': 80.0,
             'risk_percent': 0.01,

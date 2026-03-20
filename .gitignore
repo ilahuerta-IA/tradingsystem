@@ -48,9 +48,7 @@ data/*.csv
 data/*.zip
 
 # Logs and Reports
-logs/*.txt
-logs/*.log
-logs/*.jsonl
+logs/
 temp_reports/*.txt
 
 # Operating System

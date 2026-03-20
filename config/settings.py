@@ -3577,8 +3577,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'AUS200',
         'data_path': 'data/AUS200_5m_5Yea.csv',
 
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2020, 12, 31),
+        'from_date': datetime.datetime(2021, 1, 1),
+        'to_date': datetime.datetime(2021, 12, 30),
 
         'starting_cash': 100000.0,
 
@@ -3597,12 +3597,12 @@ STRATEGIES_CONFIG = {
 
             # Consolidation range (min-max bars to reduce overfitting)
             'consolidation_bars_min': 15,
-            'consolidation_bars_max': 21,
+            'consolidation_bars_max': 18,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
             # AUS200 0.06% of ~8000 = ~5 pts
-            'bk_above_min_pips': 5.0,
+            'bk_above_min_pips': 0.0,
             'bk_body_min_pips': 0.0,
 
             # ATR
@@ -3611,7 +3611,7 @@ STRATEGIES_CONFIG = {
 
             # SL / TP -- ATR multipliers (same ratios as TLT)
             'atr_sl_multiplier': 1.5,
-            'atr_tp_multiplier': 3.0,
+            'atr_tp_multiplier': 3.5,
             'sl_buffer_pips': 0.0,
 
             # EOD Close (UTC) -- AUS200 CFD gap ~21:00-22:50 UTC
@@ -3629,15 +3629,15 @@ STRATEGIES_CONFIG = {
             # TLT: 10-100 pips * 0.01 = 0.10-1.00 (0.1%-1.0% of ~$100)
             # AUS200: 0.1%-1.0% of ~8000 = 8-80 pts
             'use_sl_pips_filter': False,
-            'sl_pips_min': 8.0,
-            'sl_pips_max': 80.0,
+            'sl_pips_min': 10.0,
+            'sl_pips_max': 800.0,
 
             # ATR Range Filter -- scaled from TLT
             # TLT: 0.12-0.22 on ~$100 price = 0.12%-0.22%
             # AUS200: 0.12%-0.22% of ~8000 = ~10-18 pts
             'use_atr_range_filter': False,
-            'atr_range_min': 10.0,
-            'atr_range_max': 18.0,
+            'atr_range_min': 12.0,
+            'atr_range_max': 16.0,
 
             # Risk management
             'risk_percent': 0.01,
