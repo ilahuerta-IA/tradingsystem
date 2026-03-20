@@ -3577,8 +3577,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'AUS200',
         'data_path': 'data/AUS200_5m_5Yea.csv',
 
-        'from_date': datetime.datetime(2021, 1, 1),
-        'to_date': datetime.datetime(2021, 12, 30),
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 12, 20),
 
         'starting_cash': 100000.0,
 
@@ -3591,18 +3591,19 @@ STRATEGIES_CONFIG = {
         'broker_config_key': 'darwinex_zero_cfd_index',
 
         'params': {
-            # Session start -- London open 9:00 AM local (DST-adjusted)
-            'session_start_hour': 9,
+            # Session start -- London open 08:00 UTC (fixed, no DST heuristic)
+            'session_start_hour': 8,
             'session_start_minute': 0,
+            'use_dst_heuristic': False,  # AUS200 is 24h CFD, NYSE heuristic N/A
 
             # Consolidation range (min-max bars to reduce overfitting)
-            'consolidation_bars_min': 15,
-            'consolidation_bars_max': 18,
+            'consolidation_bars_min': 4,
+            'consolidation_bars_max': 19,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
             # AUS200 0.06% of ~8000 = ~5 pts
-            'bk_above_min_pips': 0.0,
+            'bk_above_min_pips': 3.0,
             'bk_body_min_pips': 0.0,
 
             # ATR
@@ -3611,12 +3612,12 @@ STRATEGIES_CONFIG = {
 
             # SL / TP -- ATR multipliers (same ratios as TLT)
             'atr_sl_multiplier': 1.5,
-            'atr_tp_multiplier': 3.5,
+            'atr_tp_multiplier': 3.0,
             'sl_buffer_pips': 0.0,
 
-            # EOD Close (UTC) -- AUS200 CFD gap ~21:00-22:50 UTC
+            # EOD Close (UTC) -- AUS200 gap starts 19:55 (AU summer) / 20:55 (AU winter)
             'use_eod_close': True,
-            'eod_close_hour': 20,
+            'eod_close_hour': 19,
             'eod_close_minute': 50,
 
             # Standard Filters -- start permissive, optimize later
@@ -3628,7 +3629,7 @@ STRATEGIES_CONFIG = {
             # SL pips filter -- scaled from TLT
             # TLT: 10-100 pips * 0.01 = 0.10-1.00 (0.1%-1.0% of ~$100)
             # AUS200: 0.1%-1.0% of ~8000 = 8-80 pts
-            'use_sl_pips_filter': False,
+            'use_sl_pips_filter': True,
             'sl_pips_min': 10.0,
             'sl_pips_max': 800.0,
 

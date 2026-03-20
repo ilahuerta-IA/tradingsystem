@@ -54,6 +54,7 @@ class LUYTENStrategy(bt.Strategy):
         consolidation_bars_max=6,   # max bars updating consol high (then pure wait)
         session_start_hour=None,    # UTC hour to begin consolidation (None = first bar of day)
         session_start_minute=0,     # UTC minute to begin consolidation
+        use_dst_heuristic=True,     # NYSE DST heuristic (dt.hour<14 -> -1h). False for 24h CFDs
 
         # --- Breakout Filters ---
         bk_above_min_pips=0.0,      # min distance close - consolidation_high
@@ -181,9 +182,10 @@ class LUYTENStrategy(bt.Strategy):
             f.write("Generated: %s\n" % datetime.now())
             f.write("\n")
             if self.p.session_start_hour is not None:
-                f.write("Session Start: %d:%02d UTC (DST-adjusted)\n"
+                dst_tag = "DST-adjusted" if self.p.use_dst_heuristic else "fixed UTC"
+                f.write("Session Start: %d:%02d UTC (%s)\n"
                         % (self.p.session_start_hour,
-                           self.p.session_start_minute))
+                           self.p.session_start_minute, dst_tag))
             f.write("Consolidation: %d-%d bars (range, first N bars of day)\n"
                     % (self.p.consolidation_bars_min,
                        self.p.consolidation_bars_max))
@@ -477,19 +479,19 @@ class LUYTENStrategy(bt.Strategy):
         # Day change detection
         today = dt.date()
         if today != self._today_date:
-            # Compute DST-aware EOD for this trading day
+            # Compute EOD for this trading day (DST-aware if heuristic enabled)
             if self.p.use_eod_close and self.p.eod_close_hour is not None:
                 base_eod = self.p.eod_close_hour * 60 + self.p.eod_close_minute
-                if dt.hour < 14:
+                if self.p.use_dst_heuristic and dt.hour < 14:
                     self._today_eod_minutes = base_eod - 60
                 else:
                     self._today_eod_minutes = base_eod
 
-            # Compute DST-aware session start (same DST heuristic as EOD)
+            # Compute session start (DST-aware if heuristic enabled)
             if self.p.session_start_hour is not None:
                 base_start = (self.p.session_start_hour * 60
                               + self.p.session_start_minute)
-                if dt.hour < 14:
+                if self.p.use_dst_heuristic and dt.hour < 14:
                     self._today_session_start_minutes = base_start - 60
                 else:
                     self._today_session_start_minutes = base_start
@@ -558,7 +560,7 @@ class LUYTENStrategy(bt.Strategy):
         # ---- STATE: IDLE ----
         if self.state == "IDLE":
             if self._day_first_bar_seen:
-                # If session_start_hour is set, wait until that time (DST-adjusted)
+                # If session_start_hour is set, wait until that time
                 if self._today_session_start_minutes is not None:
                     current_minutes = dt.hour * 60 + dt.minute
                     if current_minutes < self._today_session_start_minutes:
