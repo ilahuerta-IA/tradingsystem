@@ -292,6 +292,8 @@ def analyze_patterns(results, sweep_keys, top_n=20):
 
         short = {
             'consolidation_bars': 'CBars',
+            'consolidation_bars_min': 'CBMin',
+            'consolidation_bars_max': 'CBMax',
             'bk_above_min_pips': 'BkAbv',
             'bk_body_min_pips': 'BkBdy',
             'atr_tp_multiplier': 'TP',
@@ -315,6 +317,8 @@ def analyze_patterns(results, sweep_keys, top_n=20):
 
         short = {
             'consolidation_bars': 'CBars',
+            'consolidation_bars_min': 'CBMin',
+            'consolidation_bars_max': 'CBMax',
             'bk_above_min_pips': 'BkAbv',
             'bk_body_min_pips': 'BkBdy',
             'atr_tp_multiplier': 'TP',
@@ -363,6 +367,8 @@ def compare_results(is_data, oos_data, sweep_keys, top_n):
 
     short_names = {
         'consolidation_bars': 'CBars',
+        'consolidation_bars_min': 'CBMin',
+        'consolidation_bars_max': 'CBMax',
         'bk_above_min_pips': 'BkAbv',
         'bk_body_min_pips': 'BkBdy',
         'atr_tp_multiplier': 'TP',
