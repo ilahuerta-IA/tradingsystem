@@ -3568,7 +3568,7 @@ STRATEGIES_CONFIG = {
     },
 
     # =========================================================================
-    # TLT -- LUYTEN (Opening Range Breakout simplified)
+    # LUYTEN (Opening Range Breakout simplified)
     # =========================================================================
     #
     'AUS200_LUYTEN': {
@@ -3578,7 +3578,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/AUS200_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
+        'to_date': datetime.datetime(2020, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -3595,8 +3595,9 @@ STRATEGIES_CONFIG = {
             'session_start_hour': 9,
             'session_start_minute': 0,
 
-            # Consolidation -- start with TLT value (time-based, not price-based)
-            'consolidation_bars': 19,
+            # Consolidation range (min-max bars to reduce overfitting)
+            'consolidation_bars_min': 15,
+            'consolidation_bars_max': 21,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
@@ -3627,14 +3628,14 @@ STRATEGIES_CONFIG = {
             # SL pips filter -- scaled from TLT
             # TLT: 10-100 pips * 0.01 = 0.10-1.00 (0.1%-1.0% of ~$100)
             # AUS200: 0.1%-1.0% of ~8000 = 8-80 pts
-            'use_sl_pips_filter': True,
+            'use_sl_pips_filter': False,
             'sl_pips_min': 8.0,
             'sl_pips_max': 80.0,
 
             # ATR Range Filter -- scaled from TLT
             # TLT: 0.12-0.22 on ~$100 price = 0.12%-0.22%
             # AUS200: 0.12%-0.22% of ~8000 = ~10-18 pts
-            'use_atr_range_filter': True,
+            'use_atr_range_filter': False,
             'atr_range_min': 10.0,
             'atr_range_max': 18.0,
 
@@ -3654,74 +3655,6 @@ STRATEGIES_CONFIG = {
         }
     },
 
-    'TLT_LUYTEN': {
-        'active': False,
-        'strategy_name': 'LUYTEN',
-        'asset_name': 'TLT',
-        'data_path': 'data/TLT_5m_5Yea.csv',
-
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
-
-        'starting_cash': 100000.0,
-
-        'run_plot': False,
-        'generate_report': True,
-        'save_log': True,
-        'debug_mode': False,
-
-        'params': {
-            # Consolidation — optimized: 19 bars (~1h35m of 5m bars)
-            'consolidation_bars': 19,
-
-            # Breakout filters — optimized: BkAbv=6 (sweet spot), BkBdy=0 (most robust OOS)
-            'bk_above_min_pips': 6.0,
-            'bk_body_min_pips': 0.0,
-
-            # ATR
-            'atr_length': 14,
-            'atr_avg_period': 20,
-
-            # SL / TP — optimized: SL=1.5 (only working SL), TP=3.0 (best consistency)
-            'atr_sl_multiplier': 1.5,
-            'atr_tp_multiplier': 3.0,
-            'sl_buffer_pips': 0.0,
-
-            # EOD Close (UTC, standard time; DST auto-adjusts -1h)
-            'use_eod_close': True,
-            'eod_close_hour': 18,
-            'eod_close_minute': 50,
-
-            # Standard Filters (ALL OFF — no improvement in optimization)
-            'use_time_filter': False,
-            'allowed_hours': [15, 16, 18, 19],
-            'use_day_filter': True,
-            'allowed_days': [2, 3, 4],
-
-            'use_sl_pips_filter': True,
-            'sl_pips_min': 10.0,
-            'sl_pips_max': 100.0,
-
-            # ATR Range Filter — entry ATR must be within range
-            'use_atr_range_filter': True,
-            'atr_range_min': 0.12,
-            'atr_range_max': 0.22,
-
-            # Risk management
-            'risk_percent': 0.01,
-
-            # ETF config
-            'pip_value': 0.01,
-            'lot_size': 1,
-            'jpy_rate': 1.0,
-            'is_etf': True,
-            'margin_pct': 20.0,
-
-            # Debug
-            'print_signals': False,
-            'export_reports': True,
-        }
-    },
 
 }
 

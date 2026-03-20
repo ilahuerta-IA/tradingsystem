@@ -49,7 +49,8 @@ ASSET_PROFILES = {
         'from_date': datetime(2020, 1, 1),
         'to_date': datetime(2023, 12, 31),
         'ranges': {
-            'consolidation_bars': (15, 21, 2),
+            'consolidation_bars_min': (10, 18, 2),
+            'consolidation_bars_max': (14, 22, 2),
             'bk_above_min_pips': (2.0, 8.0, 2.0),
             'bk_body_min_pips': (0.0, 15.0, 5.0),
             'atr_tp_multiplier': (2.0, 3.5, 0.5),
@@ -58,7 +59,8 @@ ASSET_PROFILES = {
         'base_params': {
             'session_start_hour': None,
             'session_start_minute': 0,
-            'consolidation_bars': 12,
+            'consolidation_bars_min': 12,
+            'consolidation_bars_max': 18,
             'bk_above_min_pips': 2.0,
             'bk_body_min_pips': 10.0,
             'atr_length': 14,
@@ -93,7 +95,8 @@ ASSET_PROFILES = {
         'from_date': datetime(2020, 1, 1),
         'to_date': datetime(2023, 12, 31),
         'ranges': {
-            'consolidation_bars': (15, 21, 2),
+            'consolidation_bars_min': (13, 19, 2),
+            'consolidation_bars_max': (17, 23, 2),
             'bk_above_min_pips': (3.0, 7.0, 2.0),
             'bk_body_min_pips': (0.0, 10.0, 5.0),
             'atr_tp_multiplier': (2.0, 3.5, 0.5),
@@ -102,7 +105,8 @@ ASSET_PROFILES = {
         'base_params': {
             'session_start_hour': 9,
             'session_start_minute': 0,
-            'consolidation_bars': 19,
+            'consolidation_bars_min': 15,
+            'consolidation_bars_max': 21,
             'bk_above_min_pips': 5.0,
             'bk_body_min_pips': 0.0,
             'atr_length': 14,
@@ -153,14 +157,16 @@ STARTING_CASH = 100000.0
 BASE_PARAMS = dict(_profile['base_params'])
 
 # --- Parameter toggles: True = sweep this param, False = use base value ---
-OPTIMIZE_CONSOLIDATION_BARS = True
+OPTIMIZE_CONSOLIDATION_BARS_MIN = True
+OPTIMIZE_CONSOLIDATION_BARS_MAX = True
 OPTIMIZE_BK_ABOVE_MIN_PIPS = True
 OPTIMIZE_BK_BODY_MIN_PIPS = True
 OPTIMIZE_ATR_TP_MULTIPLIER = True
 OPTIMIZE_ATR_SL_MULTIPLIER = True
 
 # --- Sweep ranges from profile ---
-RANGE_CONSOLIDATION_BARS = _profile['ranges']['consolidation_bars']
+RANGE_CONSOLIDATION_BARS_MIN = _profile['ranges']['consolidation_bars_min']
+RANGE_CONSOLIDATION_BARS_MAX = _profile['ranges']['consolidation_bars_max']
 RANGE_BK_ABOVE_MIN_PIPS = _profile['ranges']['bk_above_min_pips']
 RANGE_BK_BODY_MIN_PIPS = _profile['ranges']['bk_body_min_pips']
 RANGE_ATR_TP_MULTIPLIER = _profile['ranges']['atr_tp_multiplier']
@@ -185,9 +191,12 @@ def build_param_grid():
     """Build list of param dicts to test."""
     sweep = {}
 
-    if OPTIMIZE_CONSOLIDATION_BARS:
-        s, e, st = RANGE_CONSOLIDATION_BARS
-        sweep['consolidation_bars'] = list(range(int(s), int(e) + 1, int(st)))
+    if OPTIMIZE_CONSOLIDATION_BARS_MIN:
+        s, e, st = RANGE_CONSOLIDATION_BARS_MIN
+        sweep['consolidation_bars_min'] = list(range(int(s), int(e) + 1, int(st)))
+    if OPTIMIZE_CONSOLIDATION_BARS_MAX:
+        s, e, st = RANGE_CONSOLIDATION_BARS_MAX
+        sweep['consolidation_bars_max'] = list(range(int(s), int(e) + 1, int(st)))
     if OPTIMIZE_BK_ABOVE_MIN_PIPS:
         sweep['bk_above_min_pips'] = _frange(*RANGE_BK_ABOVE_MIN_PIPS)
     if OPTIMIZE_BK_BODY_MIN_PIPS:
@@ -210,6 +219,11 @@ def build_param_grid():
         params = dict(BASE_PARAMS)
         for k, v in zip(keys, combo):
             params[k] = v
+        # Skip invalid combos where min > max
+        cb_min = params.get('consolidation_bars_min', 0)
+        cb_max = params.get('consolidation_bars_max', 9999)
+        if cb_min > cb_max:
+            continue
         grid.append(params)
 
     return grid, keys
@@ -387,7 +401,8 @@ def print_results(all_results, sweep_keys):
     # Build param columns
     param_headers = []
     for k in sweep_keys:
-        short = k.replace('consolidation_bars', 'CBars') \
+        short = k.replace('consolidation_bars_min', 'CBMin') \
+                 .replace('consolidation_bars_max', 'CBMax') \
                  .replace('bk_above_min_pips', 'BkAbv') \
                  .replace('bk_body_min_pips', 'BkBdy') \
                  .replace('atr_tp_multiplier', 'TP_M') \

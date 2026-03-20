@@ -1,16 +1,18 @@
 """
-LUYTEN Strategy v1.0 - Opening Range Breakout (Simplified ORB) for ETFs
+LUYTEN Strategy v1.1 - Opening Range Breakout (Simplified ORB) for ETFs
 
-Observes the first N bars of each trading day to establish a consolidation
-high (highest HIGH). After the consolidation phase, waits for a bullish
-candle whose body crosses above that level, then enters LONG on the next
-bar's open.
+Observes a range of N bars of each trading day to establish a consolidation
+high (highest HIGH). After consolidation_bars_min bars, starts checking for
+breakout while still extending the consolidation window. After
+consolidation_bars_max bars, pure WAITING_BREAKOUT (no more high updates).
 
 STATE MACHINE (3 STATES):
     IDLE -> CONSOLIDATION -> WAITING_BREAKOUT -> Entry
 
 1. IDLE: Wait for new trading day
-2. CONSOLIDATION: Record highest HIGH of the first N bars (consolidation_bars)
+2. CONSOLIDATION: Record highest HIGH. After consolidation_bars_min,
+   also check for breakout on each bar. If consolidation_bars_max
+   reached without entry, transition to WAITING_BREAKOUT.
 3. WAITING_BREAKOUT: Wait for green candle with:
    - open < consolidation_high AND close > consolidation_high
    - close - consolidation_high >= bk_above_min_pips (how far above)
@@ -48,7 +50,8 @@ class LUYTENStrategy(bt.Strategy):
 
     params = dict(
         # --- Consolidation ---
-        consolidation_bars=6,       # N first bars to observe
+        consolidation_bars_min=6,   # min bars before breakout check begins
+        consolidation_bars_max=6,   # max bars updating consol high (then pure wait)
         session_start_hour=None,    # UTC hour to begin consolidation (None = first bar of day)
         session_start_minute=0,     # UTC minute to begin consolidation
 
@@ -181,8 +184,9 @@ class LUYTENStrategy(bt.Strategy):
                 f.write("Session Start: %d:%02d UTC (DST-adjusted)\n"
                         % (self.p.session_start_hour,
                            self.p.session_start_minute))
-            f.write("Consolidation: %d bars (first N bars of day)\n"
-                    % self.p.consolidation_bars)
+            f.write("Consolidation: %d-%d bars (range, first N bars of day)\n"
+                    % (self.p.consolidation_bars_min,
+                       self.p.consolidation_bars_max))
             f.write("BK Above Min: %.1f pips | BK Body Min: %.1f pips\n"
                     % (self.p.bk_above_min_pips, self.p.bk_body_min_pips))
             f.write("ATR SL Mult: %.1f | ATR TP Mult: %.1f | SL Buffer: %.1f pips\n"
@@ -566,8 +570,10 @@ class LUYTENStrategy(bt.Strategy):
                 self.consol_count = 1
 
                 if self.p.print_signals:
-                    print('%s [%s] CONSOLIDATION START: bar 1/%d, high=%.5f'
-                          % (dt, self.data._name, self.p.consolidation_bars,
+                    print('%s [%s] CONSOLIDATION START: bar 1/%d-%d, high=%.5f'
+                          % (dt, self.data._name,
+                             self.p.consolidation_bars_min,
+                             self.p.consolidation_bars_max,
                              self.consolidation_high))
 
         # ---- STATE: CONSOLIDATION ----
@@ -581,12 +587,19 @@ class LUYTENStrategy(bt.Strategy):
             self.consol_count += 1
 
             if self.p.print_signals:
-                print('%s [%s] CONSOLIDATION: bar %d/%d, high=%.5f'
+                print('%s [%s] CONSOLIDATION: bar %d/%d-%d, high=%.5f'
                       % (dt, self.data._name, self.consol_count,
-                         self.p.consolidation_bars, self.consolidation_high))
+                         self.p.consolidation_bars_min,
+                         self.p.consolidation_bars_max,
+                         self.consolidation_high))
 
-            if self.consol_count >= self.p.consolidation_bars:
-                # Consolidation complete -> wait for breakout
+            # After min bars reached, check for breakout on each bar
+            if self.consol_count >= self.p.consolidation_bars_min:
+                if self._check_breakout(dt, atr_avg):
+                    return
+
+            # After max bars, stop updating high -> pure WAITING_BREAKOUT
+            if self.consol_count >= self.p.consolidation_bars_max:
                 self.state = "WAITING_BREAKOUT"
 
                 if self.p.print_signals:
@@ -595,43 +608,52 @@ class LUYTENStrategy(bt.Strategy):
 
         # ---- STATE: WAITING_BREAKOUT ----
         elif self.state == "WAITING_BREAKOUT":
-            bar_open = float(self.data.open[0])
-            bar_close = float(self.data.close[0])
+            self._check_breakout(dt, atr_avg)
 
-            # Green candle that closes above consolidation_high
-            # Accepts both cross-breakout (open below) and gap-breakout (open above)
-            is_green = bar_close > bar_open
-            close_above = bar_close > self.consolidation_high
+    # =====================================================================
+    # BREAKOUT CHECK (shared by CONSOLIDATION and WAITING_BREAKOUT)
+    # =====================================================================
 
-            if is_green and close_above:
-                # Check breakout filters
-                above_dist = (bar_close - self.consolidation_high) / self.p.pip_value
-                body_size = (bar_close - bar_open) / self.p.pip_value
+    def _check_breakout(self, dt, atr_avg):
+        """Check for breakout signal. Returns True if entry was triggered."""
+        bar_open = float(self.data.open[0])
+        bar_close = float(self.data.close[0])
 
-                above_ok = above_dist >= self.p.bk_above_min_pips
-                body_ok = body_size >= self.p.bk_body_min_pips
+        # Green candle that closes above consolidation_high
+        # Accepts both cross-breakout (open below) and gap-breakout (open above)
+        is_green = bar_close > bar_open
+        close_above = bar_close > self.consolidation_high
 
-                if above_ok and body_ok:
-                    # Breakout confirmed! Place buy now, fills at next bar's open
-                    if self.p.print_signals:
-                        print(
-                            '%s [%s] BREAKOUT SIGNAL: close=%.5f > consol=%.5f, '
-                            'above=%.1f pips, body=%.1f pips'
-                            % (dt, self.data._name, bar_close,
-                               self.consolidation_high, above_dist, body_size)
-                        )
-                    self._execute_entry(dt, atr_avg, above_dist, body_size)
-                    self._reset_state()
-                    return
-                else:
-                    if self.p.print_signals:
-                        print(
-                            '%s [%s] BREAKOUT REJECTED: above=%.1f (min=%.1f), '
-                            'body=%.1f (min=%.1f)'
-                            % (dt, self.data._name, above_dist,
-                               self.p.bk_above_min_pips, body_size,
-                               self.p.bk_body_min_pips)
-                        )
+        if is_green and close_above:
+            # Check breakout filters
+            above_dist = (bar_close - self.consolidation_high) / self.p.pip_value
+            body_size = (bar_close - bar_open) / self.p.pip_value
+
+            above_ok = above_dist >= self.p.bk_above_min_pips
+            body_ok = body_size >= self.p.bk_body_min_pips
+
+            if above_ok and body_ok:
+                # Breakout confirmed! Place buy now, fills at next bar's open
+                if self.p.print_signals:
+                    print(
+                        '%s [%s] BREAKOUT SIGNAL: close=%.5f > consol=%.5f, '
+                        'above=%.1f pips, body=%.1f pips'
+                        % (dt, self.data._name, bar_close,
+                           self.consolidation_high, above_dist, body_size)
+                    )
+                self._execute_entry(dt, atr_avg, above_dist, body_size)
+                self._reset_state()
+                return True
+            else:
+                if self.p.print_signals:
+                    print(
+                        '%s [%s] BREAKOUT REJECTED: above=%.1f (min=%.1f), '
+                        'body=%.1f (min=%.1f)'
+                        % (dt, self.data._name, above_dist,
+                           self.p.bk_above_min_pips, body_size,
+                           self.p.bk_body_min_pips)
+                    )
+        return False
 
     # =====================================================================
     # ORDER / TRADE NOTIFICATIONS
@@ -964,8 +986,9 @@ class LUYTENStrategy(bt.Strategy):
         print("\n" + "=" * 70)
         print("STRATEGY CONFIGURATION")
         print("=" * 70)
-        print("  Consolidation: %d bars (first N bars of day)"
-              % self.p.consolidation_bars)
+        print("  Consolidation: %d-%d bars (range, first N bars of day)"
+              % (self.p.consolidation_bars_min,
+                 self.p.consolidation_bars_max))
         print("  BK Above Min: %.1f pips" % self.p.bk_above_min_pips)
         print("  BK Body Min: %.1f pips" % self.p.bk_body_min_pips)
         print("  ATR SL Mult: %.1f | ATR TP Mult: %.1f"
