@@ -3578,11 +3578,11 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/AUS200_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 30),
+        'to_date': datetime.datetime(2021, 12, 30),
 
         'starting_cash': 100000.0,
 
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -3598,7 +3598,7 @@ STRATEGIES_CONFIG = {
 
             # Consolidation range (min-max bars to reduce overfitting)
             'consolidation_bars_min': 1,
-            'consolidation_bars_max': 12,
+            'consolidation_bars_max': 24,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
@@ -3618,7 +3618,7 @@ STRATEGIES_CONFIG = {
             # EOD Close (UTC) -- AUS200 gap starts 19:55 (AU summer) / 20:55 (AU winter)
             'use_eod_close': True,
             'eod_close_hour': 19,
-            'eod_close_minute': 50,
+            'eod_close_minute': 30,
 
             # Standard Filters -- start permissive, optimize later
             'use_time_filter': False,
@@ -3647,7 +3647,7 @@ STRATEGIES_CONFIG = {
             # Multi-timeframe
             # base_timeframe_minutes: resample primary feed (0 or 5 = keep 5m)
             # htf_data_minutes: secondary HTF feed for filters (0 = disabled)
-            'base_timeframe_minutes': 0,
+            'base_timeframe_minutes': 15,
             'htf_data_minutes': 0,
             'use_htf_roc_filter': False,
             'htf_roc_period': 6,

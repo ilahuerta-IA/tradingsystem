@@ -165,6 +165,7 @@ def run_backtest(config_name):
     
     # Set broker
     cerebro.broker.setcash(config.get('starting_cash', 100000.0))
+    cerebro.broker.set_coc(True)  # Fill market orders at current bar close
     
     # Set commission scheme based on instrument type
     params = config['params']

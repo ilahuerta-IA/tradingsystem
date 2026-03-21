@@ -174,6 +174,9 @@ class LUYTENStrategy(bt.Strategy):
         self._signal_bk_above_pips = 0.0
         self._signal_bk_body_pips = 0.0
 
+        # Bar size in minutes (for look-ahead EOD trigger)
+        self._bar_minutes = getattr(self.data, '_compression', 5)
+
         # Day-start detection
         self._day_first_bar_seen = False
 
@@ -434,7 +437,8 @@ class LUYTENStrategy(bt.Strategy):
 
         current_minutes = dt.hour * 60 + dt.minute
 
-        if current_minutes >= self._today_eod_minutes:
+        # Trigger one bar early: with COC the fill is instant at this bar
+        if current_minutes + self._bar_minutes >= self._today_eod_minutes:
             self.last_exit_reason = "EOD_CLOSE"
             # Explicit cancel bracket orders, then close position
             if self.stop_order:
@@ -640,7 +644,7 @@ class LUYTENStrategy(bt.Strategy):
         if self.state != "IDLE":
             if self.p.use_eod_close and self._today_eod_minutes is not None:
                 current_minutes = dt.hour * 60 + dt.minute
-                if current_minutes >= self._today_eod_minutes:
+                if current_minutes + self._bar_minutes >= self._today_eod_minutes:
                     self._reset_state()
                     return
 
