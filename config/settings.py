@@ -3577,12 +3577,12 @@ STRATEGIES_CONFIG = {
         'asset_name': 'AUS200',
         'data_path': 'data/AUS200_5m_5Yea.csv',
 
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 20),
+        'from_date': datetime.datetime(2020, 3, 1),
+        'to_date': datetime.datetime(2020, 3, 20),
 
         'starting_cash': 100000.0,
 
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,

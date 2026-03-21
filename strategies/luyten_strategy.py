@@ -46,6 +46,33 @@ from lib.filters import (
 from lib.position_sizing import calculate_position_size
 
 
+class SessionMarker(bt.Indicator):
+    """Plots session_start and consolidation_end markers on the price chart."""
+    lines = ('session_start', 'consol_end')
+
+    plotinfo = dict(
+        subplot=False,
+        plotlinelabels=True,
+    )
+    plotlines = dict(
+        session_start=dict(
+            marker='v', markersize=6.0, color='blue',
+            fillstyle='full', ls='',
+        ),
+        consol_end=dict(
+            marker='^', markersize=6.0, color='orange',
+            fillstyle='full', ls='',
+        ),
+    )
+
+    def __init__(self):
+        pass
+
+    def next(self):
+        # Values set externally by the strategy
+        pass
+
+
 class LUYTENStrategy(bt.Strategy):
     """Opening Range Breakout (simplified) for slow ETFs like TLT."""
 
@@ -110,6 +137,7 @@ class LUYTENStrategy(bt.Strategy):
 
     def __init__(self):
         self.atr = bt.ind.ATR(self.data, period=self.p.atr_length)
+        self.session_marker = SessionMarker(self.data)
 
         # State machine
         self.state = "IDLE"
@@ -606,6 +634,10 @@ class LUYTENStrategy(bt.Strategy):
                 self.state = "CONSOLIDATION"
                 self.consol_count = 1
 
+                # Session start marker (blue arrow above high)
+                self.session_marker.lines.session_start[0] = (
+                    float(self.data.high[0]) * 1.001)
+
                 # min=0 -> record high from bar 1; min>0 -> delay first
                 if self.p.consolidation_bars_min == 0:
                     self.consolidation_high = float(self.data.high[0])
@@ -641,6 +673,10 @@ class LUYTENStrategy(bt.Strategy):
             # After max bars -> WAITING_BREAKOUT (entries allowed)
             if self.consol_count >= self.p.consolidation_bars_max:
                 self.state = "WAITING_BREAKOUT"
+
+                # Consolidation end marker (orange arrow below low)
+                self.session_marker.lines.consol_end[0] = (
+                    float(self.data.low[0]) * 0.999)
 
                 if self.p.print_signals:
                     print('%s [%s] WAITING BREAKOUT > %.5f'
