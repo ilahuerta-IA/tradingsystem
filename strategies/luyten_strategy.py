@@ -47,8 +47,8 @@ from lib.position_sizing import calculate_position_size
 
 
 class SessionMarker(bt.Indicator):
-    """Plots session_start and consolidation_end markers on the price chart."""
-    lines = ('session_start', 'consol_end')
+    """Plots session_start, consolidation_start and consolidation_end markers."""
+    lines = ('session_start', 'consol_start', 'consol_end')
 
     plotinfo = dict(
         subplot=False,
@@ -57,6 +57,10 @@ class SessionMarker(bt.Indicator):
     plotlines = dict(
         session_start=dict(
             marker='v', markersize=6.0, color='blue',
+            fillstyle='full', ls='',
+        ),
+        consol_start=dict(
+            marker='v', markersize=6.0, color='purple',
             fillstyle='full', ls='',
         ),
         consol_end=dict(
@@ -641,6 +645,9 @@ class LUYTENStrategy(bt.Strategy):
                 # min=0 -> record high from bar 1; min>0 -> delay first
                 if self.p.consolidation_bars_min == 0:
                     self.consolidation_high = float(self.data.high[0])
+                    # Consolidation start marker (purple arrow)
+                    self.session_marker.lines.consol_start[0] = (
+                        float(self.data.high[0]) * 1.001)
                 else:
                     self.consolidation_high = float('-inf')
 
@@ -659,6 +666,10 @@ class LUYTENStrategy(bt.Strategy):
 
             # Record high only after delay period
             if self.consol_count > self.p.consolidation_bars_min:
+                # Mark first recording bar with purple arrow
+                if self.consol_count == self.p.consolidation_bars_min + 1:
+                    self.session_marker.lines.consol_start[0] = (
+                        float(self.data.high[0]) * 1.001)
                 bar_high = float(self.data.high[0])
                 if bar_high > self.consolidation_high:
                     self.consolidation_high = bar_high
