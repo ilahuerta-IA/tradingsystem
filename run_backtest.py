@@ -102,13 +102,26 @@ def run_backtest(config_name):
         data = bt.feeds.GenericCSVData(**feed_kwargs)
     
     # Add data to cerebro
-    cerebro.adddata(data, name=asset_name)
-    
-    print(f'Loaded data from {data_path}')
+    #
+    # base_timeframe_minutes: resample primary feed to a different base TF
+    # (e.g. 15 -> strategy runs on 15m bars instead of raw 5m)
+    params = config['params']
+    base_tf = params.get('base_timeframe_minutes', 0)
+    if base_tf and base_tf > 5:
+        data_base = cerebro.resampledata(
+            data,
+            timeframe=bt.TimeFrame.Minutes,
+            compression=base_tf
+        )
+        data_base._name = asset_name
+        print(f'Loaded data from {data_path}')
+        print(f'Base timeframe resampled: {base_tf}m (datas[0])')
+    else:
+        cerebro.adddata(data, name=asset_name)
+        print(f'Loaded data from {data_path}')
     
     # Generic HTF data support: any strategy can request via htf_data_minutes
     # This allows strategies to access self.datas[1] for higher timeframe analysis
-    params = config['params']
     htf_minutes = params.get('htf_data_minutes')
     if htf_minutes and htf_minutes > 0:
         data_htf = cerebro.resampledata(
@@ -211,8 +224,10 @@ def run_backtest(config_name):
     
     StrategyClass = STRATEGY_REGISTRY[strategy_name]
     
-    # Remove broker-only keys that strategies don't declare
+    # Remove broker-only and run_backtest-only keys that strategies don't declare
     params.pop('leverage', None)
+    params.pop('base_timeframe_minutes', None)
+    params.pop('htf_data_minutes', None)
     
     # Auto-inject asset-specific params
     params['is_jpy_pair'] = is_jpy

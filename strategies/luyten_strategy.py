@@ -121,6 +121,14 @@ class LUYTENStrategy(bt.Strategy):
         atr_range_min=0.0,
         atr_range_max=9999.0,
 
+        # --- Consolidation Price Filter ---
+        # Skip day if price at consol_start < price at session_start
+        use_consol_price_filter=False,
+
+        # --- HTF Filter (requires htf_data_minutes in config) ---
+        use_htf_roc_filter=False,
+        htf_roc_period=6,           # ROC period on HTF bars
+
         # --- Asset / Risk ---
         risk_percent=0.01,
         pip_value=0.01,
@@ -143,12 +151,22 @@ class LUYTENStrategy(bt.Strategy):
         self.atr = bt.ind.ATR(self.data, period=self.p.atr_length)
         self.session_marker = SessionMarker(self.data)
 
+        # HTF ROC filter (needs datas[1] from resampledata in run_backtest)
+        self.htf_roc = None
+        if self.p.use_htf_roc_filter and len(self.datas) > 1:
+            self.htf_roc = bt.ind.ROC(
+                self.datas[1].close, period=self.p.htf_roc_period)
+            self.htf_roc.plotinfo.plot = False
+
         # State machine
         self.state = "IDLE"
 
         # Consolidation tracking
         self.consolidation_high = None
         self.consol_count = 0
+
+        # Consolidation price filter
+        self._session_start_price = None
 
         # Signal bar flag: breakout confirmed, enter on NEXT bar
         self._signal_pending = False
@@ -397,6 +415,7 @@ class LUYTENStrategy(bt.Strategy):
         self.state = "IDLE"
         self.consolidation_high = None
         self.consol_count = 0
+        self._session_start_price = None
         self._signal_pending = False
         self._signal_atr_avg = 0.0
         self._signal_bk_above_pips = 0.0
@@ -642,8 +661,23 @@ class LUYTENStrategy(bt.Strategy):
                 self.session_marker.lines.session_start[0] = (
                     float(self.data.high[0]) * 1.001)
 
+                # Save session_start price for consol price filter
+                self._session_start_price = float(self.data.close[0])
+
                 # min=0 -> record high from bar 1; min>0 -> delay first
                 if self.p.consolidation_bars_min == 0:
+                    # Consol price filter: skip if price fell since session_start
+                    if self.p.use_consol_price_filter:
+                        if float(self.data.close[0]) < self._session_start_price:
+                            if self.p.print_signals:
+                                print('%s [%s] CONSOL PRICE FILTER: skip day '
+                                      '(close %.5f < session_start %.5f)'
+                                      % (dt, self.data._name,
+                                         float(self.data.close[0]),
+                                         self._session_start_price))
+                            self._traded_today = True
+                            self._reset_state()
+                            return
                     self.consolidation_high = float(self.data.high[0])
                     # Consolidation start marker (purple arrow)
                     self.session_marker.lines.consol_start[0] = (
@@ -666,10 +700,22 @@ class LUYTENStrategy(bt.Strategy):
 
             # Record high only after delay period
             if self.consol_count > self.p.consolidation_bars_min:
-                # Mark first recording bar with purple arrow
+                # First recording bar: mark + apply consol price filter
                 if self.consol_count == self.p.consolidation_bars_min + 1:
                     self.session_marker.lines.consol_start[0] = (
                         float(self.data.high[0]) * 1.001)
+                    if (self.p.use_consol_price_filter
+                            and self._session_start_price is not None):
+                        if float(self.data.close[0]) < self._session_start_price:
+                            if self.p.print_signals:
+                                print('%s [%s] CONSOL PRICE FILTER: skip day '
+                                      '(close %.5f < session_start %.5f)'
+                                      % (dt, self.data._name,
+                                         float(self.data.close[0]),
+                                         self._session_start_price))
+                            self._traded_today = True
+                            self._reset_state()
+                            return
                 bar_high = float(self.data.high[0])
                 if bar_high > self.consolidation_high:
                     self.consolidation_high = bar_high
@@ -683,6 +729,20 @@ class LUYTENStrategy(bt.Strategy):
 
             # After max bars -> WAITING_BREAKOUT (entries allowed)
             if self.consol_count >= self.p.consolidation_bars_max:
+
+                # HTF ROC filter: skip day if HTF trend is down
+                if self.htf_roc is not None:
+                    roc_val = float(self.htf_roc[0])
+                    if math.isnan(roc_val) or roc_val <= 0:
+                        if self.p.print_signals:
+                            print('%s [%s] HTF ROC FILTER: skip day '
+                                  '(ROC=%.4f <= 0)'
+                                  % (dt, self.data._name, roc_val
+                                     if not math.isnan(roc_val) else 0))
+                        self._traded_today = True
+                        self._reset_state()
+                        return
+
                 self.state = "WAITING_BREAKOUT"
 
                 # Consolidation end marker (orange arrow below low)

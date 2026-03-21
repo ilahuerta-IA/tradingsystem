@@ -3578,11 +3578,11 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/AUS200_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2020, 12, 30),
+        'to_date': datetime.datetime(2023, 12, 30),
 
         'starting_cash': 100000.0,
 
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -3592,13 +3592,13 @@ STRATEGIES_CONFIG = {
 
         'params': {
             # Session start -- 08:00 UTC winter / 07:00 UTC BST (auto via london_uk DST)
-            'session_start_hour': 15,
+            'session_start_hour': 8,
             'session_start_minute': 0,
             'dst_mode': 'london_uk',  # shift -1h during UK BST (late Mar - late Oct)
 
             # Consolidation range (min-max bars to reduce overfitting)
-            'consolidation_bars_min': 18,
-            'consolidation_bars_max': 30,
+            'consolidation_bars_min': 1,
+            'consolidation_bars_max': 12,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
@@ -3638,7 +3638,19 @@ STRATEGIES_CONFIG = {
             # AUS200: 0.12%-0.22% of ~8000 = ~10-18 pts
             'use_atr_range_filter': False,
             'atr_range_min': 12.0,
-            'atr_range_max': 16.0,
+            'atr_range_max': 24.0,
+
+            # Consolidation Price Filter
+            # Skip day if price at consol_start < price at session_start
+            'use_consol_price_filter': False,
+
+            # Multi-timeframe
+            # base_timeframe_minutes: resample primary feed (0 or 5 = keep 5m)
+            # htf_data_minutes: secondary HTF feed for filters (0 = disabled)
+            'base_timeframe_minutes': 0,
+            'htf_data_minutes': 0,
+            'use_htf_roc_filter': False,
+            'htf_roc_period': 6,
 
             # Risk management
             'risk_percent': 0.01,
