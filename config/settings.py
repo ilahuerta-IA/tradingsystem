@@ -3577,8 +3577,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'AUS200',
         'data_path': 'data/AUS200_5m_5Yea.csv',
 
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2021, 12, 30),
+        'from_date': datetime.datetime(2021, 1, 1),
+        'to_date': datetime.datetime(2022, 12, 30),
 
         'starting_cash': 100000.0,
 
@@ -3592,33 +3592,41 @@ STRATEGIES_CONFIG = {
 
         'params': {
             # Session start -- 08:00 UTC winter / 07:00 UTC BST (auto via london_uk DST)
-            'session_start_hour': 8,
-            'session_start_minute': 0,
+            'session_start_hour': 18,
+            'session_start_minute': 00,
             'dst_mode': 'london_uk',  # shift -1h during UK BST (late Mar - late Oct)
 
             # Consolidation range (min-max bars to reduce overfitting)
-            'consolidation_bars_min': 1,
-            'consolidation_bars_max': 24,
+            'consolidation_bars_min': 0,
+            'consolidation_bars_max': 8,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
             # AUS200 0.06% of ~8000 = ~5 pts
-            'bk_above_min_pips': 0.0,
+            'bk_above_min_pips': 2.0,
             'bk_body_min_pips': 0.0,
 
-            # ATR
-            'atr_length': 14,
-            'atr_avg_period': 20,
+            # Multi-timeframe
+            # base_timeframe_minutes: resample primary feed (0 or 5 = keep 5m)
+            # htf_data_minutes: secondary HTF feed for filters (0 = disabled)
+            'base_timeframe_minutes': 15,
+            'htf_data_minutes': 60,  # 30m HTF for additional filter signals
+            'use_htf_roc_filter': False,
+            'htf_roc_period': 5,
 
             # SL / TP -- ATR multipliers (same ratios as TLT)
-            'atr_sl_multiplier': 2.5,
+            'atr_sl_multiplier': 2.0,
             'atr_tp_multiplier': 5.0,
             'sl_buffer_pips': 0.0,
 
             # EOD Close (UTC) -- AUS200 gap starts 19:55 (AU summer) / 20:55 (AU winter)
-            'use_eod_close': True,
+            'use_eod_close': False,
             'eod_close_hour': 19,
             'eod_close_minute': 30,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
 
             # Standard Filters -- start permissive, optimize later
             'use_time_filter': False,
@@ -3629,7 +3637,7 @@ STRATEGIES_CONFIG = {
             # SL pips filter -- scaled from TLT
             # TLT: 10-100 pips * 0.01 = 0.10-1.00 (0.1%-1.0% of ~$100)
             # AUS200: 0.1%-1.0% of ~8000 = 8-80 pts
-            'use_sl_pips_filter': True,
+            'use_sl_pips_filter': False,
             'sl_pips_min': 10.0,
             'sl_pips_max': 800.0,
 
@@ -3638,19 +3646,11 @@ STRATEGIES_CONFIG = {
             # AUS200: 0.12%-0.22% of ~8000 = ~10-18 pts
             'use_atr_range_filter': False,
             'atr_range_min': 12.0,
-            'atr_range_max': 24.0,
+            'atr_range_max': 18.0,
 
             # Consolidation Price Filter
             # Skip day if price at consol_start < price at session_start
             'use_consol_price_filter': False,
-
-            # Multi-timeframe
-            # base_timeframe_minutes: resample primary feed (0 or 5 = keep 5m)
-            # htf_data_minutes: secondary HTF feed for filters (0 = disabled)
-            'base_timeframe_minutes': 15,
-            'htf_data_minutes': 0,
-            'use_htf_roc_filter': False,
-            'htf_roc_period': 6,
 
             # Risk management
             'risk_percent': 0.01,
