@@ -95,29 +95,42 @@ ASSET_PROFILES = {
         'from_date': datetime(2020, 1, 1),
         'to_date': datetime(2023, 12, 31),
         'ranges': {
-            'consolidation_bars_min': (13, 19, 2),
-            'consolidation_bars_max': (17, 23, 2),
-            'bk_above_min_pips': (3.0, 7.0, 2.0),
-            'bk_body_min_pips': (0.0, 10.0, 5.0),
-            'atr_tp_multiplier': (2.0, 3.5, 0.5),
-            'atr_sl_multiplier': (1.5, 2.0, 0.5),
+            # Session start sweep (informed by liquidity_profile):
+            # 09-13 UTC = low-vol valley -> 13:30 explosion (27 bps, 2x)
+            # Phase 2: SsH 11-13 -> breakout window opens ~13:00-13:30
+            'session_start_hour': (11, 13, 1),
+            'base_timeframe_minutes': [15],
+            # Consolidation bars @15m:
+            # CBMin [0,2,4] x CBMax [2,4,6,8,10] -> breakout ~13:00-13:30
+            # Example: SsH=11, CBMax=10 -> breakout at 13:30 (exact target)
+            'consolidation_bars_min': {
+                5: (6, 18, 6),
+                15: (0, 4, 2),
+            },
+            'consolidation_bars_max': {
+                5: (12, 36, 6),
+                15: (2, 10, 2),
+            },
+            'bk_above_min_pips': (0.0, 4.0, 2.0),
+            'atr_tp_multiplier': (3.0, 5.0, 1.0),
+            'atr_sl_multiplier': (1.5, 2.5, 0.5),
         },
         'base_params': {
-            'session_start_hour': 8,
+            'session_start_hour': 9,
             'session_start_minute': 0,
             'dst_mode': 'london_uk',
-            'consolidation_bars_min': 15,
-            'consolidation_bars_max': 21,
-            'bk_above_min_pips': 5.0,
+            'consolidation_bars_min': 4,
+            'consolidation_bars_max': 8,
+            'bk_above_min_pips': 2.0,
             'bk_body_min_pips': 0.0,
             'atr_length': 14,
             'atr_avg_period': 20,
-            'atr_sl_multiplier': 1.5,
-            'atr_tp_multiplier': 3.0,
+            'atr_sl_multiplier': 2.0,
+            'atr_tp_multiplier': 5.0,
             'sl_buffer_pips': 0.0,
             'use_eod_close': True,
-            'eod_close_hour': 20,
-            'eod_close_minute': 50,
+            'eod_close_hour': 19,
+            'eod_close_minute': 30,
             'use_time_filter': False,
             'allowed_hours': [],
             'use_day_filter': False,
@@ -125,6 +138,10 @@ ASSET_PROFILES = {
             'use_sl_pips_filter': False,
             'sl_pips_min': 8.0,
             'sl_pips_max': 80.0,
+            'base_timeframe_minutes': 15,
+            'htf_data_minutes': 0,
+            'use_htf_roc_filter': False,
+            'htf_roc_period': 5,
             'risk_percent': 0.01,
             'pip_value': 1.0,
             'lot_size': 1,
@@ -158,20 +175,14 @@ STARTING_CASH = 100000.0
 BASE_PARAMS = dict(_profile['base_params'])
 
 # --- Parameter toggles: True = sweep this param, False = use base value ---
+OPTIMIZE_SESSION_START_HOUR = True
+OPTIMIZE_BASE_TIMEFRAME = True
 OPTIMIZE_CONSOLIDATION_BARS_MIN = True
 OPTIMIZE_CONSOLIDATION_BARS_MAX = True
 OPTIMIZE_BK_ABOVE_MIN_PIPS = True
-OPTIMIZE_BK_BODY_MIN_PIPS = True
+OPTIMIZE_BK_BODY_MIN_PIPS = False
 OPTIMIZE_ATR_TP_MULTIPLIER = True
 OPTIMIZE_ATR_SL_MULTIPLIER = True
-
-# --- Sweep ranges from profile ---
-RANGE_CONSOLIDATION_BARS_MIN = _profile['ranges']['consolidation_bars_min']
-RANGE_CONSOLIDATION_BARS_MAX = _profile['ranges']['consolidation_bars_max']
-RANGE_BK_ABOVE_MIN_PIPS = _profile['ranges']['bk_above_min_pips']
-RANGE_BK_BODY_MIN_PIPS = _profile['ranges']['bk_body_min_pips']
-RANGE_ATR_TP_MULTIPLIER = _profile['ranges']['atr_tp_multiplier']
-RANGE_ATR_SL_MULTIPLIER = _profile['ranges']['atr_sl_multiplier']
 
 
 # =============================================================================
@@ -189,45 +200,95 @@ def _frange(start, stop, step):
 
 
 def build_param_grid():
-    """Build list of param dicts to test."""
-    sweep = {}
+    """Build list of param dicts to test.
 
-    if OPTIMIZE_CONSOLIDATION_BARS_MIN:
-        s, e, st = RANGE_CONSOLIDATION_BARS_MIN
-        sweep['consolidation_bars_min'] = list(range(int(s), int(e) + 1, int(st)))
-    if OPTIMIZE_CONSOLIDATION_BARS_MAX:
-        s, e, st = RANGE_CONSOLIDATION_BARS_MAX
-        sweep['consolidation_bars_max'] = list(range(int(s), int(e) + 1, int(st)))
-    if OPTIMIZE_BK_ABOVE_MIN_PIPS:
-        sweep['bk_above_min_pips'] = _frange(*RANGE_BK_ABOVE_MIN_PIPS)
-    if OPTIMIZE_BK_BODY_MIN_PIPS:
-        sweep['bk_body_min_pips'] = _frange(*RANGE_BK_BODY_MIN_PIPS)
-    if OPTIMIZE_ATR_TP_MULTIPLIER:
-        sweep['atr_tp_multiplier'] = _frange(*RANGE_ATR_TP_MULTIPLIER)
-    if OPTIMIZE_ATR_SL_MULTIPLIER:
-        sweep['atr_sl_multiplier'] = _frange(*RANGE_ATR_SL_MULTIPLIER)
+    Handles base_timeframe-dependent consolidation bar ranges:
+    when ranges are dicts keyed by base_tf, the correct sub-range
+    is selected per timeframe value.
+    """
+    ranges = _profile['ranges']
 
-    if not sweep:
-        print("ERROR: No parameter enabled for optimization.")
-        print("Set at least one OPTIMIZE_* = True")
-        sys.exit(1)
+    # Determine base_timeframe values to iterate
+    if OPTIMIZE_BASE_TIMEFRAME and 'base_timeframe_minutes' in ranges:
+        base_tfs = ranges['base_timeframe_minutes']
+        if not isinstance(base_tfs, list):
+            base_tfs = [base_tfs]
+    else:
+        base_tfs = [BASE_PARAMS.get('base_timeframe_minutes', 5)]
 
-    keys = sorted(sweep.keys())
-    combos = list(itertools.product(*(sweep[k] for k in keys)))
+    # Session start values
+    if OPTIMIZE_SESSION_START_HOUR and 'session_start_hour' in ranges:
+        s, e, st = ranges['session_start_hour']
+        session_hours = list(range(int(s), int(e) + 1, int(st)))
+    else:
+        session_hours = [BASE_PARAMS.get('session_start_hour', 8)]
+
+    # Fixed sweep params (not tf-dependent)
+    fixed_sweep = {}
+    if OPTIMIZE_BK_ABOVE_MIN_PIPS and 'bk_above_min_pips' in ranges:
+        fixed_sweep['bk_above_min_pips'] = _frange(*ranges['bk_above_min_pips'])
+    if OPTIMIZE_BK_BODY_MIN_PIPS and 'bk_body_min_pips' in ranges:
+        fixed_sweep['bk_body_min_pips'] = _frange(*ranges['bk_body_min_pips'])
+    if OPTIMIZE_ATR_TP_MULTIPLIER and 'atr_tp_multiplier' in ranges:
+        fixed_sweep['atr_tp_multiplier'] = _frange(*ranges['atr_tp_multiplier'])
+    if OPTIMIZE_ATR_SL_MULTIPLIER and 'atr_sl_multiplier' in ranges:
+        fixed_sweep['atr_sl_multiplier'] = _frange(*ranges['atr_sl_multiplier'])
 
     grid = []
-    for combo in combos:
-        params = dict(BASE_PARAMS)
-        for k, v in zip(keys, combo):
-            params[k] = v
-        # Skip invalid combos where min > max
-        cb_min = params.get('consolidation_bars_min', 0)
-        cb_max = params.get('consolidation_bars_max', 9999)
-        if cb_min > cb_max:
-            continue
-        grid.append(params)
+    sweep_keys_set = set()
 
-    return grid, keys
+    for base_tf in base_tfs:
+        # Consolidation bars: resolve per-timeframe ranges
+        tf_sweep = {}
+        if OPTIMIZE_CONSOLIDATION_BARS_MIN and 'consolidation_bars_min' in ranges:
+            r = ranges['consolidation_bars_min']
+            if isinstance(r, dict):
+                r = r.get(base_tf, r.get(list(r.keys())[0]))
+            s, e, st = r
+            tf_sweep['consolidation_bars_min'] = list(range(int(s), int(e) + 1, int(st)))
+        if OPTIMIZE_CONSOLIDATION_BARS_MAX and 'consolidation_bars_max' in ranges:
+            r = ranges['consolidation_bars_max']
+            if isinstance(r, dict):
+                r = r.get(base_tf, r.get(list(r.keys())[0]))
+            s, e, st = r
+            tf_sweep['consolidation_bars_max'] = list(range(int(s), int(e) + 1, int(st)))
+
+        # Combine all sweep axes for this timeframe
+        combined = {}
+        combined['session_start_hour'] = session_hours
+        combined.update(tf_sweep)
+        combined.update(fixed_sweep)
+
+        keys = sorted(combined.keys())
+        sweep_keys_set.update(keys)
+        if OPTIMIZE_BASE_TIMEFRAME:
+            sweep_keys_set.add('base_timeframe_minutes')
+
+        combos = list(itertools.product(*(combined[k] for k in keys)))
+
+        for combo in combos:
+            params = dict(BASE_PARAMS)
+            params['base_timeframe_minutes'] = base_tf
+            for k, v in zip(keys, combo):
+                params[k] = v
+            # Skip invalid combos where min > max
+            cb_min = params.get('consolidation_bars_min', 0)
+            cb_max = params.get('consolidation_bars_max', 9999)
+            if cb_min > cb_max:
+                continue
+            grid.append(params)
+
+    # Build ordered sweep keys for display
+    sweep_keys = []
+    if OPTIMIZE_SESSION_START_HOUR:
+        sweep_keys.append('session_start_hour')
+    if OPTIMIZE_BASE_TIMEFRAME:
+        sweep_keys.append('base_timeframe_minutes')
+    sweep_keys += sorted(k for k in sweep_keys_set
+                         if k not in ('session_start_hour',
+                                      'base_timeframe_minutes'))
+
+    return grid, sweep_keys
 
 
 # =============================================================================
@@ -251,7 +312,27 @@ def run_single_backtest(params):
             volume=6, openinterest=-1,
             fromdate=FROM_DATE, todate=TO_DATE,
         )
-        cerebro.adddata(data, name=ASSET_NAME)
+        # Resample base timeframe (mirrors run_backtest.py logic)
+        base_tf = params.get('base_timeframe_minutes', 0)
+        if base_tf and base_tf > 5:
+            data_base = cerebro.resampledata(
+                data,
+                timeframe=bt.TimeFrame.Minutes,
+                compression=base_tf
+            )
+            data_base._name = ASSET_NAME
+        else:
+            cerebro.adddata(data, name=ASSET_NAME)
+
+        # HTF data feed (if configured)
+        htf_minutes = params.get('htf_data_minutes', 0)
+        if htf_minutes and htf_minutes > 0:
+            data_htf = cerebro.resampledata(
+                data,
+                timeframe=bt.TimeFrame.Minutes,
+                compression=htf_minutes
+            )
+            data_htf.plotinfo.plot = False
 
         cerebro.broker.setcash(STARTING_CASH)
 
@@ -275,7 +356,11 @@ def run_single_backtest(params):
             )
         cerebro.broker.addcommissioninfo(commission)
 
-        cerebro.addstrategy(LUYTENStrategy, **params)
+        # Filter infrastructure-only keys before passing to strategy
+        strat_params = {k: v for k, v in params.items()
+                        if k not in ('base_timeframe_minutes',
+                                     'htf_data_minutes')}
+        cerebro.addstrategy(LUYTENStrategy, **strat_params)
 
         # Suppress all print output from strategy
         import io
@@ -411,7 +496,9 @@ def print_results(all_results, sweep_keys):
     # Build param columns
     param_headers = []
     for k in sweep_keys:
-        short = k.replace('consolidation_bars_min', 'CBMin') \
+        short = k.replace('session_start_hour', 'SsH') \
+                 .replace('base_timeframe_minutes', 'BsTF') \
+                 .replace('consolidation_bars_min', 'CBMin') \
                  .replace('consolidation_bars_max', 'CBMax') \
                  .replace('bk_above_min_pips', 'BkAbv') \
                  .replace('bk_body_min_pips', 'BkBdy') \

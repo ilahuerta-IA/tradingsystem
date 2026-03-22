@@ -751,7 +751,7 @@ def main():
     parser.add_argument('asset', type=str,
                         help='Asset symbol (e.g. AUS200, EURUSD, TLT)')
     parser.add_argument('--slot', type=int, default=60,
-                        choices=[15, 30, 60],
+                        choices=[5, 15, 30, 60],
                         help='Slot size in minutes (default: 60)')
     parser.add_argument('--from', dest='from_date', type=str, default=None,
                         help='Start date YYYY-MM-DD')

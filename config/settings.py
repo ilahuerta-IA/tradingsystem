@@ -3592,13 +3592,13 @@ STRATEGIES_CONFIG = {
 
         'params': {
             # Session start -- 08:00 UTC winter / 07:00 UTC BST (auto via london_uk DST)
-            'session_start_hour': 18,
-            'session_start_minute': 00,
+            'session_start_hour': 19,
+            'session_start_minute': 30,
             'dst_mode': 'london_uk',  # shift -1h during UK BST (late Mar - late Oct)
 
             # Consolidation range (min-max bars to reduce overfitting)
             'consolidation_bars_min': 0,
-            'consolidation_bars_max': 8,
+            'consolidation_bars_max': 4,
 
             # Breakout filters -- scaled from TLT (pip_value=1.0 vs 0.01)
             # TLT bk_above=6 pips * 0.01 = $0.06 on ~$100 = 0.06%
@@ -3615,7 +3615,7 @@ STRATEGIES_CONFIG = {
             'htf_roc_period': 5,
 
             # SL / TP -- ATR multipliers (same ratios as TLT)
-            'atr_sl_multiplier': 2.0,
+            'atr_sl_multiplier': 2.5,
             'atr_tp_multiplier': 5.0,
             'sl_buffer_pips': 0.0,
 
