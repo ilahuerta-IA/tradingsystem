@@ -95,42 +95,37 @@ ASSET_PROFILES = {
         'from_date': datetime(2020, 1, 1),
         'to_date': datetime(2023, 12, 31),
         'ranges': {
-            # Session start sweep (informed by liquidity_profile):
-            # 09-13 UTC = low-vol valley -> 13:30 explosion (27 bps, 2x)
-            # Phase 2: SsH 11-13 -> breakout window opens ~13:00-13:30
-            'session_start_hour': (11, 13, 1),
-            'base_timeframe_minutes': [15],
-            # Consolidation bars @15m:
-            # CBMin [0,2,4] x CBMax [2,4,6,8,10] -> breakout ~13:00-13:30
-            # Example: SsH=11, CBMax=10 -> breakout at 13:30 (exact target)
+            # Night session sweep: ASX open explosion @22:50 UTC (Z +2.67 @5m)
+            # Gap ends 22:50 (AU summer) / 23:50 (AU winter) -> sweep SsH 22-23
+            # Valley @5m = 45 min = 9 bars -> CBMin 3-9, CBMax 6-18
+            # BkAbv disabled (proven irrelevant in Phase1/Phase2)
+            'session_start_hour': (22, 23, 1),
+            'base_timeframe_minutes': [5],
             'consolidation_bars_min': {
-                5: (6, 18, 6),
-                15: (0, 4, 2),
+                5: (3, 9, 3),
             },
             'consolidation_bars_max': {
-                5: (12, 36, 6),
-                15: (2, 10, 2),
+                5: (6, 18, 6),
             },
-            'bk_above_min_pips': (0.0, 4.0, 2.0),
             'atr_tp_multiplier': (3.0, 5.0, 1.0),
             'atr_sl_multiplier': (1.5, 2.5, 0.5),
         },
         'base_params': {
-            'session_start_hour': 9,
+            'session_start_hour': 22,
             'session_start_minute': 0,
-            'dst_mode': 'london_uk',
-            'consolidation_bars_min': 4,
-            'consolidation_bars_max': 8,
-            'bk_above_min_pips': 2.0,
+            'dst_mode': 'none',  # UTC fixed (AU DST handled by sweeping SsH 22/23)
+            'consolidation_bars_min': 6,
+            'consolidation_bars_max': 12,
+            'bk_above_min_pips': 0.0,  # disabled (irrelevant per Phase1/2)
             'bk_body_min_pips': 0.0,
             'atr_length': 14,
             'atr_avg_period': 20,
             'atr_sl_multiplier': 2.0,
-            'atr_tp_multiplier': 5.0,
+            'atr_tp_multiplier': 4.0,
             'sl_buffer_pips': 0.0,
-            'use_eod_close': True,
-            'eod_close_hour': 19,
-            'eod_close_minute': 30,
+            'use_eod_close': False,  # no EOD: overnight session crosses midnight
+            'eod_close_hour': 5,
+            'eod_close_minute': 0,
             'use_time_filter': False,
             'allowed_hours': [],
             'use_day_filter': False,
@@ -138,7 +133,7 @@ ASSET_PROFILES = {
             'use_sl_pips_filter': False,
             'sl_pips_min': 8.0,
             'sl_pips_max': 80.0,
-            'base_timeframe_minutes': 15,
+            'base_timeframe_minutes': 5,
             'htf_data_minutes': 0,
             'use_htf_roc_filter': False,
             'htf_roc_period': 5,
@@ -179,7 +174,7 @@ OPTIMIZE_SESSION_START_HOUR = True
 OPTIMIZE_BASE_TIMEFRAME = True
 OPTIMIZE_CONSOLIDATION_BARS_MIN = True
 OPTIMIZE_CONSOLIDATION_BARS_MAX = True
-OPTIMIZE_BK_ABOVE_MIN_PIPS = True
+OPTIMIZE_BK_ABOVE_MIN_PIPS = False
 OPTIMIZE_BK_BODY_MIN_PIPS = False
 OPTIMIZE_ATR_TP_MULTIPLIER = True
 OPTIMIZE_ATR_SL_MULTIPLIER = True
