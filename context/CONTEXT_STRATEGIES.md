@@ -3961,11 +3961,71 @@ EURUSD 22:00: CALM=59.6% LONG(+0.59)  NORMAL=66.5% LONG(+0.79)  VOLATILE=63.2% L
 | EURUSD 22:00 | UNSTABLE 31pp | BULL en 3/3 | ☆☆ yearly inestable |
 | USDCHF 20:45 | UNSTABLE 24pp | BEAR 3/3 | ☆☆ yearly inestable |
 
-### Tarea D: HDBSCAN — Clustering exploratorio (PRIORIDAD BAJA)
-**Estado:** ⏳ PENDIENTE — complemento de C
-Agrupar días por patrón de volatilidad intradiaria.
-Menos actionable que HMM (clusters difíciles de predecir en tiempo real).
+### ~~Tarea D: HDBSCAN~~ — DESCARTADA
+**Estado:** ❌ DESCARTADA (2026-03-25)
+HDBSCAN es unsupervised clustering — agrupa por similitud de features, no por resultado.
+No añade valor sobre HMM (Task C): el problema ya no es segmentar días, sino
+confirmar si los edges detectados son estadísticamente explotables.
 
-### Tarea 5 (condicional): SHORTs + EURUSD/USDCHF
-**Estado:** ⏸️ SUSPENDIDA — requiere primero herramientas de diagnóstico mejoradas (A-D).
-**Requiere:** Programar entradas SHORT en luyten_strategy.py (cambio significativo).
+### ~~Tarea 5 (condicional): SHORTs + EURUSD/USDCHF~~ — APLAZADA
+**Estado:** ⏸️ APLAZADA — la dirección (LONG/SHORT) depende de la ventaja, no al revés.
+Se retomará si E1-E3 confirman edge en slots BEAR (20:45).
+
+---
+
+## CAMBIO DE FILOSOFÍA (2026-03-25)
+
+**ANTES:** Buscar patrón → adaptarlo a ORB (estrategia fija).
+**AHORA:** Encontrar ventaja estadística robusta → diseñar estrategia que la explote.
+
+La investigación (Tasks A-C) demostró que:
+1. Los patrones direccionales REALES están en zona COLD (rollover 22:00-23:00, 20:45)
+2. En zona HOT (London/NY open) los slots son 50/50 — coin flip
+3. ORB necesita volatilidad (HOT zones) pero ahí no hay edge direccional
+4. El edge EXISTE donde ORB NO SIRVE
+
+**Conclusión:** La estrategia debe adaptarse a la ventaja, no al revés.
+Si el edge es un drift direccional en zona COLD, la estrategia correcta podría ser
+una entrada directa por hora (time-of-day directional bet), no un breakout.
+
+---
+
+## Fase E: Validación estadística formal (2026-03-25)
+
+**Objetivo:** Confirmar/descartar que los edges detectados son REALES y EXPLOTABLES.
+Candidatos a validar:
+- AUDUSD 23:00 BULL (★★★ — estable yearly + estable HMM 3/3 regímenes)
+- AUDUSD 22:00 BULL (★☆ — estable yearly, pero régimen-dependiente)
+- XAUUSD 22:00/23:00 BULL (★★ — HMM robusto pero yearly inestable)
+- 20:45 BEAR cross-FX (universal pero requiere SHORTs)
+
+### Tarea E1: Test de permutación (Bootstrap significance)
+**Estado:** ⏳ PENDIENTE
+**Qué:** Para cada slot candidato, aleatorizar 10,000 veces qué velas caen en ese slot.
+Calcular distribución nula de bull% bajo H0: "el slot no tiene sesgo direccional".
+Si bull% observado cae fuera del IC 95% → edge es estadísticamente significativo (p < 0.05).
+**Implementar en:** liquidity_profile.py (flag --bootstrap o --permtest)
+**Output:** p-value por slot, tabla con slots significativos
+
+### Tarea E2: Distribución completa de retornos (histograma + quantiles)
+**Estado:** ⏳ PENDIENTE
+**Qué:** Para cada slot candidato, mostrar distribución completa de retornos:
+- Histograma (o text-based percentiles)
+- Quantiles: Q10, Q25, mediana, Q75, Q90
+- Skewness y kurtosis
+- Ratio ganancia media / pérdida media (payoff ratio)
+**Por qué:** bull% 60% no basta si las pérdidas son 3x mayores que las ganancias.
+Un edge real requiere: (bull% × avg_win) > (bear% × avg_loss) NETO DE COSTES.
+**Implementar en:** liquidity_profile.py (flag --distribution)
+
+### Tarea E3: Backtest naive con costes de transacción
+**Estado:** ⏳ PENDIENTE
+**Qué:** Simulación simple (sin Backtrader):
+- Entrada: LONG al inicio del slot (ej: 23:00:00)
+- Salida: al final del slot (ej: 23:14:59)
+- Restar spread real del par en esa hora (COLD zone → spread MÁS ancho)
+- Calcular: PnL neto por operación, equity curve, Sharpe, max drawdown
+- Walk-forward: entrenar ratio en años 1-N, testear año N+1
+**Por qué:** Si NetEV del slot = +1.5 bps pero spread = 2 bps → edge inexplotable.
+Es el test final antes de invertir tiempo en diseñar estrategia.
+**Implementar en:** nuevo script tools/slot_backtest.py o dentro de liquidity_profile.py
