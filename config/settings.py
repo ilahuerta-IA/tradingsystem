@@ -3572,7 +3572,7 @@ STRATEGIES_CONFIG = {
     # =========================================================================
     #
     'AUS200_LUYTEN': {
-        'active': True,
+        'active': False,
         'strategy_name': 'LUYTEN',
         'asset_name': 'AUS200',
         'data_path': 'data/AUS200_5m_5Yea.csv',
@@ -3660,6 +3660,172 @@ STRATEGIES_CONFIG = {
             'lot_size': 1,
             'jpy_rate': 1.0,
             'is_etf': True,
+            'margin_pct': 5.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    'XLE_LUYTEN': {
+        'active': False,
+        'strategy_name': 'LUYTEN',
+        'asset_name': 'XLE',
+        'data_path': 'data/XLE_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2020, 2, 29),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'params': {
+            # Session start -- NYSE open 14:30 UTC winter / 13:30 UTC summer
+            'session_start_hour': 15,
+            'session_start_minute': 15,
+            'dst_mode': 'nyse',
+
+            # Consolidation range
+            'consolidation_bars_min': 6,
+            'consolidation_bars_max': 10,
+
+            # Breakout filters
+            'bk_above_min_pips': 0.0,
+            'bk_body_min_pips': 0.0,
+
+            # Multi-timeframe
+            'base_timeframe_minutes': 5,
+            'htf_data_minutes': 0,
+            'use_htf_roc_filter': False,
+            'htf_roc_period': 5,
+
+            # SL / TP
+            'atr_sl_multiplier': 2.0,
+            'atr_tp_multiplier': 3.0,
+            'sl_buffer_pips': 0.0,
+
+            # EOD Close -- NYSE close 21:00 UTC winter / 20:00 UTC summer
+            'use_eod_close': True,
+            'eod_close_hour': 20,
+            'eod_close_minute': 00,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # Filters
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 0.0,
+            'sl_pips_max': 9999.0,
+            'use_atr_range_filter': False,
+            'atr_range_min': 0.0,
+            'atr_range_max': 999.0,
+            'use_consol_price_filter': False,
+
+            # Risk management
+            'risk_percent': 0.01,
+
+            # ETF config -- XLE ~$60, same as TLT structure
+            'pip_value': 0.01,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 20.0,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    # =========================================================================
+    # LUYTEN — XAUUSD  (valley 21:45 → bull explosion 22:00 UTC, DirZ +2.79)
+    # =========================================================================
+
+    'XAUUSD_LUYTEN': {
+        'active': True,
+        'strategy_name': 'LUYTEN',
+        'asset_name': 'XAUUSD',
+        'data_path': 'data/XAUUSD_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 12, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': True,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'params': {
+            # Session start -- gold daily reopen after 1h gap
+            # Winter: gap 22:00-22:59, reopen 23:00 → session_start 23:00
+            # Summer (DST): gap 21:00-21:59, reopen 22:00 → shift -1h via nyse
+            # Valley pre-gap: 21:45 winter / 20:45 summer (8.67 bps, cold)
+            # Explosion post-gap: 23:00 winter / 22:00 summer (17.21 bps, 65.4% bull)
+            'session_start_hour': 23,
+            'session_start_minute': 0,
+            'dst_mode': 'nyse',  # shift -1h in US summer (CME gold follows NYSE DST)
+
+            # Consolidation range
+            'consolidation_bars_min': 3,   # 15 min minimum (3x5m)
+            'consolidation_bars_max': 6,   # 30 min maximum (6x5m)
+
+            # Breakout filters -- off for baseline
+            'bk_above_min_pips': 0.0,
+            'bk_body_min_pips': 0.0,
+
+            # Multi-timeframe
+            'base_timeframe_minutes': 5,
+            'htf_data_minutes': 0,
+            'use_htf_roc_filter': False,
+            'htf_roc_period': 5,
+
+            # SL / TP
+            'atr_sl_multiplier': 2.0,
+            'atr_tp_multiplier': 4.0,   # asymmetric R:R for gold momentum
+            'sl_buffer_pips': 0.0,
+
+            # EOD Close -- before next 22:00 rollover (swap -$75/lot/day)
+            'use_eod_close': True,
+            'eod_close_hour': 22,
+            'eod_close_minute': 15,
+
+            # ATR
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            # Standard Filters -- all off for baseline
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 0.0,
+            'sl_pips_max': 9999.0,
+            'use_atr_range_filter': False,
+            'atr_range_min': 0.0,
+            'atr_range_max': 999.0,
+            'use_consol_price_filter': False,
+
+            # Risk management
+            'risk_percent': 0.01,
+
+            # XAUUSD: 1 lot = 100 oz, pip = $0.01, margin 5% (20:1)
+            'pip_value': 0.01,
+            'lot_size': 100,
+            'jpy_rate': 1.0,
+            'is_etf': False,
             'margin_pct': 5.0,
 
             # Debug
