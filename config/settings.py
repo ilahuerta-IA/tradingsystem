@@ -3758,7 +3758,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/XAUUSD_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 1),
+        'to_date': datetime.datetime(2020, 3, 31),
 
         'starting_cash': 100000.0,
 
@@ -3773,9 +3773,9 @@ STRATEGIES_CONFIG = {
             # Summer (DST): gap 21:00-21:59, reopen 22:00 → shift -1h via nyse
             # Valley pre-gap: 21:45 winter / 20:45 summer (8.67 bps, cold)
             # Explosion post-gap: 23:00 winter / 22:00 summer (17.21 bps, 65.4% bull)
-            'session_start_hour': 23,
+            'session_start_hour': 21,
             'session_start_minute': 0,
-            'dst_mode': 'nyse',  # shift -1h in US summer (CME gold follows NYSE DST)
+            'dst_mode': 'us',  # shift -1h during US DST (2nd Sun Mar .. 1st Sun Nov)
 
             # Consolidation range
             'consolidation_bars_min': 3,   # 15 min minimum (3x5m)

@@ -86,7 +86,7 @@ class LUYTENStrategy(bt.Strategy):
         consolidation_bars_max=6,   # max bars updating consol high (then pure wait)
         session_start_hour=None,    # UTC hour to begin consolidation (None = first bar of day)
         session_start_minute=0,     # UTC minute to begin consolidation
-        dst_mode='nyse',            # 'nyse' | 'london_uk' | 'none'
+        dst_mode='nyse',            # 'nyse' | 'us' | 'london_uk' | 'none'
 
         # --- Breakout Filters ---
         bk_above_min_pips=0.0,      # min distance close - consolidation_high
@@ -236,11 +236,28 @@ class LUYTENStrategy(bt.Strategy):
         bst_end = oct31 - _dt.timedelta(days=(oct31.weekday() + 1) % 7)
         return bst_start, bst_end
 
+    @staticmethod
+    def _us_dst_boundaries(year):
+        """Return (dst_start, dst_end) as date objects for US DST.
+
+        US DST starts 2nd Sunday of March,
+        US DST ends   1st Sunday of November.
+        """
+        # 2nd Sunday of March
+        mar1 = _dt.date(year, 3, 1)
+        first_sun_mar = mar1 + _dt.timedelta(days=(6 - mar1.weekday()) % 7)
+        dst_start = first_sun_mar + _dt.timedelta(days=7)
+        # 1st Sunday of November
+        nov1 = _dt.date(year, 11, 1)
+        dst_end = nov1 + _dt.timedelta(days=(6 - nov1.weekday()) % 7)
+        return dst_start, dst_end
+
     def _dst_offset(self, today):
         """Return minutes offset to apply to base (winter) hours.
 
         * 'none'      -> 0
         * 'nyse'      -> -60 when first bar of day arrives before 14 UTC
+        * 'us'        -> -60 during US DST (2nd Sun Mar .. 1st Sun Nov)
         * 'london_uk' -> -60 during BST (last Sun Mar .. last Sun Oct)
         """
         mode = self.p.dst_mode
@@ -249,6 +266,9 @@ class LUYTENStrategy(bt.Strategy):
         if mode == 'nyse':
             dt = self.data.datetime.datetime(0)
             return -60 if dt.hour < 14 else 0
+        if mode == 'us':
+            dst_start, dst_end = self._us_dst_boundaries(today.year)
+            return -60 if dst_start <= today < dst_end else 0
         if mode == 'london_uk':
             bst_start, bst_end = self._bst_boundaries(today.year)
             return -60 if bst_start <= today < bst_end else 0
