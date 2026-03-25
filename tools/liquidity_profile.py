@@ -14,6 +14,7 @@ Usage:
     python tools/liquidity_profile.py EURUSD --slot 15            # 15-min slots
     python tools/liquidity_profile.py AUS200 --slot 30 --plot     # 30-min slots + chart
     python tools/liquidity_profile.py XAUUSD --slot 15 --yearly   # per-year directional breakdown
+    python tools/liquidity_profile.py AUDUSD --slot 15 --hmm      # HMM regime-conditioned analysis
     python tools/liquidity_profile.py AUS200 --from 2021-01-01 --to 2022-12-31
     python tools/liquidity_profile.py AUS200 --slot 15 --valley   # Valley detection focus
     python tools/liquidity_profile.py AUS200 --days 0,1,2,3,4     # Mon-Fri only
@@ -808,6 +809,246 @@ def print_yearly_breakdown(yearly_stats, stats, slot_minutes):
     print()
     print('-' * 110)
     print('  STABILITY LEGEND: spread < 15pp = STABLE (regime-independent)')
+
+
+# ============================================================================
+# HMM REGIME DETECTION (Task C)
+# ============================================================================
+
+def compute_daily_features(rows):
+    """Compute daily return and intraday volatility for HMM training.
+
+    Returns list of dicts with 'date', 'daily_ret', 'intraday_vol' fields,
+    sorted by date.
+    """
+    # Group bars by date
+    day_bars = defaultdict(list)
+    for r in rows:
+        day_bars[r['dt'].date()].append(r)
+
+    features = []
+    prev_close = None
+    for day in sorted(day_bars.keys()):
+        bars = sorted(day_bars[day], key=lambda b: b['dt'])
+        if len(bars) < 2:
+            prev_close = bars[-1]['close']
+            continue
+        day_open = bars[0]['open']
+        day_close = bars[-1]['close']
+        day_high = max(b['high'] for b in bars)
+        day_low = min(b['low'] for b in bars)
+        mid = (day_high + day_low) / 2.0
+        if mid <= 0:
+            prev_close = day_close
+            continue
+
+        # Daily return (vs prev close if available, else vs today's open)
+        ref = prev_close if prev_close else day_open
+        daily_ret = (day_close - ref) / ref * 10000  # bps
+
+        # Intraday volatility: high-low range in bps
+        intraday_vol = (day_high - day_low) / mid * 10000
+
+        features.append({
+            'date': day,
+            'daily_ret': daily_ret,
+            'intraday_vol': intraday_vol,
+        })
+        prev_close = day_close
+
+    return features
+
+
+def fit_hmm_regimes(daily_features, n_states=3, random_seed=42):
+    """Fit Gaussian HMM on daily features and label each day.
+
+    Uses |daily_ret| + intraday_vol as observation features.
+    States are sorted by increasing intraday_vol mean so that:
+      state 0 = calm, state 1 = normal, state 2 = volatile.
+
+    Returns (labels dict {date: regime_int}, model, state_names list).
+    """
+    try:
+        from hmmlearn.hmm import GaussianHMM
+        import numpy as np
+    except ImportError:
+        print('\n  hmmlearn not installed -- pip install hmmlearn')
+        return None, None, None
+
+    if len(daily_features) < 60:
+        print(f'\n  Not enough days ({len(daily_features)}) for HMM training.')
+        return None, None, None
+
+    X = np.array([
+        [abs(f['daily_ret']), f['intraday_vol']]
+        for f in daily_features
+    ])
+
+    model = GaussianHMM(
+        n_components=n_states,
+        covariance_type='full',
+        n_iter=200,
+        random_state=random_seed,
+        tol=1e-4,
+    )
+    model.fit(X)
+    raw_states = model.predict(X)
+
+    # Sort states by intraday_vol mean (ascending) -> calm < normal < volatile
+    vol_means = [model.means_[s][1] for s in range(n_states)]
+    state_order = sorted(range(n_states), key=lambda s: vol_means[s])
+    remap = {old: new for new, old in enumerate(state_order)}
+
+    state_names = {0: 'CALM', 1: 'NORMAL', 2: 'VOLATILE'}
+    if n_states == 2:
+        state_names = {0: 'CALM', 1: 'VOLATILE'}
+
+    labels = {}
+    for i, feat in enumerate(daily_features):
+        labels[feat['date']] = remap[raw_states[i]]
+
+    return labels, model, state_names
+
+
+def compute_regime_slot_stats(slot_metrics, regime_labels):
+    """Compute slot stats separately for each regime.
+
+    Returns dict: regime_id -> list of slot stat dicts (same format as
+    compute_slot_stats output).
+    """
+    # Split slot_metrics by regime
+    regime_slot_metrics = defaultdict(lambda: defaultdict(list))
+    for sk, metrics in slot_metrics.items():
+        for m in metrics:
+            regime = regime_labels.get(m['date'])
+            if regime is not None:
+                regime_slot_metrics[regime][sk].append(m)
+
+    regime_stats = {}
+    for regime_id in sorted(regime_slot_metrics.keys()):
+        stats, _, _ = compute_slot_stats(regime_slot_metrics[regime_id])
+        regime_stats[regime_id] = stats
+    return regime_stats
+
+
+def print_hmm_summary(regime_labels, state_names, daily_features):
+    """Print regime distribution summary."""
+    import numpy as np
+
+    counts = defaultdict(int)
+    for r in regime_labels.values():
+        counts[r] += 1
+    total = sum(counts.values())
+
+    # Compute mean features per regime
+    regime_feats = defaultdict(list)
+    for f in daily_features:
+        r = regime_labels.get(f['date'])
+        if r is not None:
+            regime_feats[r].append(f)
+
+    print()
+    print('=' * 100)
+    print('  HMM REGIME DETECTION (Gaussian HMM, sorted by intraday vol)')
+    print('=' * 100)
+    print(f'  {"Regime":<12} {"Name":<10} {"Days":>5} {"Pct":>6} '
+          f'{"AvgAbsRet":>10} {"AvgVol":>10}')
+    print('  ' + '-' * 65)
+
+    for rid in sorted(counts.keys()):
+        name = state_names.get(rid, f'S{rid}')
+        pct = counts[rid] / total * 100
+        feats = regime_feats[rid]
+        avg_ret = sum(abs(f['daily_ret']) for f in feats) / len(feats)
+        avg_vol = sum(f['intraday_vol'] for f in feats) / len(feats)
+        print(f'  {rid:<12} {name:<10} {counts[rid]:>5} {pct:>5.1f}% '
+              f'{avg_ret:>10.1f} {avg_vol:>10.1f}')
+
+    print()
+
+
+def print_regime_directional(regime_stats, state_names, slot_minutes,
+                             global_stats):
+    """Print per-regime directional analysis for the most interesting slots.
+
+    Focus on slots that have significant directional bias in at least one
+    regime, even if the aggregate is flat.
+    """
+    # Find all slots present across regimes
+    all_slots = set()
+    for rid, stats_list in regime_stats.items():
+        for s in stats_list:
+            all_slots.add(s['slot'])
+
+    # Build comparable table: for each slot, gather per-regime bull% and NetEV
+    slot_data = defaultdict(dict)
+    for rid, stats_list in regime_stats.items():
+        for s in stats_list:
+            slot_data[s['slot']][rid] = s
+
+    # Find interesting slots: max bull% - min bull% across regimes >= 8pp
+    # OR any regime has |NetEV| >= 0.8
+    interesting = []
+    for sk in sorted(all_slots):
+        regimes = slot_data[sk]
+        bull_pcts = [regimes[r].get('bull_pct', 50) for r in regimes]
+        net_evs = [regimes[r].get('net_ev_bps', 0) for r in regimes]
+        spread = max(bull_pcts) - min(bull_pcts) if bull_pcts else 0
+        max_netev = max(abs(nev) for nev in net_evs) if net_evs else 0
+        if spread >= 8 or max_netev >= 0.8:
+            # Get aggregate stats
+            agg = next((s for s in global_stats if s['slot'] == sk), None)
+            interesting.append((sk, spread, max_netev, agg))
+
+    # Sort by max regime spread
+    interesting.sort(key=lambda x: x[1], reverse=True)
+
+    print()
+    print('=' * 110)
+    print(f'  PER-REGIME DIRECTIONAL ANALYSIS ({slot_minutes}m slots)  '
+          '(HMM-conditioned)')
+    print('=' * 110)
+
+    shown = 0
+    for sk, spread, max_ne, agg in interesting[:20]:
+        agg_bull = agg.get('bull_pct', 0) if agg else 0
+        agg_net = agg.get('net_ev_bps', 0) if agg else 0
+        zone = agg.get('zone', '--') if agg else '--'
+        label = f'{sk[0]:02d}:{sk[1]:02d}'
+
+        print(f'\n  Slot {label}  (zone={zone}, '
+              f'agg bull={agg_bull:.1f}%, agg NetEV={agg_net:+.2f} bps, '
+              f'regime spread={spread:.1f}pp)')
+        print(f'  {"Regime":<12} {"Name":<10} {"N":>5} {"Bull%":>7} '
+              f'{"Bear%":>7} {"BullBdy":>8} {"BearBdy":>8} '
+              f'{"NetEV":>8} {"MeanTR":>8} {"Edge":>8}')
+        print('  ' + '-' * 95)
+
+        for rid in sorted(slot_data[sk].keys()):
+            s = slot_data[sk][rid]
+            name = state_names.get(rid, f'S{rid}')
+            net = s.get('net_ev_bps', 0)
+            edge = ('LONG' if net > 0.1
+                    else ('SHORT' if net < -0.1 else 'NONE'))
+            print(f'  {rid:<12} {name:<10} {s["n_days"]:>5} '
+                  f'{s.get("bull_pct", 0):>6.1f}% '
+                  f'{s.get("bear_pct", 0):>6.1f}% '
+                  f'{s.get("mean_bull_body", 0):>8.2f} '
+                  f'{s.get("mean_bear_body", 0):>8.2f} '
+                  f'{net:>+8.2f} '
+                  f'{s["mean_tr_bps"]:>8.2f} '
+                  f'{edge:>8}')
+
+        shown += 1
+
+    if shown == 0:
+        print('\n  No slots with significant regime variation found.')
+
+    print()
+    print('-' * 110)
+    print('  INTERPRETATION: If a slot shows LONG in one regime and '
+          'SHORT/NONE in another,')
+    print('  the aggregate signal is regime-dependent, not a universal edge.')
     print('                    spread >= 15pp = UNSTABLE (regime-dependent, '
           'aggregate is misleading)')
     print('-' * 110)
@@ -956,6 +1197,12 @@ def main():
     parser.add_argument('--yearly', action='store_true',
                         help='Show per-year directional breakdown '
                              '(regime stability check)')
+    parser.add_argument('--hmm', action='store_true',
+                        help='HMM regime detection: split analysis by '
+                             'calm/normal/volatile regimes')
+    parser.add_argument('--hmm-states', type=int, default=3,
+                        choices=[2, 3],
+                        help='Number of HMM states (default: 3)')
 
     args = parser.parse_args()
 
@@ -1000,6 +1247,17 @@ def main():
     if args.yearly:
         yearly_stats = compute_yearly_slot_stats(slot_metrics)
         print_yearly_breakdown(yearly_stats, stats, args.slot)
+
+    if args.hmm:
+        daily_feats = compute_daily_features(rows)
+        regime_labels, hmm_model, state_names = fit_hmm_regimes(
+            daily_feats, n_states=args.hmm_states)
+        if regime_labels is not None:
+            print_hmm_summary(regime_labels, state_names, daily_feats)
+            regime_stats = compute_regime_slot_stats(
+                slot_metrics, regime_labels)
+            print_regime_directional(
+                regime_stats, state_names, args.slot, stats)
 
     if args.valley:
         print_cold_runs(cold_runs, args.slot)
