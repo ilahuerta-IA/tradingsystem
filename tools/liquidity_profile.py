@@ -15,6 +15,9 @@ Usage:
     python tools/liquidity_profile.py AUS200 --slot 30 --plot     # 30-min slots + chart
     python tools/liquidity_profile.py XAUUSD --slot 15 --yearly   # per-year directional breakdown
     python tools/liquidity_profile.py AUDUSD --slot 15 --hmm      # HMM regime-conditioned analysis
+    python tools/liquidity_profile.py AUDUSD --slot 15 --permtest # E1: permutation significance test
+    python tools/liquidity_profile.py AUDUSD --slot 15 --distribution  # E2: return distribution
+    python tools/liquidity_profile.py AUDUSD --slot 15 --naive-bt # E3: naive backtest with costs
     python tools/liquidity_profile.py AUS200 --from 2021-01-01 --to 2022-12-31
     python tools/liquidity_profile.py AUS200 --slot 15 --valley   # Valley detection focus
     python tools/liquidity_profile.py AUS200 --days 0,1,2,3,4     # Mon-Fri only
@@ -23,6 +26,7 @@ import os
 import sys
 import csv
 import math
+import random
 import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -1091,6 +1095,446 @@ def print_magnitude_summary(stats, n_top=10):
 
 
 # ============================================================================
+# PHASE E: STATISTICAL VALIDATION
+# ============================================================================
+
+# --- E1: Permutation Test (Bootstrap Significance) ---
+
+def permutation_test_slots(slot_metrics, n_permutations=10000, seed=42):
+    """Permutation test for directional bias significance.
+
+    For each slot, shuffles the bull/bear labels across ALL slots to build
+    a null distribution of bull%.  Computes empirical p-value.
+
+    Returns list of dicts with slot_key, observed bull%, p-value, significant.
+    """
+    rng = random.Random(seed)
+
+    # Collect all signed bodies across all slots (the universe)
+    all_signed = []
+    slot_order = sorted(slot_metrics.keys())
+    slot_sizes = {}
+    for sk in slot_order:
+        metrics = slot_metrics[sk]
+        signs = [1 if m['body_signed_bps'] > 0 else 0 for m in metrics]
+        slot_sizes[sk] = len(signs)
+        all_signed.extend(signs)
+
+    total_obs = len(all_signed)
+
+    results = []
+    for sk in slot_order:
+        n = slot_sizes[sk]
+        observed_bulls = sum(
+            1 for m in slot_metrics[sk] if m['body_signed_bps'] > 0
+        )
+        observed_pct = observed_bulls / n * 100 if n else 0
+
+        # Null distribution: randomly sample n observations from all_signed
+        null_counts = []
+        for _ in range(n_permutations):
+            sample = rng.choices(all_signed, k=n)
+            null_counts.append(sum(sample))
+
+        null_counts.sort()
+        # Two-sided p-value: how extreme is observed vs null?
+        count_ge = sum(1 for c in null_counts if c >= observed_bulls)
+        count_le = sum(1 for c in null_counts if c <= observed_bulls)
+        p_upper = count_ge / n_permutations
+        p_lower = count_le / n_permutations
+        p_value = 2 * min(p_upper, p_lower)
+        p_value = min(p_value, 1.0)
+
+        # Null mean for reference
+        null_mean_pct = sum(null_counts) / n_permutations / n * 100 if n else 50
+
+        results.append({
+            'slot': sk,
+            'slot_label': f'{sk[0]:02d}:{sk[1]:02d}',
+            'n_days': n,
+            'observed_bull_pct': observed_pct,
+            'null_mean_pct': null_mean_pct,
+            'p_value': p_value,
+            'significant_05': p_value < 0.05,
+            'significant_01': p_value < 0.01,
+        })
+
+    return results
+
+
+def print_permtest_results(perm_results, slot_minutes):
+    """Print permutation test results, highlighting significant slots."""
+    print()
+    print('=' * 100)
+    print(f'  E1: PERMUTATION TEST — DIRECTIONAL SIGNIFICANCE ({slot_minutes}m)')
+    print(f'  H0: "slot has no directional bias" (bull% = global baseline)')
+    print(f'  Method: 10,000 permutations, two-sided test')
+    print('=' * 100)
+    print(f'  {"Slot":<8} {"N":>5} {"Bull%":>7} {"Null%":>7} '
+          f'{"Diff":>7} {"p-value":>10} {"Sig":>6}')
+    print('  ' + '-' * 65)
+
+    sig_slots = []
+    for r in perm_results:
+        diff = r['observed_bull_pct'] - r['null_mean_pct']
+        if r['significant_01']:
+            sig = '**'
+        elif r['significant_05']:
+            sig = '*'
+        else:
+            sig = ''
+
+        # Only print significant or near-significant slots
+        if r['p_value'] < 0.10 or abs(diff) > 3:
+            print(f'  {r["slot_label"]:<8} {r["n_days"]:>5} '
+                  f'{r["observed_bull_pct"]:>6.1f}% '
+                  f'{r["null_mean_pct"]:>6.1f}% '
+                  f'{diff:>+6.1f}% '
+                  f'{r["p_value"]:>10.4f} {sig:>6}')
+            if r['significant_05']:
+                sig_slots.append(r)
+
+    # Summary
+    total = len(perm_results)
+    n_sig_05 = sum(1 for r in perm_results if r['significant_05'])
+    n_sig_01 = sum(1 for r in perm_results if r['significant_01'])
+    print(f'\n  Total slots: {total}  |  '
+          f'Significant p<0.05: {n_sig_05}  |  p<0.01: {n_sig_01}')
+
+    # Expected false positives under H0
+    expected_fp = total * 0.05
+    print(f'  Expected false positives at p<0.05 under H0: '
+          f'{expected_fp:.1f} slots')
+    if n_sig_05 <= expected_fp:
+        print('  >>> WARNING: significant count within noise range <<<')
+    else:
+        print(f'  >>> {n_sig_05 - expected_fp:.0f} slots ABOVE noise floor <<<')
+
+    if sig_slots:
+        print(f'\n  SIGNIFICANT DIRECTIONAL SLOTS (p < 0.05):')
+        for r in sorted(sig_slots, key=lambda x: x['p_value']):
+            direction = 'BULL' if r['observed_bull_pct'] > 50 else 'BEAR'
+            print(f'    {r["slot_label"]}  {direction}  '
+                  f'bull={r["observed_bull_pct"]:.1f}%  '
+                  f'p={r["p_value"]:.4f}')
+
+    print()
+
+
+# --- E2: Return Distribution Analysis ---
+
+def compute_return_distribution(slot_metrics):
+    """Compute full return distribution stats per slot.
+
+    Returns list of dicts with quantiles, skewness, kurtosis, payoff ratio.
+    """
+    slot_order = sorted(slot_metrics.keys())
+    results = []
+
+    for sk in slot_order:
+        metrics = slot_metrics[sk]
+        signed = sorted(m['body_signed_bps'] for m in metrics)
+        n = len(signed)
+        if n < 10:
+            continue
+
+        mean_ret = sum(signed) / n
+        std_ret = _std(signed, mean_ret)
+
+        # Quantiles
+        q10 = _percentile(signed, 10)
+        q25 = _percentile(signed, 25)
+        q50 = _percentile(signed, 50)  # median
+        q75 = _percentile(signed, 75)
+        q90 = _percentile(signed, 90)
+
+        # Skewness (Fisher)
+        if std_ret > 0:
+            skew = (sum((v - mean_ret) ** 3 for v in signed)
+                    / (n * std_ret ** 3))
+        else:
+            skew = 0.0
+
+        # Excess kurtosis
+        if std_ret > 0:
+            kurt = (sum((v - mean_ret) ** 4 for v in signed)
+                    / (n * std_ret ** 4)) - 3.0
+        else:
+            kurt = 0.0
+
+        # Payoff analysis
+        wins = [s for s in signed if s > 0]
+        losses = [abs(s) for s in signed if s < 0]
+        avg_win = sum(wins) / len(wins) if wins else 0
+        avg_loss = sum(losses) / len(losses) if losses else 0
+        payoff_ratio = avg_win / avg_loss if avg_loss > 0 else float('inf')
+
+        # Expected value per trade
+        win_rate = len(wins) / n
+        expectancy = win_rate * avg_win - (1 - win_rate) * avg_loss
+
+        results.append({
+            'slot': sk,
+            'slot_label': f'{sk[0]:02d}:{sk[1]:02d}',
+            'n': n,
+            'mean': mean_ret,
+            'std': std_ret,
+            'q10': q10,
+            'q25': q25,
+            'median': q50,
+            'q75': q75,
+            'q90': q90,
+            'skew': skew,
+            'kurtosis': kurt,
+            'win_rate': win_rate * 100,
+            'avg_win': avg_win,
+            'avg_loss': avg_loss,
+            'payoff_ratio': payoff_ratio,
+            'expectancy': expectancy,
+        })
+
+    return results
+
+
+def print_distribution_results(dist_results, slot_minutes):
+    """Print return distribution analysis for slots with directional bias."""
+    # Filter to interesting slots: expectancy != 0 or win_rate far from 50
+    interesting = [r for r in dist_results
+                   if abs(r['win_rate'] - 50) > 4 or abs(r['expectancy']) > 0.3]
+
+    if not interesting:
+        interesting = sorted(dist_results,
+                             key=lambda x: abs(x['expectancy']),
+                             reverse=True)[:10]
+
+    print()
+    print('=' * 115)
+    print(f'  E2: RETURN DISTRIBUTION ANALYSIS ({slot_minutes}m)')
+    print(f'  Full distribution of per-slot returns (body_signed_bps)')
+    print('=' * 115)
+
+    # Table 1: Quantiles
+    print(f'\n  {"Slot":<8} {"N":>5} {"Mean":>7} {"Med":>7} '
+          f'{"Q10":>7} {"Q25":>7} {"Q75":>7} {"Q90":>7} '
+          f'{"Skew":>7} {"Kurt":>7}')
+    print('  ' + '-' * 85)
+
+    for r in sorted(interesting, key=lambda x: x['slot']):
+        print(f'  {r["slot_label"]:<8} {r["n"]:>5} '
+              f'{r["mean"]:>+7.2f} {r["median"]:>+7.2f} '
+              f'{r["q10"]:>+7.2f} {r["q25"]:>+7.2f} '
+              f'{r["q75"]:>+7.2f} {r["q90"]:>+7.2f} '
+              f'{r["skew"]:>+7.2f} {r["kurtosis"]:>+7.2f}')
+
+    # Table 2: Payoff analysis
+    print(f'\n  {"Slot":<8} {"WinRate":>8} {"AvgWin":>8} {"AvgLoss":>8} '
+          f'{"Payoff":>8} {"Expect":>8} {"Edge":>8}')
+    print(f'  {"":8} {"(%)":>8} {"(bps)":>8} {"(bps)":>8} '
+          f'{"ratio":>8} {"(bps)":>8} {"":>8}')
+    print('  ' + '-' * 70)
+
+    for r in sorted(interesting, key=lambda x: x['expectancy'], reverse=True):
+        if r['expectancy'] > 0.1:
+            edge = 'LONG'
+        elif r['expectancy'] < -0.1:
+            edge = 'SHORT'
+        else:
+            edge = '--'
+
+        pr_str = (f'{r["payoff_ratio"]:>8.2f}'
+                  if r['payoff_ratio'] < 100 else '     inf')
+        print(f'  {r["slot_label"]:<8} {r["win_rate"]:>7.1f}% '
+              f'{r["avg_win"]:>8.2f} {r["avg_loss"]:>8.2f} '
+              f'{pr_str} '
+              f'{r["expectancy"]:>+8.3f} {edge:>8}')
+
+    print()
+
+
+# --- E3: Naive Backtest with Transaction Costs ---
+
+def naive_slot_backtest(slot_metrics, slot_minutes, spread_bps=1.0,
+                        direction='long'):
+    """Simulate trading a single slot: enter at open, exit at close.
+
+    Args:
+        slot_metrics: dict slot_key -> list of per-day metric dicts
+        slot_minutes: slot size
+        spread_bps: round-trip transaction cost in bps
+        direction: 'long' or 'short'
+
+    Returns dict per slot: equity curve, Sharpe, max DD, PnL stats.
+    """
+    slot_order = sorted(slot_metrics.keys())
+    results = []
+
+    for sk in slot_order:
+        metrics = sorted(slot_metrics[sk], key=lambda m: m['date'])
+        n = len(metrics)
+        if n < 60:
+            continue
+
+        # PnL per trade
+        pnls = []
+        for m in metrics:
+            raw = m['body_signed_bps']
+            if direction == 'short':
+                raw = -raw
+            net = raw - spread_bps
+            pnls.append(net)
+
+        # Equity curve (cumulative)
+        equity = [0.0]
+        for pnl in pnls:
+            equity.append(equity[-1] + pnl)
+
+        # Stats
+        total_pnl = equity[-1]
+        mean_pnl = sum(pnls) / n
+        std_pnl = _std(pnls, mean_pnl) if n > 1 else 1.0
+        sharpe = mean_pnl / std_pnl * math.sqrt(252) if std_pnl > 0 else 0
+
+        # Max drawdown
+        peak = 0.0
+        max_dd = 0.0
+        for eq in equity:
+            if eq > peak:
+                peak = eq
+            dd = peak - eq
+            if dd > max_dd:
+                max_dd = dd
+
+        # Win rate (net of costs)
+        wins = sum(1 for p in pnls if p > 0)
+        win_rate = wins / n * 100
+
+        # Profit factor
+        gross_win = sum(p for p in pnls if p > 0)
+        gross_loss = abs(sum(p for p in pnls if p < 0))
+        pf = gross_win / gross_loss if gross_loss > 0 else float('inf')
+
+        # Walk-forward: split by year
+        year_pnls = defaultdict(list)
+        for m, pnl in zip(metrics, pnls):
+            year_pnls[m['date'].year].append(pnl)
+
+        yearly_results = []
+        for year in sorted(year_pnls.keys()):
+            yp = year_pnls[year]
+            yn = len(yp)
+            y_total = sum(yp)
+            y_mean = y_total / yn
+            y_std = _std(yp, y_mean) if yn > 1 else 1.0
+            y_sharpe = y_mean / y_std * math.sqrt(252) if y_std > 0 else 0
+            y_wins = sum(1 for p in yp if p > 0)
+            y_gw = sum(p for p in yp if p > 0)
+            y_gl = abs(sum(p for p in yp if p < 0))
+            y_pf = y_gw / y_gl if y_gl > 0 else float('inf')
+            yearly_results.append({
+                'year': year,
+                'n': yn,
+                'total_pnl': y_total,
+                'mean_pnl': y_mean,
+                'sharpe': y_sharpe,
+                'win_rate': y_wins / yn * 100 if yn else 0,
+                'pf': y_pf,
+            })
+
+        results.append({
+            'slot': sk,
+            'slot_label': f'{sk[0]:02d}:{sk[1]:02d}',
+            'direction': direction.upper(),
+            'n_trades': n,
+            'spread_bps': spread_bps,
+            'total_pnl': total_pnl,
+            'mean_pnl': mean_pnl,
+            'std_pnl': std_pnl,
+            'sharpe': sharpe,
+            'max_dd': max_dd,
+            'win_rate': win_rate,
+            'profit_factor': pf,
+            'equity': equity,
+            'yearly': yearly_results,
+        })
+
+    return results
+
+
+def print_naive_backtest(bt_results, slot_minutes, focus_slots=None):
+    """Print naive backtest results with walk-forward yearly breakdown."""
+
+    # Filter to focus_slots if provided, else show top 10 by Sharpe
+    if focus_slots:
+        show = [r for r in bt_results if r['slot'] in focus_slots]
+    else:
+        show = sorted(bt_results, key=lambda x: x['sharpe'], reverse=True)[:10]
+
+    if not show:
+        print('\n  No backtest results to show.')
+        return
+
+    spread = show[0]['spread_bps'] if show else 0
+
+    print()
+    print('=' * 115)
+    print(f'  E3: NAIVE SLOT BACKTEST ({slot_minutes}m)')
+    print(f'  Strategy: enter at slot open, exit at slot close')
+    print(f'  Transaction cost: {spread:.1f} bps round-trip')
+    print('=' * 115)
+
+    # Summary table
+    print(f'\n  {"Slot":<8} {"Dir":<6} {"N":>5} {"TotPnL":>9} '
+          f'{"MeanPnL":>9} {"Sharpe":>8} {"MaxDD":>8} '
+          f'{"WinR%":>7} {"PF":>7}')
+    print('  ' + '-' * 80)
+
+    for r in sorted(show, key=lambda x: x['sharpe'], reverse=True):
+        pf_str = (f'{r["profit_factor"]:>7.2f}'
+                  if r['profit_factor'] < 100 else '    inf')
+        print(f'  {r["slot_label"]:<8} {r["direction"]:<6} '
+              f'{r["n_trades"]:>5} '
+              f'{r["total_pnl"]:>+9.1f} '
+              f'{r["mean_pnl"]:>+9.3f} '
+              f'{r["sharpe"]:>+8.2f} '
+              f'{r["max_dd"]:>8.1f} '
+              f'{r["win_rate"]:>6.1f}% '
+              f'{pf_str}')
+
+    # Walk-forward yearly breakdown for each slot
+    for r in sorted(show, key=lambda x: x['slot']):
+        print(f'\n  --- {r["slot_label"]} {r["direction"]} '
+              f'(spread={r["spread_bps"]:.1f} bps) ---')
+        print(f'  {"Year":>6} {"N":>5} {"TotPnL":>9} {"MeanPnL":>9} '
+              f'{"Sharpe":>8} {"WinR%":>7} {"PF":>7} {"Verdict":>10}')
+        print('  ' + '-' * 70)
+
+        all_profitable = True
+        for y in r['yearly']:
+            pf_str = (f'{y["pf"]:>7.2f}'
+                      if y['pf'] < 100 else '    inf')
+            if y['total_pnl'] > 0:
+                verdict = 'WIN'
+            else:
+                verdict = 'LOSS'
+                all_profitable = False
+            print(f'  {y["year"]:>6} {y["n"]:>5} '
+                  f'{y["total_pnl"]:>+9.1f} '
+                  f'{y["mean_pnl"]:>+9.3f} '
+                  f'{y["sharpe"]:>+8.2f} '
+                  f'{y["win_rate"]:>6.1f}% '
+                  f'{pf_str} {verdict:>10}')
+
+        if all_profitable:
+            print(f'  >>> ALL YEARS PROFITABLE — robust edge <<<')
+        else:
+            losing_years = [y['year'] for y in r['yearly']
+                            if y['total_pnl'] <= 0]
+            print(f'  >>> LOSING YEARS: {losing_years} <<<')
+
+    print()
+
+
+# ============================================================================
 # MATPLOTLIB PLOT
 # ============================================================================
 
@@ -1203,6 +1647,22 @@ def main():
     parser.add_argument('--hmm-states', type=int, default=3,
                         choices=[2, 3],
                         help='Number of HMM states (default: 3)')
+    parser.add_argument('--permtest', action='store_true',
+                        help='E1: Permutation test for directional significance')
+    parser.add_argument('--distribution', action='store_true',
+                        help='E2: Full return distribution analysis')
+    parser.add_argument('--naive-bt', action='store_true',
+                        help='E3: Naive slot backtest with transaction costs')
+    parser.add_argument('--spread', type=float, default=1.0,
+                        help='Round-trip spread in bps for naive backtest '
+                             '(default: 1.0)')
+    parser.add_argument('--bt-direction', type=str, default='long',
+                        choices=['long', 'short'],
+                        help='Trade direction for naive backtest '
+                             '(default: long)')
+    parser.add_argument('--focus-slots', type=str, default=None,
+                        help='Comma-separated slots for E3 focus '
+                             '(e.g. "22:00,23:00,20:45")')
 
     args = parser.parse_args()
 
@@ -1258,6 +1718,30 @@ def main():
                 slot_metrics, regime_labels)
             print_regime_directional(
                 regime_stats, state_names, args.slot, stats)
+
+    if args.permtest:
+        perm_results = permutation_test_slots(slot_metrics)
+        print_permtest_results(perm_results, args.slot)
+
+    if args.distribution:
+        dist_results = compute_return_distribution(slot_metrics)
+        print_distribution_results(dist_results, args.slot)
+
+    if args.naive_bt:
+        # Parse focus slots
+        focus = None
+        if args.focus_slots:
+            focus = []
+            for s in args.focus_slots.split(','):
+                s = s.strip()
+                parts = s.split(':')
+                if len(parts) == 2:
+                    focus.append((int(parts[0]), int(parts[1])))
+        bt_results = naive_slot_backtest(
+            slot_metrics, args.slot,
+            spread_bps=args.spread,
+            direction=args.bt_direction)
+        print_naive_backtest(bt_results, args.slot, focus_slots=focus)
 
     if args.valley:
         print_cold_runs(cold_runs, args.slot)
