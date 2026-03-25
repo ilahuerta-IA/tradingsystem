@@ -13,6 +13,7 @@ Usage:
     python tools/liquidity_profile.py AUS200                      # 1h slots, full data
     python tools/liquidity_profile.py EURUSD --slot 15            # 15-min slots
     python tools/liquidity_profile.py AUS200 --slot 30 --plot     # 30-min slots + chart
+    python tools/liquidity_profile.py XAUUSD --slot 15 --yearly   # per-year directional breakdown
     python tools/liquidity_profile.py AUS200 --from 2021-01-01 --to 2022-12-31
     python tools/liquidity_profile.py AUS200 --slot 15 --valley   # Valley detection focus
     python tools/liquidity_profile.py AUS200 --days 0,1,2,3,4     # Mon-Fri only
@@ -191,6 +192,17 @@ def compute_slot_stats(slot_metrics):
         bear_pct = n_bear / n * 100 if n > 0 else 0
         mean_signed = sum(signed) / n
 
+        # Magnitude asymmetry: avg body of bull vs bear candles
+        bull_bodies = [s for s in signed if s > 0]
+        bear_bodies = [abs(s) for s in signed if s < 0]
+        mean_bull_body = (sum(bull_bodies) / len(bull_bodies)
+                         if bull_bodies else 0.0)
+        mean_bear_body = (sum(bear_bodies) / len(bear_bodies)
+                         if bear_bodies else 0.0)
+        # Net expected value: freq × magnitude
+        net_ev_bps = (bull_pct / 100 * mean_bull_body
+                      - bear_pct / 100 * mean_bear_body)
+
         stats.append({
             'slot': sk,
             'slot_label': f'{sk[0]:02d}:{sk[1]:02d}',
@@ -207,9 +219,65 @@ def compute_slot_stats(slot_metrics):
             'bull_pct': bull_pct,
             'bear_pct': bear_pct,
             'mean_signed_bps': mean_signed,
+            'mean_bull_body': mean_bull_body,
+            'mean_bear_body': mean_bear_body,
+            'net_ev_bps': net_ev_bps,
         })
 
     return stats, global_mean, global_std
+
+
+def compute_yearly_slot_stats(slot_metrics):
+    """Compute per-year directional stats for each slot.
+
+    Returns dict: slot_key -> list of yearly stat dicts.
+    Reveals regime instability (Simpson's paradox).
+    """
+    results = {}
+    for sk in sorted(slot_metrics.keys()):
+        metrics = slot_metrics[sk]
+        # Group by year
+        year_groups = defaultdict(list)
+        for m in metrics:
+            year_groups[m['date'].year].append(m)
+
+        yearly = []
+        for year in sorted(year_groups.keys()):
+            ymetrics = year_groups[year]
+            n = len(ymetrics)
+            signed = [m['body_signed_bps'] for m in ymetrics]
+            n_bull = sum(1 for s in signed if s > 0)
+            n_bear = sum(1 for s in signed if s < 0)
+            bull_pct = n_bull / n * 100 if n > 0 else 0
+            bear_pct = n_bear / n * 100 if n > 0 else 0
+            mean_signed = sum(signed) / n
+
+            # Magnitude asymmetry per year
+            bull_bodies = [s for s in signed if s > 0]
+            bear_bodies = [abs(s) for s in signed if s < 0]
+            mean_bull_body = (sum(bull_bodies) / len(bull_bodies)
+                             if bull_bodies else 0.0)
+            mean_bear_body = (sum(bear_bodies) / len(bear_bodies)
+                             if bear_bodies else 0.0)
+            net_ev = (bull_pct / 100 * mean_bull_body
+                      - bear_pct / 100 * mean_bear_body)
+
+            trs = [m['tr_bps'] for m in ymetrics]
+            mean_tr = sum(trs) / n
+
+            yearly.append({
+                'year': year,
+                'n': n,
+                'bull_pct': bull_pct,
+                'bear_pct': bear_pct,
+                'mean_signed': mean_signed,
+                'mean_bull_body': mean_bull_body,
+                'mean_bear_body': mean_bear_body,
+                'net_ev_bps': net_ev,
+                'mean_tr': mean_tr,
+            })
+        results[sk] = yearly
+    return results
 
 
 def _std(values, mean):
@@ -663,6 +731,124 @@ def print_day_of_week(rows, slot_minutes, allowed_days=None):
         print(f'  {day_names[dow]:<5} {n:>8} {mean_v:>10.2f} {std_v:>10.2f}')
 
 
+def print_yearly_breakdown(yearly_stats, stats, slot_minutes):
+    """Print per-year directional analysis for HOT and interesting slots.
+
+    Shows regime stability: if bull% swings wildly across years,
+    the aggregate signal is an artifact (Simpson's paradox).
+    """
+    # Focus on HOT slots + any slot with bull_pct > 58 or bear_pct > 58
+    focus_slots = []
+    for s in stats:
+        if (s.get('zone') == 'HOT'
+                or s.get('bull_pct', 0) > 58
+                or s.get('bear_pct', 0) > 58):
+            focus_slots.append(s['slot'])
+
+    if not focus_slots:
+        # Fall back to top 5 most volatile
+        ranked = sorted(stats, key=lambda s: s['mean_tr_bps'], reverse=True)
+        focus_slots = [s['slot'] for s in ranked[:5]]
+
+    print()
+    print('=' * 110)
+    print(f'  YEARLY DIRECTIONAL BREAKDOWN ({slot_minutes}m)  '
+          '(regime stability check)')
+    print('=' * 110)
+
+    for sk in sorted(focus_slots):
+        if sk not in yearly_stats:
+            continue
+        yearly = yearly_stats[sk]
+        slot_label = f'{sk[0]:02d}:{sk[1]:02d}'
+
+        # Find aggregate stats for this slot
+        agg = next((s for s in stats if s['slot'] == sk), None)
+        zone = agg.get('zone', '--') if agg else '--'
+        agg_bull = agg.get('bull_pct', 0) if agg else 0
+        agg_net = agg.get('net_ev_bps', 0) if agg else 0
+
+        print(f'\n  Slot {slot_label}  (zone={zone}, '
+              f'agg bull={agg_bull:.1f}%, agg NetEV={agg_net:+.2f} bps)')
+        print(f'  {"Year":>6} {"N":>5} {"Bull%":>7} {"Bear%":>7} '
+              f'{"BullBody":>9} {"BearBody":>9} {"NetEV":>8} '
+              f'{"MeanTR":>8} {"Verdict":>10}')
+        print('  ' + '-' * 85)
+
+        bull_pcts = []
+        for y in yearly:
+            # Verdict per year
+            if y['bull_pct'] >= 60:
+                verdict = 'BULL'
+            elif y['bull_pct'] >= 55:
+                verdict = 'bull~'
+            elif y['bear_pct'] >= 60:
+                verdict = 'BEAR'
+            elif y['bear_pct'] >= 55:
+                verdict = 'bear~'
+            else:
+                verdict = 'MIXED'
+
+            print(f'  {y["year"]:>6} {y["n"]:>5} '
+                  f'{y["bull_pct"]:>6.1f}% {y["bear_pct"]:>6.1f}% '
+                  f'{y["mean_bull_body"]:>8.2f} {y["mean_bear_body"]:>8.2f} '
+                  f'{y["net_ev_bps"]:>+8.2f} '
+                  f'{y["mean_tr"]:>8.2f} {verdict:>10}')
+            bull_pcts.append(y['bull_pct'])
+
+        # Stability check
+        if bull_pcts:
+            spread = max(bull_pcts) - min(bull_pcts)
+            std_bull = _std(bull_pcts, sum(bull_pcts) / len(bull_pcts))
+            stable = 'STABLE' if spread < 15 else 'UNSTABLE'
+            print(f'  {"":>6} {"":>5} '
+                  f'spread={spread:.1f}pp  std={std_bull:.1f}pp  '
+                  f'=> {stable}')
+
+    print()
+    print('-' * 110)
+    print('  STABILITY LEGEND: spread < 15pp = STABLE (regime-independent)')
+    print('                    spread >= 15pp = UNSTABLE (regime-dependent, '
+          'aggregate is misleading)')
+    print('-' * 110)
+
+
+def print_magnitude_summary(stats, n_top=10):
+    """Print top slots by NetEV (frequency x magnitude expected value).
+
+    NetEV = bull% x mean_bull_body - bear% x mean_bear_body
+    Positive = long-only has expected edge.  Negative = short-only has edge.
+    """
+    ranked = sorted(stats, key=lambda s: abs(s.get('net_ev_bps', 0)),
+                    reverse=True)
+
+    print()
+    print('-' * 100)
+    print(f'  TOP {n_top} SLOTS BY NET EXPECTED VALUE '
+          '(freq x magnitude, long-only edge)')
+    print('-' * 100)
+    print(f'  {"#":>3} {"Slot":<8} {"Bull%":>6} {"Bear%":>6} '
+          f'{"BullBdy":>8} {"BearBdy":>8} {"NetEV":>8} '
+          f'{"MeanTR":>8} {"Zone":>6} {"Edge":>8}')
+    print(f'  {"":>3} {"":8} {"":>6} {"":>6} '
+          f'{"(bps)":>8} {"(bps)":>8} {"(bps)":>8} '
+          f'{"(bps)":>8} {"":>6} {"":>8}')
+    print('-' * 100)
+
+    for i, s in enumerate(ranked[:n_top], 1):
+        net_ev = s.get('net_ev_bps', 0)
+        edge = 'LONG' if net_ev > 0.1 else ('SHORT' if net_ev < -0.1 else 'NONE')
+        print(f'  {i:>3} {s["slot_label"]:<8} '
+              f'{s.get("bull_pct", 0):>5.1f}% '
+              f'{s.get("bear_pct", 0):>5.1f}% '
+              f'{s.get("mean_bull_body", 0):>8.2f} '
+              f'{s.get("mean_bear_body", 0):>8.2f} '
+              f'{net_ev:>+8.2f} '
+              f'{s["mean_tr_bps"]:>8.2f} '
+              f'{s.get("zone", "--"):>6} '
+              f'{edge:>8}')
+
+
 # ============================================================================
 # MATPLOTLIB PLOT
 # ============================================================================
@@ -767,6 +953,9 @@ def main():
                         help='Z-score threshold for HOT zone (default: 0.75)')
     parser.add_argument('--cold', type=float, default=-0.50,
                         help='Z-score threshold for COLD zone (default: -0.50)')
+    parser.add_argument('--yearly', action='store_true',
+                        help='Show per-year directional breakdown '
+                             '(regime stability check)')
 
     args = parser.parse_args()
 
@@ -804,8 +993,13 @@ def main():
     print_top_slots(stats, n=10)
     print_top_quiet(stats, n=10)
     print_directional_hot(stats)
+    print_magnitude_summary(stats)
     print_transitions(transitions, args.slot)
     print_day_of_week(rows, args.slot, allowed_days)
+
+    if args.yearly:
+        yearly_stats = compute_yearly_slot_stats(slot_metrics)
+        print_yearly_breakdown(yearly_stats, stats, args.slot)
 
     if args.valley:
         print_cold_runs(cold_runs, args.slot)
