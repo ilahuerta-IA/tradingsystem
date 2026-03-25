@@ -1538,7 +1538,7 @@ def print_naive_backtest(bt_results, slot_minutes, focus_slots=None):
 # MATPLOTLIB PLOT
 # ============================================================================
 
-def plot_profile(stats, transitions, asset, slot_minutes):
+def plot_profile(stats, transitions, asset, slot_minutes, save_dir=None):
     """Generate matplotlib chart with volatility profile and zone markers."""
     try:
         import matplotlib.pyplot as plt
@@ -1609,12 +1609,250 @@ def plot_profile(stats, transitions, asset, slot_minutes):
     ax2.set_xlabel('Time of Day (UTC)')
 
     plt.tight_layout()
-    plt.show()
+    if save_dir:
+        path = os.path.join(save_dir, f'{asset}_{slot_minutes}m_profile.png')
+        fig.savefig(path, dpi=150, bbox_inches='tight')
+        print(f'  Saved: {path}')
+        plt.close(fig)
+    else:
+        plt.show()
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
+def plot_permtest(perm_results, asset, slot_minutes, save_dir=None):
+    """E1 plot: directional bias significance per slot."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print('\n  matplotlib not installed -- skipping plot.')
+        return
+
+    labels = [r['slot_label'] for r in perm_results]
+    diffs = [r['observed_bull_pct'] - r['null_mean_pct'] for r in perm_results]
+    p_vals = [r['p_value'] for r in perm_results]
+
+    # Colors: green/red for significant bull/bear, gray otherwise
+    colors = []
+    for r, d in zip(perm_results, diffs):
+        if r['significant_05'] and d > 0:
+            colors.append('#2ecc71')
+        elif r['significant_05'] and d < 0:
+            colors.append('#e74c3c')
+        else:
+            colors.append('#bdc3c7')
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 9), sharex=True,
+                                    gridspec_kw={'height_ratios': [2, 1]})
+    fig.suptitle(f'{asset} — E1: Permutation Test ({slot_minutes}m slots)',
+                 fontsize=14, fontweight='bold')
+
+    # Top: bull% deviation from null
+    ax1.bar(range(len(labels)), diffs, color=colors, edgecolor='white',
+            linewidth=0.3)
+    ax1.axhline(y=0, color='black', linewidth=0.8)
+    ax1.set_ylabel('Bull% − Null Mean (%)')
+    ax1.set_title('Directional Bias Deviation (green=BULL, red=BEAR, gray=NS)')
+    ax1.grid(axis='y', alpha=0.3)
+
+    # Annotate top significant slots
+    for i, (r, d) in enumerate(zip(perm_results, diffs)):
+        if r['significant_01'] and abs(d) > 3:
+            ax1.annotate(f'{d:+.1f}%\np={r["p_value"]:.4f}',
+                         xy=(i, d), fontsize=6, ha='center',
+                         va='bottom' if d > 0 else 'top')
+
+    # Bottom: -log10(p-value)
+    neg_log_p = [-math.log10(max(p, 1e-10)) for p in p_vals]
+    ax2.bar(range(len(labels)), neg_log_p, color=colors, edgecolor='white',
+            linewidth=0.3)
+    ax2.axhline(y=-math.log10(0.05), color='orange', linestyle='--',
+                linewidth=1.2, label='p = 0.05')
+    ax2.axhline(y=-math.log10(0.01), color='red', linestyle='--',
+                linewidth=1.2, label='p = 0.01')
+    ax2.set_ylabel('−log₁₀(p-value)')
+    ax2.legend(loc='upper right')
+    ax2.grid(axis='y', alpha=0.3)
+
+    # X-axis labels
+    step = max(1, len(labels) // 24)
+    ax2.set_xticks(range(0, len(labels), step))
+    ax2.set_xticklabels([labels[i] for i in range(0, len(labels), step)],
+                        rotation=45, ha='right', fontsize=8)
+    ax2.set_xlabel('Time of Day (UTC)')
+
+    plt.tight_layout()
+    if save_dir:
+        path = os.path.join(save_dir, f'{asset}_{slot_minutes}m_E1_permtest.png')
+        fig.savefig(path, dpi=150, bbox_inches='tight')
+        print(f'  Saved: {path}')
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def plot_distribution(dist_results, asset, slot_minutes, save_dir=None):
+    """E2 plot: return distribution + expectancy for interesting slots."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print('\n  matplotlib not installed -- skipping plot.')
+        return
+
+    # Select interesting slots
+    interesting = sorted(dist_results,
+                         key=lambda x: abs(x['expectancy']),
+                         reverse=True)[:20]
+    interesting.sort(key=lambda x: x['slot'])
+
+    if not interesting:
+        print('\n  No interesting slots to plot.')
+        return
+
+    labels = [r['slot_label'] for r in interesting]
+    exp_vals = [r['expectancy'] for r in interesting]
+    win_rates = [r['win_rate'] for r in interesting]
+    payoffs = [min(r['payoff_ratio'], 3.0) for r in interesting]
+
+    fig, axes = plt.subplots(3, 1, figsize=(18, 12), sharex=True,
+                              gridspec_kw={'height_ratios': [2, 1, 1]})
+    fig.suptitle(
+        f'{asset} — E2: Return Distribution ({slot_minutes}m slots)',
+        fontsize=14, fontweight='bold')
+
+    # Top: Expectancy bar chart
+    colors = ['#2ecc71' if e > 0.1 else '#e74c3c' if e < -0.1
+              else '#95a5a6' for e in exp_vals]
+    axes[0].bar(range(len(labels)), exp_vals, color=colors,
+                edgecolor='white', linewidth=0.3)
+    axes[0].axhline(y=0, color='black', linewidth=0.8)
+    axes[0].set_ylabel('Expectancy (bps/trade)')
+    axes[0].set_title('Expected Value per Trade (green=LONG edge, red=SHORT edge)')
+    axes[0].grid(axis='y', alpha=0.3)
+
+    # Annotate top
+    for i, (r, e) in enumerate(zip(interesting, exp_vals)):
+        if abs(e) > 0.5:
+            axes[0].annotate(f'{e:+.2f}', xy=(i, e), fontsize=7,
+                             ha='center',
+                             va='bottom' if e > 0 else 'top')
+
+    # Middle: Win rate
+    wr_colors = ['#2ecc71' if w > 55 else '#e74c3c' if w < 45
+                 else '#f39c12' for w in win_rates]
+    axes[1].bar(range(len(labels)), win_rates, color=wr_colors,
+                edgecolor='white', linewidth=0.3)
+    axes[1].axhline(y=50, color='black', linewidth=0.8, linestyle='--')
+    axes[1].set_ylabel('Win Rate (%)')
+    axes[1].set_ylim(30, 70)
+    axes[1].grid(axis='y', alpha=0.3)
+
+    # Bottom: Payoff ratio
+    pr_colors = ['#2ecc71' if p > 1.1 else '#e74c3c' if p < 0.9
+                 else '#f39c12' for p in payoffs]
+    axes[2].bar(range(len(labels)), payoffs, color=pr_colors,
+                edgecolor='white', linewidth=0.3)
+    axes[2].axhline(y=1.0, color='black', linewidth=0.8, linestyle='--')
+    axes[2].set_ylabel('Payoff Ratio')
+    axes[2].set_ylim(0.5, 2.0)
+    axes[2].grid(axis='y', alpha=0.3)
+
+    axes[2].set_xticks(range(len(labels)))
+    axes[2].set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+    axes[2].set_xlabel('Time of Day (UTC)')
+
+    plt.tight_layout()
+    if save_dir:
+        path = os.path.join(save_dir, f'{asset}_{slot_minutes}m_E2_distribution.png')
+        fig.savefig(path, dpi=150, bbox_inches='tight')
+        print(f'  Saved: {path}')
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def plot_naive_backtest(bt_results, asset, slot_minutes, focus_slots=None,
+                        save_dir=None):
+    """E3 plot: equity curves + yearly PnL breakdown."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print('\n  matplotlib not installed -- skipping plot.')
+        return
+
+    # Select slots to show
+    if focus_slots:
+        show = [r for r in bt_results if r['slot'] in focus_slots]
+    else:
+        show = sorted(bt_results, key=lambda x: x['sharpe'],
+                      reverse=True)[:6]
+
+    if not show:
+        print('\n  No backtest results to plot.')
+        return
+
+    spread = show[0]['spread_bps']
+
+    # Collect all years for the yearly subplot
+    all_years = sorted(set(
+        y['year'] for r in show for y in r['yearly']
+    ))
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 10),
+                                    gridspec_kw={'height_ratios': [3, 2]})
+    fig.suptitle(
+        f'{asset} — E3: Naive Backtest ({slot_minutes}m, '
+        f'spread={spread:.1f} bps)',
+        fontsize=14, fontweight='bold')
+
+    # Top: Equity curves
+    palette = ['#2ecc71', '#e74c3c', '#3498db', '#f39c12',
+               '#9b59b6', '#1abc9c']
+    for i, r in enumerate(sorted(show, key=lambda x: x['sharpe'],
+                                  reverse=True)):
+        color = palette[i % len(palette)]
+        ax1.plot(r['equity'], label=(
+            f'{r["slot_label"]} {r["direction"]} '
+            f'(Sh={r["sharpe"]:+.2f}, PF={r["profit_factor"]:.2f})'),
+            color=color, linewidth=1.2, alpha=0.85)
+
+    ax1.axhline(y=0, color='black', linewidth=0.5)
+    ax1.set_ylabel('Cumulative PnL (bps)')
+    ax1.set_title('Equity Curves (net of spread)')
+    ax1.legend(loc='best', fontsize=8)
+    ax1.grid(alpha=0.3)
+
+    # Bottom: Yearly PnL grouped bar chart
+    n_slots = len(show)
+    n_years = len(all_years)
+    bar_width = 0.8 / n_slots
+    x = list(range(n_years))
+
+    for i, r in enumerate(sorted(show, key=lambda x: x['slot'])):
+        year_pnls = {y['year']: y['total_pnl'] for y in r['yearly']}
+        vals = [year_pnls.get(yr, 0) for yr in all_years]
+        offsets = [xi + i * bar_width - (n_slots - 1) * bar_width / 2
+                   for xi in x]
+        bar_colors = ['#2ecc71' if v > 0 else '#e74c3c' for v in vals]
+        ax2.bar(offsets, vals, width=bar_width, label=r['slot_label'],
+                color=bar_colors, edgecolor=palette[i % len(palette)],
+                linewidth=1.5)
+
+    ax2.axhline(y=0, color='black', linewidth=0.8)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels([str(yr) for yr in all_years], fontsize=10)
+    ax2.set_ylabel('Year PnL (bps)')
+    ax2.set_title('Walk-Forward Yearly Breakdown')
+    ax2.legend(loc='best', fontsize=8)
+    ax2.grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
+    if save_dir:
+        path = os.path.join(save_dir, f'{asset}_{slot_minutes}m_E3_backtest.png')
+        fig.savefig(path, dpi=150, bbox_inches='tight')
+        print(f'  Saved: {path}')
+        plt.close(fig)
+    else:
+        plt.show()
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1663,6 +1901,9 @@ def main():
     parser.add_argument('--focus-slots', type=str, default=None,
                         help='Comma-separated slots for E3 focus '
                              '(e.g. "22:00,23:00,20:45")')
+    parser.add_argument('--plot-dir', type=str, default=None,
+                        help='Save plots as PNG to this directory '
+                             '(instead of showing interactively)')
 
     args = parser.parse_args()
 
@@ -1673,6 +1914,12 @@ def main():
     allowed_days = None
     if args.days:
         allowed_days = [int(d.strip()) for d in args.days.split(',')]
+
+    save_dir = args.plot_dir
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        import matplotlib
+        matplotlib.use('Agg')
 
     # Load data
     print(f'\nLoading {args.asset} data...')
@@ -1722,10 +1969,14 @@ def main():
     if args.permtest:
         perm_results = permutation_test_slots(slot_metrics)
         print_permtest_results(perm_results, args.slot)
+        if args.plot:
+            plot_permtest(perm_results, args.asset, args.slot, save_dir)
 
     if args.distribution:
         dist_results = compute_return_distribution(slot_metrics)
         print_distribution_results(dist_results, args.slot)
+        if args.plot:
+            plot_distribution(dist_results, args.asset, args.slot, save_dir)
 
     if args.naive_bt:
         # Parse focus slots
@@ -1742,12 +1993,15 @@ def main():
             spread_bps=args.spread,
             direction=args.bt_direction)
         print_naive_backtest(bt_results, args.slot, focus_slots=focus)
+        if args.plot:
+            plot_naive_backtest(bt_results, args.asset, args.slot,
+                                focus_slots=focus, save_dir=save_dir)
 
     if args.valley:
         print_cold_runs(cold_runs, args.slot)
 
     if args.plot:
-        plot_profile(stats, transitions, args.asset, args.slot)
+        plot_profile(stats, transitions, args.asset, args.slot, save_dir)
 
     print()
 
