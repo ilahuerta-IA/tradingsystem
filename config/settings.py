@@ -3857,16 +3857,16 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/SP500_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
+        'to_date': datetime.datetime(2021, 12, 20),
 
         'starting_cash': 100000.0,
 
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
 
-        'broker_config_key': 'darwinex_zero_cfd_index',
+        'broker_config_key': 'darwinex_zero_cfd_sp500',
 
         'params': {
             # Session start = valley start (winter 02:00 / summer 01:00 via US DST)
@@ -3913,7 +3913,7 @@ STRATEGIES_CONFIG = {
 
             # BOTH -- data says 52.7/47.1, no directional bias
             'enable_long': True,
-            'enable_short': True,
+            'enable_short': False,
 
             'risk_percent': 0.01,
 
@@ -3946,8 +3946,15 @@ BROKER_CONFIG = {
     },
     'darwinex_zero_cfd_index': {
         # AUS200: 2.75 AUD/order/contract, contract=10xIndex
-        # Per BT share (1 unit): 2.75/10 = 0.275 AUD per order
+        # Per BT unit (1 index point): 2.75/10 = 0.275 AUD per order
         'commission_per_contract': 0.275,
+        'leverage': 20.0,
+        'margin_percent': 5.0,
+    },
+    'darwinex_zero_cfd_sp500': {
+        # SP500: 0.275 USD/order/contract, contract=10xIndex
+        # Per BT unit (1 index point): 0.275/10 = 0.0275 USD per order
+        'commission_per_contract': 0.0275,
         'leverage': 20.0,
         'margin_percent': 5.0,
     },
