@@ -453,6 +453,372 @@ def analyze_consecutive_cold(stats, slot_minutes):
 
 
 # ============================================================================
+# POST-VALLEY EXPANSION ANALYSIS
+# ============================================================================
+
+def _parse_hhmm(s):
+    """Parse 'HH:MM' string to (hour, minute) tuple."""
+    parts = s.strip().split(':')
+    return (int(parts[0]), int(parts[1]))
+
+
+def compute_valley_expansion(rows, valley_start_hm, valley_end_hm,
+                             horizons_hours=None, spread_pts=0.0,
+                             pip_value=None):
+    """Measure price expansion after a valley (consolidation) window.
+
+    For each trading day:
+    1. Compute valley range (H-L) during [valley_start, valley_end) window
+    2. Record close price at valley end
+    3. Track max move up/down and net move at each horizon after valley end
+    4. Classify breakout direction (first to exceed valley range)
+
+    Args:
+        rows: list of 5m bar dicts from load_csv_data
+        valley_start_hm: (hour, minute) start of valley window
+        valley_end_hm: (hour, minute) end of valley window
+        horizons_hours: list of hours after valley to measure [1, 2, 4, 8]
+        spread_pts: spread in price points for viability calc
+        pip_value: price of 1 pip (e.g. 0.0001 for forex, 1.0 for indices)
+
+    Returns dict with per-day expansion data and aggregate stats.
+    """
+    if horizons_hours is None:
+        horizons_hours = [1, 2, 4, 8]
+
+    vs_min = valley_start_hm[0] * 60 + valley_start_hm[1]
+    ve_min = valley_end_hm[0] * 60 + valley_end_hm[1]
+
+    # Handle overnight valleys (e.g. 22:00 -> 05:00)
+    wraps = ve_min <= vs_min
+
+    # Group bars by date
+    day_bars = defaultdict(list)
+    for r in rows:
+        day_bars[r['dt'].date()].append(r)
+    for dk in day_bars:
+        day_bars[dk].sort(key=lambda b: b['dt'])
+
+    daily_results = []
+    for day_key in sorted(day_bars.keys()):
+        bars = day_bars[day_key]
+
+        # --- Identify valley bars ---
+        valley_bars = []
+        for b in bars:
+            bm = b['dt'].hour * 60 + b['dt'].minute
+            if wraps:
+                in_valley = (bm >= vs_min) or (bm < ve_min)
+            else:
+                in_valley = (vs_min <= bm < ve_min)
+            if in_valley:
+                valley_bars.append(b)
+
+        if len(valley_bars) < 2:
+            continue
+
+        valley_high = max(b['high'] for b in valley_bars)
+        valley_low = min(b['low'] for b in valley_bars)
+        valley_range = valley_high - valley_low
+        valley_close = valley_bars[-1]['close']
+        valley_end_dt = valley_bars[-1]['dt']
+        valley_mid = (valley_high + valley_low) / 2.0
+
+        if valley_range <= 0:
+            continue
+
+        # --- Post-valley bars (all bars after valley end on same day
+        # and possibly next day for long horizons) ---
+        post_bars = []
+        for b in bars:
+            if b['dt'] > valley_end_dt:
+                post_bars.append(b)
+
+        # Also check next day for multi-hour horizons
+        next_day = day_key + timedelta(days=1)
+        if next_day in day_bars:
+            for b in day_bars[next_day]:
+                if b['dt'] <= valley_end_dt + timedelta(
+                        hours=max(horizons_hours)):
+                    post_bars.append(b)
+
+        if len(post_bars) < 2:
+            continue
+
+        # --- Measure expansion at each horizon ---
+        horizon_data = {}
+        for h in horizons_hours:
+            cutoff = valley_end_dt + timedelta(hours=h)
+            h_bars = [b for b in post_bars if b['dt'] <= cutoff]
+            if not h_bars:
+                horizon_data[h] = None
+                continue
+
+            max_high = max(b['high'] for b in h_bars)
+            min_low = min(b['low'] for b in h_bars)
+            last_close = h_bars[-1]['close']
+
+            max_up = max_high - valley_close
+            max_down = valley_close - min_low
+            net_move = last_close - valley_close
+
+            horizon_data[h] = {
+                'max_up': max_up,
+                'max_down': max_down,
+                'net_move': net_move,
+                'last_close': last_close,
+            }
+
+        # --- Breakout classification ---
+        # First bar that exceeds valley H or L
+        bk_direction = 'NONE'
+        bk_time = None
+        bk_distance = 0.0
+        for b in post_bars:
+            if b['high'] > valley_high and b['low'] < valley_low:
+                bk_direction = 'BOTH'
+                bk_time = b['dt']
+                break
+            elif b['high'] > valley_high:
+                bk_direction = 'LONG'
+                bk_distance = b['high'] - valley_high
+                bk_time = b['dt']
+                break
+            elif b['low'] < valley_low:
+                bk_direction = 'SHORT'
+                bk_distance = valley_low - b['low']
+                bk_time = b['dt']
+                break
+
+        bk_delay_min = ((bk_time - valley_end_dt).total_seconds() / 60.0
+                        if bk_time else None)
+
+        daily_results.append({
+            'date': day_key,
+            'year': day_key.year,
+            'valley_high': valley_high,
+            'valley_low': valley_low,
+            'valley_range': valley_range,
+            'valley_range_bps': (valley_range / valley_mid * 10000
+                                 if valley_mid > 0 else 0),
+            'valley_close': valley_close,
+            'horizons': horizon_data,
+            'breakout_dir': bk_direction,
+            'breakout_delay_min': bk_delay_min,
+            'breakout_distance': bk_distance,
+        })
+
+    if not daily_results:
+        return None
+
+    # --- Aggregate stats ---
+    n = len(daily_results)
+    ranges = [d['valley_range'] for d in daily_results]
+    mean_range = sum(ranges) / n
+    bps_ranges = [d['valley_range_bps'] for d in daily_results]
+    mean_range_bps = sum(bps_ranges) / n
+
+    # Breakout direction counts
+    dir_counts = defaultdict(int)
+    for d in daily_results:
+        dir_counts[d['breakout_dir']] += 1
+
+    # Breakout delay stats (excluding NONE)
+    delays = [d['breakout_delay_min'] for d in daily_results
+              if d['breakout_delay_min'] is not None]
+    mean_delay = sum(delays) / len(delays) if delays else 0
+    median_delay = sorted(delays)[len(delays) // 2] if delays else 0
+
+    # Horizon aggregates
+    horizon_agg = {}
+    for h in horizons_hours:
+        ups = []
+        downs = []
+        nets = []
+        for d in daily_results:
+            hd = d['horizons'].get(h)
+            if hd is None:
+                continue
+            ups.append(hd['max_up'])
+            downs.append(hd['max_down'])
+            nets.append(hd['net_move'])
+        if ups:
+            mean_up = sum(ups) / len(ups)
+            mean_down = sum(downs) / len(downs)
+            mean_net = sum(nets) / len(nets)
+            # Expansion ratio = avg max excursion / valley range
+            max_expansion = max(mean_up, mean_down)
+            ratio = max_expansion / mean_range if mean_range > 0 else 0
+            # Spread viability = max expansion / spread
+            spread_ratio = (max_expansion / spread_pts
+                            if spread_pts > 0 else float('inf'))
+            horizon_agg[h] = {
+                'n': len(ups),
+                'mean_max_up': mean_up,
+                'mean_max_down': mean_down,
+                'mean_net': mean_net,
+                'expansion_ratio': ratio,
+                'spread_ratio': spread_ratio,
+            }
+        else:
+            horizon_agg[h] = None
+
+    # Yearly breakdown
+    yearly = defaultdict(list)
+    for d in daily_results:
+        yearly[d['year']].append(d)
+
+    yearly_stats = {}
+    for year in sorted(yearly.keys()):
+        ydays = yearly[year]
+        yn = len(ydays)
+        yr = [d['valley_range'] for d in ydays]
+        yl = sum(1 for d in ydays if d['breakout_dir'] == 'LONG')
+        ys = sum(1 for d in ydays if d['breakout_dir'] == 'SHORT')
+        # Net at horizon 2h
+        h2_nets = []
+        for d in ydays:
+            hd = d['horizons'].get(2)
+            if hd:
+                h2_nets.append(hd['net_move'])
+        yearly_stats[year] = {
+            'n': yn,
+            'mean_range': sum(yr) / yn,
+            'long_pct': yl / yn * 100 if yn else 0,
+            'short_pct': ys / yn * 100 if yn else 0,
+            'mean_net_2h': sum(h2_nets) / len(h2_nets) if h2_nets else 0,
+        }
+
+    return {
+        'n_days': n,
+        'mean_valley_range': mean_range,
+        'mean_valley_range_bps': mean_range_bps,
+        'dir_counts': dict(dir_counts),
+        'mean_delay_min': mean_delay,
+        'median_delay_min': median_delay,
+        'horizons': horizon_agg,
+        'yearly': yearly_stats,
+        'spread_pts': spread_pts,
+        'daily': daily_results,
+        'horizons_hours': horizons_hours,
+        'valley_start': valley_start_hm,
+        'valley_end': valley_end_hm,
+    }
+
+
+def print_expansion_results(exp, asset, pip_value=None):
+    """Print valley expansion analysis results."""
+    if exp is None:
+        print('\n  No expansion data (insufficient valley bars).')
+        return
+
+    vs = f"{exp['valley_start'][0]:02d}:{exp['valley_start'][1]:02d}"
+    ve = f"{exp['valley_end'][0]:02d}:{exp['valley_end'][1]:02d}"
+    spread = exp['spread_pts']
+
+    unit = 'pts'
+    divisor = 1.0
+    if pip_value and pip_value < 0.01:
+        unit = 'pips'
+        divisor = pip_value
+
+    print()
+    print('=' * 94)
+    print(f'  POST-VALLEY EXPANSION ANALYSIS: {asset}')
+    print(f'  Valley window: {vs} - {ve} UTC  |  Days: {exp["n_days"]}')
+    if spread > 0:
+        print(f'  Spread: {spread:.1f} {unit}')
+    print('=' * 94)
+
+    mr = exp['mean_valley_range']
+    mr_bps = exp['mean_valley_range_bps']
+    print(f'\n  Mean valley range: {mr:.1f} {unit} ({mr_bps:.1f} bps)')
+
+    # Breakout direction
+    dc = exp['dir_counts']
+    total = sum(dc.values())
+    print(f'\n  Breakout direction (first break of valley H or L):')
+    for d in ['LONG', 'SHORT', 'BOTH', 'NONE']:
+        cnt = dc.get(d, 0)
+        pct = cnt / total * 100 if total else 0
+        tag = ' <<<' if d in ('LONG', 'SHORT') and pct > 55 else ''
+        print(f'    {d:6s}: {cnt:5d} ({pct:5.1f}%){tag}')
+
+    print(f'\n  Mean breakout delay: {exp["mean_delay_min"]:.0f} min '
+          f'(median: {exp["median_delay_min"]:.0f} min)')
+
+    # Horizon table
+    print(f'\n  {"Horizon":>8s}  {"N":>5s}  {"MaxUp":>8s}  {"MaxDn":>8s}'
+          f'  {"NetMove":>8s}  {"Exp/Rng":>8s}  {"Exp/Sprd":>8s}'
+          f'  Viability')
+    print(f'  {"":-<8s}  {"":-<5s}  {"":-<8s}  {"":-<8s}'
+          f'  {"":-<8s}  {"":-<8s}  {"":-<8s}  {"":->10s}')
+
+    for h in exp['horizons_hours']:
+        ha = exp['horizons'].get(h)
+        if ha is None:
+            print(f'  {h:>5d}h     --')
+            continue
+        up = ha['mean_max_up']
+        dn = ha['mean_max_down']
+        net = ha['mean_net']
+        eratio = ha['expansion_ratio']
+        sratio = ha['spread_ratio']
+
+        if sratio == float('inf'):
+            sr_str = 'N/A'
+            viable = '--'
+        elif sratio > 20:
+            sr_str = f'{sratio:.0f}x'
+            viable = 'EXCELLENT'
+        elif sratio > 10:
+            sr_str = f'{sratio:.0f}x'
+            viable = 'GOOD'
+        elif sratio > 5:
+            sr_str = f'{sratio:.1f}x'
+            viable = 'MARGINAL'
+        else:
+            sr_str = f'{sratio:.1f}x'
+            viable = 'POOR'
+
+        print(f'  {h:>5d}h    {ha["n"]:>5d}  {up:>+8.1f}  {dn:>+8.1f}'
+              f'  {net:>+8.1f}  {eratio:>7.1f}x  {sr_str:>8s}'
+              f'  {viable}')
+
+    # Yearly stability
+    print(f'\n  Yearly breakout stability:')
+    print(f'  {"Year":>6s}  {"N":>5s}  {"Range":>7s}  {"Long%":>7s}'
+          f'  {"Short%":>7s}  {"Net@2h":>8s}  Verdict')
+    print(f'  {"":-<6s}  {"":-<5s}  {"":-<7s}  {"":-<7s}'
+          f'  {"":-<7s}  {"":-<8s}  {"":->8s}')
+
+    long_pcts = []
+    for year, ys in sorted(exp['yearly'].items()):
+        lp = ys['long_pct']
+        sp = ys['short_pct']
+        long_pcts.append(lp)
+        if lp > 55:
+            verdict = 'BULL'
+        elif sp > 55:
+            verdict = 'BEAR'
+        else:
+            verdict = 'MIXED'
+        net2h = ys['mean_net_2h']
+        print(f'  {year:>6d}  {ys["n"]:>5d}  {ys["mean_range"]:>7.1f}'
+              f'  {lp:>6.1f}%  {sp:>6.1f}%  {net2h:>+8.1f}  {verdict}')
+
+    # Stability check
+    if len(long_pcts) >= 3:
+        spread_pp = max(long_pcts) - min(long_pcts)
+        std_lp = _std(long_pcts, sum(long_pcts) / len(long_pcts))
+        label = 'STABLE' if spread_pp < 15 else 'UNSTABLE'
+        print(f'\n  Long% spread={spread_pp:.1f}pp  std={std_lp:.1f}pp '
+              f' => {label}')
+
+    print()
+
+
+# ============================================================================
 # PRINTING
 # ============================================================================
 
@@ -1904,6 +2270,18 @@ def main():
     parser.add_argument('--plot-dir', type=str, default=None,
                         help='Save plots as PNG to this directory '
                              '(instead of showing interactively)')
+    parser.add_argument('--expansion', action='store_true',
+                        help='Post-valley expansion analysis: measure price '
+                             'move after a consolidation window')
+    parser.add_argument('--valley-start', type=str, default=None,
+                        help='Valley window start HH:MM UTC '
+                             '(required with --expansion)')
+    parser.add_argument('--valley-end', type=str, default=None,
+                        help='Valley window end HH:MM UTC '
+                             '(required with --expansion)')
+    parser.add_argument('--spread-pts', type=float, default=0.0,
+                        help='Spread in price points for expansion viability '
+                             '(e.g. 0.6 for SP500, 3.0 for WS30)')
 
     args = parser.parse_args()
 
@@ -1999,6 +2377,18 @@ def main():
 
     if args.valley:
         print_cold_runs(cold_runs, args.slot)
+
+    if args.expansion:
+        if not args.valley_start or not args.valley_end:
+            print('\nERROR: --expansion requires --valley-start and '
+                  '--valley-end (e.g. --valley-start 02:00 --valley-end 05:00)')
+            sys.exit(1)
+        vs_hm = _parse_hhmm(args.valley_start)
+        ve_hm = _parse_hhmm(args.valley_end)
+        exp = compute_valley_expansion(
+            rows, vs_hm, ve_hm,
+            spread_pts=args.spread_pts)
+        print_expansion_results(exp, args.asset)
 
     if args.plot:
         plot_profile(stats, transitions, args.asset, args.slot, save_dir)
