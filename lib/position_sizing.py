@@ -57,7 +57,7 @@ def _calculate_standard_pair(
         contracts = max(int(risk_val / risk_per_contract), 1)
         bt_size = contracts * self.p.contract_size
     """
-    raw_risk = entry_price - stop_loss
+    raw_risk = abs(entry_price - stop_loss)
     
     if raw_risk <= 0:
         return 0

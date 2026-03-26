@@ -25,9 +25,9 @@ from strategies.luyten_strategy import LUYTENStrategy
 from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
 
 
-# ETF symbols list (includes CFD indices treated as ETF-like for data loading)
-ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV',
-               'AUS200']
+# Non-forex symbol lists (both use ETFCSVData for datetime parsing)
+ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV']
+CFD_INDEX_SYMBOLS = ['SP500', 'AUS200', 'UK100', 'GDAXI', 'NI225', 'SPA35']
 
 # Strategy registry
 STRATEGY_REGISTRY = {
@@ -71,9 +71,11 @@ def run_backtest(config_name):
         print(f'Data file not found: {data_path}')
         return None
     
-    # Determine if asset is ETF
+    # Determine asset class
     asset_name = config['asset_name']
     is_etf = asset_name.upper() in ETF_SYMBOLS
+    is_cfd_index = asset_name.upper() in CFD_INDEX_SYMBOLS
+    is_non_forex = is_etf or is_cfd_index
     
     # CSV format: Date,Time,Open,High,Low,Close,Volume (Darwinex format)
     feed_kwargs = dict(
@@ -92,8 +94,8 @@ def run_backtest(config_name):
         todate=config['to_date'],
     )
     
-    if is_etf:
-        # ETFs: Use custom ETFCSVData for correct datetime parsing
+    if is_non_forex:
+        # ETFs / CFD indices: Use custom ETFCSVData for correct datetime parsing
         data = ETFCSVData(**feed_kwargs)
     else:
         # Forex: Use GenericCSVData with timeframe for correct datetime
@@ -171,8 +173,8 @@ def run_backtest(config_name):
     params = config['params']
     is_jpy = asset_name.upper().endswith('JPY')
     
-    if is_etf:
-        # ETF/CFD index commission
+    if is_non_forex:
+        # ETF / CFD index commission
         broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
         broker_config = BROKER_CONFIG.get(broker_key, BROKER_CONFIG['darwinex_zero_etf'])
 
@@ -232,9 +234,9 @@ def run_backtest(config_name):
     
     # Auto-inject asset-specific params
     params['is_jpy_pair'] = is_jpy
-    params['is_etf'] = is_etf
+    params['is_etf'] = is_non_forex
     
-    if is_etf:
+    if is_non_forex:
         params['pip_value'] = params.get('pip_value', 0.01)
         params['margin_pct'] = params.get('margin_pct', 20.0)
     elif is_jpy:
@@ -267,7 +269,7 @@ def run_backtest(config_name):
     # Get commission statistics based on instrument type
     num_trades = len(getattr(strategy, 'trade_reports', []))
     
-    if is_etf:
+    if is_non_forex:
         broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
         if 'cfd_index' in broker_key:
             total_commission = CFDIndexCommission.total_commission
@@ -278,9 +280,9 @@ def run_backtest(config_name):
         avg_commission = total_commission / num_trades if num_trades > 0 else 0
         avg_contracts = total_contracts / num_trades if num_trades > 0 else 0
         
-        # Print commission summary for ETF
+        # Print commission summary for ETF / CFD index
         print('\n' + '=' * 70)
-        print('COMMISSION SUMMARY (ETF)')
+        print('COMMISSION SUMMARY (ETF/INDEX)')
         print('=' * 70)
         print(f'Total Commission Paid:       ${total_commission:,.2f}')
         print(f'Total Contracts Traded:      {total_contracts:,.0f}')
@@ -308,7 +310,7 @@ def run_backtest(config_name):
     
     # Save log if enabled (only for SunsetOgle, KOI generates its own)
     if config.get('save_log', False) and strategy_name == 'SunsetOgle':
-        lots_or_contracts = total_contracts if is_etf else total_lots
+        lots_or_contracts = total_contracts if is_non_forex else total_lots
         save_trade_log(strategy, config_name, config['asset_name'], 
                       total_commission, avg_commission, lots_or_contracts)
     
