@@ -24,9 +24,9 @@ EXIT SYSTEM:
     - Take Profit: entry + ATR(14) * atr_tp_multiplier
     - EOD Close: forced close before session end
 
-DIRECTION: LONG only
+DIRECTION: Configurable (enable_long / enable_short params)
 MAX ENTRIES PER DAY: 1
-ASSETS: ETFs (TLT primary target)
+ASSETS: ETFs, indices, forex
 """
 from __future__ import annotations
 import math
@@ -138,6 +138,10 @@ class LUYTENStrategy(bt.Strategy):
         is_etf=True,
         margin_pct=20.0,
 
+        # --- Direction ---
+        enable_long=True,
+        enable_short=False,
+
         # --- Debug ---
         print_signals=False,
         export_reports=True,
@@ -163,6 +167,7 @@ class LUYTENStrategy(bt.Strategy):
 
         # Consolidation tracking
         self.consolidation_high = None
+        self.consolidation_low = None
         self.consol_count = 0
 
         # Consolidation price filter
@@ -189,6 +194,7 @@ class LUYTENStrategy(bt.Strategy):
         self.last_entry_price = None
         self.last_exit_reason = None
         self._entry_fill_bar = -1
+        self._entry_direction = 'LONG'
 
         # Day tracking (max 1 trade per day)
         self._today_date = None
@@ -345,8 +351,8 @@ class LUYTENStrategy(bt.Strategy):
             print("Trade reporting init failed: %s" % e)
 
     def _record_trade_entry(self, dt, entry_price, size, atr_avg, sl_pips,
-                            consolidation_high, consol_bars,
-                            bk_above_pips, bk_body_pips):
+                            consolidation_high, consolidation_low, consol_bars,
+                            bk_above_pips, bk_body_pips, direction='LONG'):
         """Record entry details to log and trade_reports list."""
         entry = {
             'entry_time': dt,
@@ -357,9 +363,11 @@ class LUYTENStrategy(bt.Strategy):
             'stop_level': self.stop_level,
             'take_level': self.take_level,
             'consolidation_high': consolidation_high,
+            'consolidation_low': consolidation_low,
             'consol_bars': consol_bars,
             'bk_above_pips': bk_above_pips,
             'bk_body_pips': bk_body_pips,
+            'direction': direction,
         }
         self.trade_reports.append(entry)
         self._current_trade_idx = len(self.trade_reports) - 1
@@ -369,6 +377,7 @@ class LUYTENStrategy(bt.Strategy):
         try:
             f = self.trade_report_file
             f.write("ENTRY #%d\n" % len(self.trade_reports))
+            f.write("Direction: %s\n" % direction)
             f.write("Time: %s\n" % dt.strftime('%Y-%m-%d %H:%M:%S'))
             f.write("Entry Price: %.5f\n" % entry_price)
             f.write("Stop Loss: %.5f\n" % self.stop_level)
@@ -378,7 +387,10 @@ class LUYTENStrategy(bt.Strategy):
                 f.write("Take Profit: NONE (EOD)\n")
             f.write("SL Pips: %.1f\n" % sl_pips)
             f.write("ATR (avg): %.6f\n" % atr_avg)
-            f.write("Consolidation High: %.5f\n" % consolidation_high)
+            f.write("Consolidation High: %.5f\n"
+                    % (consolidation_high if consolidation_high else 0))
+            f.write("Consolidation Low: %.5f\n"
+                    % (consolidation_low if consolidation_low else 0))
             f.write("Consolidation Bars: %d\n" % consol_bars)
             f.write("BK Above Pips: %.1f\n" % bk_above_pips)
             f.write("BK Body Pips: %.1f\n" % bk_body_pips)
@@ -437,6 +449,7 @@ class LUYTENStrategy(bt.Strategy):
         """Full reset to IDLE."""
         self.state = "IDLE"
         self.consolidation_high = None
+        self.consolidation_low = None
         self.consol_count = 0
         self._session_start_price = None
         self._signal_pending = False
@@ -483,8 +496,9 @@ class LUYTENStrategy(bt.Strategy):
     # ENTRY EXECUTION
     # =====================================================================
 
-    def _execute_entry(self, dt, atr_avg, bk_above_pips, bk_body_pips):
-        """Validate filters, size position, and send buy order."""
+    def _execute_entry(self, dt, atr_avg, bk_above_pips, bk_body_pips,
+                        direction='LONG'):
+        """Validate filters, size position, and send buy/sell order."""
 
         # Day/Time filter
         if not check_day_filter(dt, self.p.allowed_days, self.p.use_day_filter):
@@ -500,15 +514,24 @@ class LUYTENStrategy(bt.Strategy):
 
         entry_price = float(self.data.close[0])
 
-        # Calculate SL/TP
+        # Calculate SL/TP (direction-aware)
         sl_buffer = self.p.sl_buffer_pips * self.p.pip_value
-        self.stop_level = entry_price - (atr_avg * self.p.atr_sl_multiplier) - sl_buffer
-        self.take_level = entry_price + (atr_avg * self.p.atr_tp_multiplier)
+        if direction == 'LONG':
+            self.stop_level = entry_price - (atr_avg * self.p.atr_sl_multiplier) - sl_buffer
+            self.take_level = entry_price + (atr_avg * self.p.atr_tp_multiplier)
+        else:  # SHORT
+            self.stop_level = entry_price + (atr_avg * self.p.atr_sl_multiplier) + sl_buffer
+            self.take_level = entry_price - (atr_avg * self.p.atr_tp_multiplier)
 
-        # SL sanity: must be below entry
-        if self.stop_level >= entry_price:
+        # SL sanity
+        if direction == 'LONG' and self.stop_level >= entry_price:
             if self.p.print_signals:
                 print('%s [%s] ENTRY SKIPPED: SL %.5f >= entry %.5f'
+                      % (dt, self.data._name, self.stop_level, entry_price))
+            return
+        if direction == 'SHORT' and self.stop_level <= entry_price:
+            if self.p.print_signals:
+                print('%s [%s] ENTRY SKIPPED: SL %.5f <= entry %.5f'
                       % (dt, self.data._name, self.stop_level, entry_price))
             return
 
@@ -554,23 +577,32 @@ class LUYTENStrategy(bt.Strategy):
         if bt_size <= 0:
             return
 
-        # Send buy order
-        self.order = self.buy(size=bt_size)
+        # Send order (direction-aware)
+        if direction == 'LONG':
+            self.order = self.buy(size=bt_size)
+        else:
+            self.order = self.sell(size=bt_size)
         self._traded_today = True
+        self._entry_direction = direction
 
         # Record
         self._record_trade_entry(
             dt, entry_price, bt_size, atr_avg, sl_pips,
-            self.consolidation_high, self.consol_count,
-            bk_above_pips, bk_body_pips,
+            self.consolidation_high, self.consolidation_low,
+            self.consol_count,
+            bk_above_pips, bk_body_pips, direction,
         )
 
         if self.p.print_signals:
+            consol_ref = (self.consolidation_high if direction == 'LONG'
+                          else self.consolidation_low)
             print(
-                '%s [%s] ENTRY LONG @ %.5f | SL=%.5f | TP=%.5f | '
-                'Consol High=%.5f'
-                % (dt, self.data._name, entry_price, self.stop_level,
-                   self.take_level, self.consolidation_high)
+                '%s [%s] ENTRY %s @ %.5f | SL=%.5f | TP=%.5f | '
+                'Consol %s=%.5f'
+                % (dt, self.data._name, direction, entry_price,
+                   self.stop_level, self.take_level,
+                   'High' if direction == 'LONG' else 'Low',
+                   consol_ref if consol_ref is not None else 0)
             )
 
     # =====================================================================
@@ -690,9 +722,19 @@ class LUYTENStrategy(bt.Strategy):
 
                 # min=0 -> record high from bar 1; min>0 -> delay first
                 if self.p.consolidation_bars_min == 0:
-                    # Consol price filter: skip if price fell since session_start
-                    if self.p.use_consol_price_filter:
-                        if float(self.data.close[0]) < self._session_start_price:
+                    # Consol price filter (only for single-direction mode)
+                    if (self.p.use_consol_price_filter
+                            and not (self.p.enable_long
+                                     and self.p.enable_short)):
+                        cur_price = float(self.data.close[0])
+                        skip = False
+                        if (self.p.enable_long
+                                and cur_price < self._session_start_price):
+                            skip = True
+                        elif (self.p.enable_short
+                                and cur_price > self._session_start_price):
+                            skip = True
+                        if skip:
                             if self.p.print_signals:
                                 print('%s [%s] CONSOL PRICE FILTER: skip day '
                                       '(close %.5f < session_start %.5f)'
@@ -703,11 +745,13 @@ class LUYTENStrategy(bt.Strategy):
                             self._reset_state()
                             return
                     self.consolidation_high = float(self.data.high[0])
+                    self.consolidation_low = float(self.data.low[0])
                     # Consolidation start marker (purple arrow)
                     self.session_marker.lines.consol_start[0] = (
                         float(self.data.high[0]) * 1.001)
                 else:
                     self.consolidation_high = float('-inf')
+                    self.consolidation_low = float('inf')
 
                 if self.p.print_signals:
                     print('%s [%s] CONSOLIDATION START: bar 1/%d-%d, high=%.5f'
@@ -729,8 +773,18 @@ class LUYTENStrategy(bt.Strategy):
                     self.session_marker.lines.consol_start[0] = (
                         float(self.data.high[0]) * 1.001)
                     if (self.p.use_consol_price_filter
-                            and self._session_start_price is not None):
-                        if float(self.data.close[0]) < self._session_start_price:
+                            and self._session_start_price is not None
+                            and not (self.p.enable_long
+                                     and self.p.enable_short)):
+                        cur_price = float(self.data.close[0])
+                        skip = False
+                        if (self.p.enable_long
+                                and cur_price < self._session_start_price):
+                            skip = True
+                        elif (self.p.enable_short
+                                and cur_price > self._session_start_price):
+                            skip = True
+                        if skip:
                             if self.p.print_signals:
                                 print('%s [%s] CONSOL PRICE FILTER: skip day '
                                       '(close %.5f < session_start %.5f)'
@@ -741,26 +795,41 @@ class LUYTENStrategy(bt.Strategy):
                             self._reset_state()
                             return
                 bar_high = float(self.data.high[0])
+                bar_low = float(self.data.low[0])
                 if bar_high > self.consolidation_high:
                     self.consolidation_high = bar_high
+                if bar_low < self.consolidation_low:
+                    self.consolidation_low = bar_low
 
             if self.p.print_signals:
-                print('%s [%s] CONSOLIDATION: bar %d/%d-%d, high=%.5f'
+                print('%s [%s] CONSOLIDATION: bar %d/%d-%d, high=%.5f, low=%.5f'
                       % (dt, self.data._name, self.consol_count,
                          self.p.consolidation_bars_min,
                          self.p.consolidation_bars_max,
-                         self.consolidation_high))
+                         self.consolidation_high,
+                         self.consolidation_low
+                         if self.consolidation_low != float('inf') else 0))
 
             # After max bars -> WAITING_BREAKOUT (entries allowed)
             if self.consol_count >= self.p.consolidation_bars_max:
 
-                # HTF ROC filter: skip day if HTF trend is down
+                # HTF ROC filter: skip day if HTF trend opposes direction
                 if self.htf_roc is not None:
                     roc_val = float(self.htf_roc[0])
-                    if math.isnan(roc_val) or roc_val <= 0:
+                    # For LONG-only: skip if ROC <= 0
+                    # For SHORT-only: skip if ROC >= 0
+                    # For BOTH: no filter (both directions enabled)
+                    skip = False
+                    if (self.p.enable_long and not self.p.enable_short
+                            and (math.isnan(roc_val) or roc_val <= 0)):
+                        skip = True
+                    elif (self.p.enable_short and not self.p.enable_long
+                            and (math.isnan(roc_val) or roc_val >= 0)):
+                        skip = True
+                    if skip:
                         if self.p.print_signals:
                             print('%s [%s] HTF ROC FILTER: skip day '
-                                  '(ROC=%.4f <= 0)'
+                                  '(ROC=%.4f)'
                                   % (dt, self.data._name, roc_val
                                      if not math.isnan(roc_val) else 0))
                         self._traded_today = True
@@ -774,8 +843,12 @@ class LUYTENStrategy(bt.Strategy):
                     float(self.data.low[0]) * 0.999)
 
                 if self.p.print_signals:
-                    print('%s [%s] WAITING BREAKOUT > %.5f'
-                          % (dt, self.data._name, self.consolidation_high))
+                    print('%s [%s] WAITING BREAKOUT > %.5f / < %.5f'
+                          % (dt, self.data._name,
+                             self.consolidation_high,
+                             self.consolidation_low
+                             if self.consolidation_low != float('inf')
+                             else 0))
 
         # ---- STATE: WAITING_BREAKOUT ----
         elif self.state == "WAITING_BREAKOUT":
@@ -786,44 +859,83 @@ class LUYTENStrategy(bt.Strategy):
     # =====================================================================
 
     def _check_breakout(self, dt, atr_avg):
-        """Check for breakout signal. Returns True if entry was triggered."""
+        """Check for breakout signal (LONG and/or SHORT).
+
+        Returns True if entry was triggered.
+        """
         bar_open = float(self.data.open[0])
         bar_close = float(self.data.close[0])
 
-        # Green candle that closes above consolidation_high
-        # Accepts both cross-breakout (open below) and gap-breakout (open above)
-        is_green = bar_close > bar_open
-        close_above = bar_close > self.consolidation_high
+        # --- LONG breakout: green candle closing above consolidation_high ---
+        if self.p.enable_long and self.consolidation_high is not None:
+            is_green = bar_close > bar_open
+            close_above = bar_close > self.consolidation_high
 
-        if is_green and close_above:
-            # Check breakout filters
-            above_dist = (bar_close - self.consolidation_high) / self.p.pip_value
-            body_size = (bar_close - bar_open) / self.p.pip_value
+            if is_green and close_above:
+                above_dist = ((bar_close - self.consolidation_high)
+                              / self.p.pip_value)
+                body_size = (bar_close - bar_open) / self.p.pip_value
 
-            above_ok = above_dist >= self.p.bk_above_min_pips
-            body_ok = body_size >= self.p.bk_body_min_pips
+                above_ok = above_dist >= self.p.bk_above_min_pips
+                body_ok = body_size >= self.p.bk_body_min_pips
 
-            if above_ok and body_ok:
-                # Breakout confirmed! Place buy now, fills at next bar's open
-                if self.p.print_signals:
+                if above_ok and body_ok:
+                    if self.p.print_signals:
+                        print(
+                            '%s [%s] LONG BREAKOUT: close=%.5f > '
+                            'consol_high=%.5f, above=%.1f pips, '
+                            'body=%.1f pips'
+                            % (dt, self.data._name, bar_close,
+                               self.consolidation_high, above_dist,
+                               body_size))
+                    self._execute_entry(dt, atr_avg, above_dist,
+                                        body_size, direction='LONG')
+                    self._reset_state()
+                    return True
+                elif self.p.print_signals:
                     print(
-                        '%s [%s] BREAKOUT SIGNAL: close=%.5f > consol=%.5f, '
-                        'above=%.1f pips, body=%.1f pips'
-                        % (dt, self.data._name, bar_close,
-                           self.consolidation_high, above_dist, body_size)
-                    )
-                self._execute_entry(dt, atr_avg, above_dist, body_size)
-                self._reset_state()
-                return True
-            else:
-                if self.p.print_signals:
-                    print(
-                        '%s [%s] BREAKOUT REJECTED: above=%.1f (min=%.1f), '
-                        'body=%.1f (min=%.1f)'
+                        '%s [%s] LONG BK REJECTED: above=%.1f (min=%.1f)'
+                        ', body=%.1f (min=%.1f)'
                         % (dt, self.data._name, above_dist,
                            self.p.bk_above_min_pips, body_size,
-                           self.p.bk_body_min_pips)
-                    )
+                           self.p.bk_body_min_pips))
+
+        # --- SHORT breakout: red candle closing below consolidation_low ---
+        if (self.p.enable_short
+                and self.consolidation_low is not None
+                and self.consolidation_low != float('inf')):
+            is_red = bar_close < bar_open
+            close_below = bar_close < self.consolidation_low
+
+            if is_red and close_below:
+                below_dist = ((self.consolidation_low - bar_close)
+                              / self.p.pip_value)
+                body_size = (bar_open - bar_close) / self.p.pip_value
+
+                below_ok = below_dist >= self.p.bk_above_min_pips
+                body_ok = body_size >= self.p.bk_body_min_pips
+
+                if below_ok and body_ok:
+                    if self.p.print_signals:
+                        print(
+                            '%s [%s] SHORT BREAKOUT: close=%.5f < '
+                            'consol_low=%.5f, below=%.1f pips, '
+                            'body=%.1f pips'
+                            % (dt, self.data._name, bar_close,
+                               self.consolidation_low, below_dist,
+                               body_size))
+                    self._execute_entry(dt, atr_avg, below_dist,
+                                        body_size, direction='SHORT')
+                    self._reset_state()
+                    return True
+                elif self.p.print_signals:
+                    print(
+                        '%s [%s] SHORT BK REJECTED: below=%.1f '
+                        '(min=%.1f), body=%.1f (min=%.1f)'
+                        % (dt, self.data._name, below_dist,
+                           self.p.bk_above_min_pips, body_size,
+                           self.p.bk_body_min_pips))
+
         return False
 
     # =====================================================================
@@ -836,7 +948,12 @@ class LUYTENStrategy(bt.Strategy):
             return
 
         if order.status == order.Completed:
-            if order == self.order and order.isbuy():
+            is_entry = (order == self.order and (
+                (self._entry_direction == 'LONG' and order.isbuy()) or
+                (self._entry_direction == 'SHORT' and order.issell())
+            ))
+
+            if is_entry:
                 # Entry fill
                 self.last_entry_price = order.executed.price
                 self._entry_fill_bar = len(self)
@@ -852,14 +969,19 @@ class LUYTENStrategy(bt.Strategy):
                         dt_time(eod_h, eod_m),
                     )
 
-                # Place SL + TP bracket
-                self.limit_order = self.sell(
+                # Place SL + TP bracket (direction-aware)
+                if self._entry_direction == 'LONG':
+                    bracket_fn = self.sell
+                else:
+                    bracket_fn = self.buy
+
+                self.limit_order = bracket_fn(
                     size=order.executed.size,
                     exectype=bt.Order.Limit,
                     price=self.take_level,
                     valid=eod_valid,
                 )
-                self.stop_order = self.sell(
+                self.stop_order = bracket_fn(
                     size=order.executed.size,
                     exectype=bt.Order.Stop,
                     price=self.stop_level,
@@ -884,7 +1006,10 @@ class LUYTENStrategy(bt.Strategy):
 
                 if exit_reason is None:
                     if self.last_entry_price is not None:
-                        delta = exec_price - self.last_entry_price
+                        if self._entry_direction == 'LONG':
+                            delta = exec_price - self.last_entry_price
+                        else:
+                            delta = self.last_entry_price - exec_price
                         if delta > 0:
                             exit_reason = "TAKE_PROFIT"
                         elif delta < 0:
