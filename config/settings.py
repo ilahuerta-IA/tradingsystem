@@ -3752,17 +3752,17 @@ STRATEGIES_CONFIG = {
     # =========================================================================
 
     'XAUUSD_LUYTEN': {
-        'active': True,
+        'active': False,
         'strategy_name': 'LUYTEN',
         'asset_name': 'XAUUSD',
         'data_path': 'data/XAUUSD_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2020, 3, 31),
+        'to_date': datetime.datetime(2023, 12, 31),
 
         'starting_cash': 100000.0,
 
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
         'debug_mode': False,
@@ -3792,8 +3792,8 @@ STRATEGIES_CONFIG = {
             'htf_roc_period': 5,
 
             # SL / TP
-            'atr_sl_multiplier': 2.0,
-            'atr_tp_multiplier': 4.0,   # asymmetric R:R for gold momentum
+            'atr_sl_multiplier': 5.0,
+            'atr_tp_multiplier': 10.0,   # asymmetric R:R for gold momentum
             'sl_buffer_pips': 0.0,
 
             # EOD Close -- before next 22:00 rollover (swap -$75/lot/day)
@@ -3833,6 +3833,101 @@ STRATEGIES_CONFIG = {
             'export_reports': True,
         }
     },
+
+    # =========================================================================
+    # LUYTEN -- SP500  (valley 02:00-05:00 UTC -> London/US explosion)
+    #
+    # Liquidity profile data:
+    #   Valley 02:00-05:00: range ~11.5 pts (27 bps), z-score -0.50
+    #   Explosions: 07:00 London +15 bps, 13:30 US open +30.7 bps
+    #   Direction: 52.7% Long / 47.1% Short -> NEUTRAL -> BOTH required
+    #   Spread 0.6 pts -> 17x ratio -> negligible
+    #   Expansion: @1h 3.5pts, @2h 5.7pts, @4h 10.1pts, @8h 15.4pts
+    #   Breakout delay: median 40 min, mean 60 min
+    #   ATR(14) @5m in valley ~2-3 pts -> mult 5 ~11.5 pts ~valley range
+    # =========================================================================
+
+    # --- A) 5m, valley=consolidation, BOTH, SL=5x TP=8x (R:R~1.6) ---
+    # Full valley 02:00-05:00 = consolidation (36 bars x 5m)
+    # SL 5xATR ~11.5 pts (= valley range), TP 8xATR ~20 pts (8h horizon)
+    'SP500_LUYTEN_A_5m_BOTH': {
+        'active': True,
+        'strategy_name': 'LUYTEN',
+        'asset_name': 'SP500',
+        'data_path': 'data/SP500_5m_5Yea.csv',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2023, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'broker_config_key': 'darwinex_zero_cfd_index',
+
+        'params': {
+            # Session start = valley start (winter 02:00 / summer 01:00 via US DST)
+            'session_start_hour': 2,
+            'session_start_minute': 0,
+            'dst_mode': 'us',  # CME shifts -1h in summer (gap 22->21 UTC)
+
+            # 36 bars x 5m = 3h (02:00-05:00 winter / 01:00-04:00 summer)
+            'consolidation_bars_min': 0,
+            'consolidation_bars_max': 36,
+
+            'bk_above_min_pips': 0.0,
+            'bk_body_min_pips': 0.0,
+
+            'base_timeframe_minutes': 5,
+            'htf_data_minutes': 0,
+            'use_htf_roc_filter': False,
+            'htf_roc_period': 5,
+
+            # SL 5xATR ~valley range; TP 8xATR -> 8h horizon (15+ pts)
+            'atr_sl_multiplier': 3.0,
+            'atr_tp_multiplier': 6.0,
+            'sl_buffer_pips': 0.0,
+
+            # EOD: winter 21:00 / summer 20:00 (auto via US DST)
+            'use_eod_close': True,
+            'eod_close_hour': 21,
+            'eod_close_minute': 0,
+
+            'atr_length': 14,
+            'atr_avg_period': 20,
+
+            'use_time_filter': False,
+            'allowed_hours': [],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+            'use_sl_pips_filter': False,
+            'sl_pips_min': 0.0,
+            'sl_pips_max': 9999.0,
+            'use_atr_range_filter': False,
+            'atr_range_min': 0.0,
+            'atr_range_max': 999.0,
+            'use_consol_price_filter': False,
+
+            # BOTH -- data says 52.7/47.1, no directional bias
+            'enable_long': True,
+            'enable_short': True,
+
+            'risk_percent': 0.01,
+
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 5.0,
+
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
 
 
 }
