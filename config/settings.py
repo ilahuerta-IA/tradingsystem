@@ -3857,7 +3857,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/SP500_5m_5Yea.csv',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2021, 12, 20),
+        'to_date': datetime.datetime(2023, 12, 20),
 
         'starting_cash': 100000.0,
 
@@ -3888,7 +3888,7 @@ STRATEGIES_CONFIG = {
 
             # SL 5xATR ~valley range; TP 8xATR -> 8h horizon (15+ pts)
             'atr_sl_multiplier': 3.0,
-            'atr_tp_multiplier': 6.0,
+            'atr_tp_multiplier': 8.0,
             'sl_buffer_pips': 0.0,
 
             # EOD: winter 21:00 / summer 20:00 (auto via US DST)

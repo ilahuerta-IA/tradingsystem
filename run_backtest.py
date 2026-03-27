@@ -178,7 +178,7 @@ def run_backtest(config_name):
         broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
         broker_config = BROKER_CONFIG.get(broker_key, BROKER_CONFIG['darwinex_zero_etf'])
 
-        if 'cfd_index' in broker_key:
+        if is_cfd_index:
             # CFD indices: stocklike=False so margin is used, not full price
             CFDIndexCommission.total_commission = 0.0
             CFDIndexCommission.total_contracts = 0.0
@@ -271,7 +271,7 @@ def run_backtest(config_name):
     
     if is_non_forex:
         broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
-        if 'cfd_index' in broker_key:
+        if is_cfd_index:
             total_commission = CFDIndexCommission.total_commission
             total_contracts = CFDIndexCommission.total_contracts
         else:
