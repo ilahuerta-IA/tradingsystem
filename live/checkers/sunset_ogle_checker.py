@@ -266,21 +266,25 @@ class SunsetOgleChecker(BaseChecker):
             # Check for upside breakout
             if current_high >= self.window_top:
                 
-                # Time filter
+                # Time filter -- matches backtest sunset_ogle.py L699-701
+                # BT calls _reset_state() here, discarding the entire setup
                 if self.params.get("use_time_filter", False):
                     allowed_hours = self.params.get("allowed_hours", [])
                     if not check_time_filter(current_dt_utc, allowed_hours, True):
                         reason = f"Time filter: UTC {current_dt_utc.hour}h not in {allowed_hours}"
                         self.logger.info(f"[{self.config_name}] {reason}")
+                        self.reset_state()
                         return self._create_no_signal(reason)
-                
-                # Day filter -- matches backtest sunset_ogle.py L640
+
+                # Day filter -- matches backtest sunset_ogle.py L705-706
+                # BT calls _reset_state() here, discarding the entire setup
                 if self.params.get("use_day_filter", False):
                     allowed_days = self.params.get("allowed_days", [0, 1, 2, 3, 4])
                     if not check_day_filter(current_dt_utc, allowed_days, True):
                         day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
                         reason = f"Day filter: {day_names[current_dt_utc.weekday()]} not in {[day_names[d] for d in allowed_days]}"
                         self.logger.info(f"[{self.config_name}] {reason}")
+                        self.reset_state()
                         return self._create_no_signal(reason)
                 
                 # Re-validate price and angle at breakout -- matches backtest _validate_entry() L505
@@ -297,7 +301,7 @@ class SunsetOgleChecker(BaseChecker):
                         self.reset_state()
                         return self._create_no_signal(reason)
                 
-                # Calculate SL/TP — use close[0] to match backtrader entry_price
+                # Calculate SL/TP -- use close[0] to match backtrader entry_price
                 entry_price = float(df["close"].iloc[-1])
                 stop_loss = current_low - (current_atr * self.params["sl_mult"])
                 take_profit = current_high + (current_atr * self.params["tp_mult"])

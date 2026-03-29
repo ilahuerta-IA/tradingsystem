@@ -408,11 +408,14 @@ class GEMINIChecker(BaseChecker):
                 return self._create_no_signal(
                     f"Harmony angle {harmony_angle:.1f} not in [{self.entry_harmony_angle_min}-{self.entry_harmony_angle_max}]"
                 )
-            
-            # Check direction (ROC primary should be positive for LONG)
-            if roc_primary <= 0:
-                return self._create_no_signal(f"ROC primary negative: {roc_primary:.6f}")
-            
+
+            # NOTE: roc_primary > 0 check was removed in v0.6.1.
+            # Backtest gemini_strategy.py does NOT implement this as an entry
+            # condition (only mentioned in docstring as design intent, never
+            # coded in _check_angle_conditions or _check_final_filters).
+            # Keeping checker aligned with BT -- if this should be added,
+            # implement in BT first and validate with backtest.
+
             # Day filter
             if self.params.get("use_day_filter"):
                 allowed_days = self.params.get("allowed_days", [])

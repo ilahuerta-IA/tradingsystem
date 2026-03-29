@@ -9,6 +9,7 @@ Uses lib/filters.py for time filtering consistent with backtesting.
 """
 
 import logging
+import math
 from datetime import datetime
 from typing import Optional, Dict, Any
 from enum import Enum
@@ -109,19 +110,30 @@ class KOIChecker(BaseChecker):
         return tr.ewm(alpha=1.0 / atr_period, adjust=False).mean()
     
     def _calculate_cci(self, df: pd.DataFrame) -> pd.Series:
-        """Calculate CCI (Commodity Channel Index)."""
+        """Calculate CCI matching backtrader's implementation exactly.
+
+        Backtrader chain (cci.py + deviation.py):
+          tp = (H + L + C) / 3
+          tpmean = SMA(tp, period)
+          absdev = abs(tp - tpmean)          # per-bar rolling SMA used
+          meandev = SMA(absdev, period)       # SMA of absolute deviations
+          cci = (tp - tpmean) / (0.015 * meandev)
+
+        Previous implementation used Lambert's original formula
+        (window-mean for all elements) which differs from backtrader's
+        approach of using per-bar rolling SMA values.
+        """
         high = df["high"]
         low = df["low"]
         close = df["close"]
-        
+
         typical_price = (high + low + close) / 3
         cci_period = self.params.get("cci_period", 20)
-        
+
         sma_tp = typical_price.rolling(window=cci_period).mean()
-        mean_dev = typical_price.rolling(window=cci_period).apply(
-            lambda x: abs(x - x.mean()).mean(), raw=True
-        )
-        
+        absdev = (typical_price - sma_tp).abs()
+        mean_dev = absdev.rolling(window=cci_period).mean()
+
         cci = (typical_price - sma_tp) / (0.015 * mean_dev)
         return cci
     
@@ -215,6 +227,11 @@ class KOIChecker(BaseChecker):
         current_close = float(df["close"].iloc[-1])
         current_high = float(df["high"].iloc[-1])
         current_low = float(df["low"].iloc[-1])
+
+        # Guard: ATR must be valid before any SL/TP calculation
+        # Matches backtrader koi_strategy.py L449-451
+        if math.isnan(current_atr) or current_atr <= 0:
+            return self._create_no_signal("ATR invalid (NaN or <= 0)")
         
         # Get current time from data
         if "time" in df.columns:

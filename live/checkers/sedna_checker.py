@@ -332,12 +332,14 @@ class SEDNAChecker(BaseChecker):
             htf_passed, er_value, htf_reason = self._check_htf_filter(df, current_kama)
             if not htf_passed:
                 return self._create_no_signal(f"HTF filter: {htf_reason}")
-            
-            # Phase 2: KAMA condition (HL2_EMA > KAMA)
-            kama_passed, kama_reason = self._check_kama_condition(current_hl2_ema, current_kama)
-            if not kama_passed:
-                return self._create_no_signal(f"KAMA condition: {kama_reason}")
-            
+
+            # NOTE: Phase 2 (HL2_EMA > KAMA) was removed in v0.6.1.
+            # Backtest sedna_strategy.py defines _check_kama_condition() but
+            # does NOT call it in _check_entry_conditions(). Only HTF filter
+            # (Close > KAMA) is used in the BT entry flow. Keeping checker
+            # aligned with BT -- if this should be added, implement in BT
+            # first and validate with backtest.
+
             # Phase 3: Pullback detection
             pullback_passed, pullback_data, pullback_reason = self._check_pullback(df, kama_series)
             if not pullback_passed:
