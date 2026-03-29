@@ -659,8 +659,9 @@ def calculate_kama(
     
     kama_values = [float('nan')] * len(prices)
     
-    # Initialize with SMA
-    kama_values[period] = sum(prices[:period + 1]) / (period + 1)
+    # Initialize with SMA of prices[1:period+1] to match backtrader
+    # BT ExponentialSmoothingDynamic minperiod = period+1, seed SMA = last `period` values
+    kama_values[period] = sum(prices[1:period + 1]) / period
     
     # Calculate KAMA for remaining values
     for i in range(period + 1, len(prices)):

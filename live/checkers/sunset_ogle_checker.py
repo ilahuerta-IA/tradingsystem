@@ -222,6 +222,22 @@ class SunsetOgleChecker(BaseChecker):
         # --- ARMED_LONG STATE ---
         elif self.state == SunsetOgleState.ARMED_LONG:
             
+            # Opposing crossover guard -- matches BT sunset_ogle.py L672-680
+            # Reset if PREVIOUS bar was bearish AND confirm crosses below any EMA
+            try:
+                prev_bearish = float(df["close"].iloc[-2]) < float(df["open"].iloc[-2])
+                if prev_bearish:
+                    confirm = emas["confirm"]
+                    for ema_name in ["fast", "medium", "slow"]:
+                        other = emas[ema_name]
+                        curr_below = float(confirm.iloc[-1]) < float(other.iloc[-1])
+                        prev_above = float(confirm.iloc[-2]) >= float(other.iloc[-2])
+                        if curr_below and prev_above:
+                            self.reset_state()
+                            return self._create_no_signal("Opposing crossover invalidated ARMED_LONG")
+            except (IndexError, ValueError):
+                pass
+            
             if self._check_bearish_candle(df):
                 self.pullback_count += 1
                 
@@ -257,13 +273,7 @@ class SunsetOgleChecker(BaseChecker):
                 self.pullback_count = 0
                 return self._create_no_signal("Window expired")
             
-            if current_low <= self.window_bottom:
-                self._log_state_transition("WINDOW_OPEN", "ARMED_LONG", "Window broken downside")
-                self.state = SunsetOgleState.ARMED_LONG
-                self.pullback_count = 0
-                return self._create_no_signal("Window broken downside")
-            
-            # Check for upside breakout
+            # Check for upside breakout (BT checks breakout BEFORE bottom-break)
             if current_high >= self.window_top:
                 
                 # Time filter -- matches backtest sunset_ogle.py L699-701
@@ -316,6 +326,7 @@ class SunsetOgleChecker(BaseChecker):
                 if not check_sl_pips_filter(sl_pips, sl_pips_min, sl_pips_max, use_sl_pips_filter):
                     reason = f"SL pips filter: {sl_pips:.1f} not in [{sl_pips_min}-{sl_pips_max}]"
                     self.logger.info(f"[{self.config_name}] {reason}")
+                    self.reset_state()
                     return self._create_no_signal(reason)
                 
                 self.logger.info(
@@ -336,6 +347,13 @@ class SunsetOgleChecker(BaseChecker):
                 
                 self.reset_state()
                 return signal
+            
+            # Check for downside break (BT checks AFTER breakout -- matches order)
+            if current_low <= self.window_bottom:
+                self._log_state_transition("WINDOW_OPEN", "ARMED_LONG", "Window broken downside")
+                self.state = SunsetOgleState.ARMED_LONG
+                self.pullback_count = 0
+                return self._create_no_signal("Window broken downside")
             
             return self._create_no_signal(f"Waiting for breakout above {self.window_top:.5f}")
         

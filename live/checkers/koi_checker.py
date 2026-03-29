@@ -105,7 +105,7 @@ class KOIChecker(BaseChecker):
         tr3 = abs(low - close.shift(1))
         
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr_period = self.params.get("atr_length", 14)
+        atr_period = self.params.get("atr_length", 10)
         # Wilder's RMA (matches backtrader bt.ind.ATR default SmoothedMovingAverage)
         return tr.ewm(alpha=1.0 / atr_period, adjust=False).mean()
     
@@ -291,7 +291,7 @@ class KOIChecker(BaseChecker):
             if use_breakout_window:
                 # Setup breakout window
                 pip_value = self.params.get("pip_value", 0.0001)
-                offset_pips = self.params.get("breakout_level_offset_pips", 3)
+                offset_pips = self.params.get("breakout_level_offset_pips", 2.0)
                 
                 self.pattern_bar = self.current_bar_index
                 self.breakout_level = current_high + (offset_pips * pip_value)
