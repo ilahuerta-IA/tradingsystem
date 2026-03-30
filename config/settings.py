@@ -3949,15 +3949,15 @@ STRATEGIES_CONFIG = {
         'reference_symbol': 'NI225',
 
         'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2026, 1, 1),
+        'to_date': datetime.datetime(2020, 4, 1),
 
         'starting_cash': 100000.0,
 
-        'run_plot': False,
+        'run_plot': True,
         'generate_report': True,
         'save_log': True,
 
-        'broker_config_key': 'darwinex_zero_cfd_index',
+        'broker_config_key': 'darwinex_zero_cfd_ni225',
 
         'params': {
             # Z-score (H1 bars)
@@ -3968,6 +3968,10 @@ STRATEGIES_CONFIG = {
             'dead_zone': 1.0,
             'max_forecast': 20,
             'min_forecast_entry': 1,
+
+            # Direction filter (True=allowed, False=disabled)
+            'allow_long': True,
+            'allow_short': True,
 
             # Session: London
             'session_start_hour': 7,
@@ -4028,7 +4032,7 @@ STRATEGIES_CONFIG = {
         'generate_report': True,
         'save_log': True,
 
-        'broker_config_key': 'darwinex_zero_cfd_index',
+        'broker_config_key': 'darwinex_zero_cfd_gdaxi',
 
         'params': {
             # Z-score (H1 bars)
@@ -4039,6 +4043,10 @@ STRATEGIES_CONFIG = {
             'dead_zone': 3.0,
             'max_forecast': 20,
             'min_forecast_entry': 1,
+
+            # Direction filter (True=allowed, False=disabled)
+            'allow_long': True,
+            'allow_short': True,
 
             # Session: London
             'session_start_hour': 7,
@@ -4103,6 +4111,24 @@ BROKER_CONFIG = {
         # SP500: 0.275 USD/order/contract, contract=10xIndex
         # Per BT unit (1 index point): 0.275/10 = 0.0275 USD per order
         'commission_per_contract': 0.0275,
+        'leverage': 20.0,
+        'margin_percent': 5.0,
+    },
+    'darwinex_zero_cfd_ni225': {
+        # NI225: 35 JPY/order/DW-contract, DW-contract = 100 x NI225
+        # Per BT unit (1 index point): 35/150/100 = ~$0.002 (negligible)
+        # DOMINANT COST = SPREAD: 3.0 puntos = $1.50/unit/side
+        # Model as commission: spread/2 per side per unit = 1.50
+        'commission_per_contract': 1.50,
+        'leverage': 20.0,
+        'margin_percent': 5.0,
+    },
+    'darwinex_zero_cfd_gdaxi': {
+        # GDAXI: 2.75 EUR/order/DW-contract, DW-contract = 10 x GDAXI
+        # Per BT unit: 2.75/10 = 0.275 EUR ~ $0.30/unit/side (commission)
+        # SPREAD: 0.8 puntos = $0.40/unit/side
+        # Total per side: 0.30 + 0.40 = $0.70/unit/side
+        'commission_per_contract': 0.70,
         'leverage': 20.0,
         'margin_percent': 5.0,
     },

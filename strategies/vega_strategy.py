@@ -51,8 +51,16 @@ from lib.filters import check_time_filter, check_day_filter
 # =============================================================================
 
 class SpreadIndicator(bt.Indicator):
-    """Plot z-score spread and forecast as subplot."""
-    lines = ('spread', 'forecast', 'dead_zone_upper', 'dead_zone_lower', 'zero')
+    """Plot z-score spread and normalized forecast as subplot.
+
+    Both lines share the same scale:
+    - spread: raw z-score difference (zA - zB)
+    - forecast_norm: forecast / max_forecast * dead_zone
+      maps [-20,+20] -> [-dz, +dz] so it overlays cleanly on spread
+    - dead_zone lines at +/- dead_zone
+    """
+    lines = ('spread', 'forecast_norm', 'dead_zone_upper', 'dead_zone_lower',
+             'zero')
 
     plotinfo = dict(
         subplot=True,
@@ -61,8 +69,10 @@ class SpreadIndicator(bt.Indicator):
         plotheight=2.0,
     )
     plotlines = dict(
-        spread=dict(color='blue', linewidth=1.5, _name='Spread (zA - zB)'),
-        forecast=dict(color='purple', linewidth=2.0, _name='Forecast'),
+        spread=dict(color='blue', linewidth=1.5,
+                    _name='Spread (zA - zB)'),
+        forecast_norm=dict(color='purple', linewidth=2.0, linestyle='-',
+                           _name='Forecast (norm)'),
         dead_zone_upper=dict(color='gray', linestyle='--', linewidth=0.8),
         dead_zone_lower=dict(color='gray', linestyle='--', linewidth=0.8),
         zero=dict(color='gray', linestyle='-', linewidth=0.5),
@@ -114,6 +124,10 @@ class VEGAStrategy(bt.Strategy):
         dead_zone=1.0,              # Minimum spread to generate signal
         max_forecast=20,            # Forecast range [-20, +20]
         min_forecast_entry=1,       # Minimum |forecast| to enter
+
+        # === DIRECTION FILTER ===
+        allow_long=True,            # Allow LONG entries on target index
+        allow_short=True,           # Allow SHORT entries on target index
 
         # === SESSION ===
         session_start_hour=7,       # London session start (UTC)
@@ -393,6 +407,12 @@ class VEGAStrategy(bt.Strategy):
         else:
             self.direction = +1     # LONG B
 
+        # Direction filter: skip if direction is disabled
+        if self.direction == 1 and not self.p.allow_long:
+            return
+        if self.direction == -1 and not self.p.allow_short:
+            return
+
         position_fraction = abs(forecast) / self.p.max_forecast
 
         # Position sizing: margin-allocation proportional to forecast.
@@ -562,11 +582,13 @@ class VEGAStrategy(bt.Strategy):
         spread, z_a, z_b = self._compute_spread()
         forecast = self._compute_forecast(spread)
 
-        # Update spread subplot
+        # Update spread subplot (forecast normalized to spread scale)
         self.spread_ind.lines.spread[0] = spread
-        self.spread_ind.lines.forecast[0] = forecast
-        self.spread_ind.lines.dead_zone_upper[0] = self.p.dead_zone
-        self.spread_ind.lines.dead_zone_lower[0] = -self.p.dead_zone
+        dz = self.p.dead_zone if self.p.dead_zone > 0 else 1.0
+        self.spread_ind.lines.forecast_norm[0] = (
+            forecast / self.p.max_forecast * dz)
+        self.spread_ind.lines.dead_zone_upper[0] = dz
+        self.spread_ind.lines.dead_zone_lower[0] = -dz
 
         # Track portfolio value
         self._portfolio_values.append(self.broker.get_value())
