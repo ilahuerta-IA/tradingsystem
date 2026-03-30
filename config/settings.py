@@ -3851,7 +3851,7 @@ STRATEGIES_CONFIG = {
     # Full valley 02:00-05:00 = consolidation (36 bars x 5m)
     # SL 5xATR ~11.5 pts (= valley range), TP 8xATR ~20 pts (8h horizon)
     'SP500_LUYTEN_A_5m_BOTH': {
-        'active': True,
+        'active': False,
         'strategy_name': 'LUYTEN',
         'asset_name': 'SP500',
         'data_path': 'data/SP500_5m_5Yea.csv',
@@ -3928,6 +3928,154 @@ STRATEGIES_CONFIG = {
         }
     },
 
+
+    # =========================================================================
+    # VEGA STRATEGY CONFIGURATIONS (Cross-Index Z-Score Divergence)
+    # Concept: London repricing of lagging index vs SP500 z-score divergence
+    # Signal: spread = z_SP500 - z_TARGET; trade opposite direction on TARGET
+    # Validated: 4 indices confirm mechanism (Fase 0c, perm p=0.000)
+    # =========================================================================
+
+    # SP500/NI225 London -- Index B standalone
+    # Study: Sharpe 2.36 (Conv), Sharpe ~2.0 (Index B), PF 1.26, 7/7 years
+    # Dead zone sweep: dz=1.0 h=6h optimal for stability
+    'NI225_VEGA': {
+        'active': True,
+        'strategy_name': 'VEGA',
+        'asset_name': 'SP500',
+        'data_path': 'data/SP500_5m_5Yea.csv',
+
+        'reference_data_path': 'data/NI225_5m_5Yea.csv',
+        'reference_symbol': 'NI225',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2026, 1, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'broker_config_key': 'darwinex_zero_cfd_index',
+
+        'params': {
+            # Z-score (H1 bars)
+            'sma_period': 24,
+            'atr_period': 24,
+
+            # Signal
+            'dead_zone': 1.0,
+            'max_forecast': 20,
+            'min_forecast_entry': 1,
+
+            # Session: London
+            'session_start_hour': 7,
+            'session_end_hour': 12,
+            'holding_hours': 6,
+
+            # Time filter: London entry window
+            'use_time_filter': True,
+            'allowed_hours': [7, 8, 9, 10, 11, 12],
+
+            # Day filter: weekdays
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            # Protective stop (wide, safety net)
+            'use_protective_stop': True,
+            'protective_atr_mult': 5.0,
+
+            # Position sizing
+            'risk_percent': 0.01,
+            'max_position_pct': 0.10,
+            'capital_alloc_pct': 0.10,      # 10% of equity margin at max forecast
+
+            # Asset config
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'margin_pct': 5.0,
+
+            # Runner: resample both feeds to H1
+            'base_timeframe_minutes': 60,
+            'resample_reference_minutes': 60,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    # SP500/GDAXI London -- Index B standalone (BEST performer)
+    # Study: Sharpe 2.72, PF 1.31, 6/7 years, perm p=0.000
+    # Dead zone sweep: dz=3.0 h=3h optimal (Sharpe 3.28)
+    # Index B > Conv because SP500/GDAXI correlation ~0.85 (hedge cancels)
+    'GDAXI_VEGA': {
+        'active': True,
+        'strategy_name': 'VEGA',
+        'asset_name': 'SP500',
+        'data_path': 'data/SP500_5m_5Yea.csv',
+
+        'reference_data_path': 'data/GDAXI_5m_5Yea.csv',
+        'reference_symbol': 'GDAXI',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2026, 1, 1),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'broker_config_key': 'darwinex_zero_cfd_index',
+
+        'params': {
+            # Z-score (H1 bars)
+            'sma_period': 24,
+            'atr_period': 24,
+
+            # Signal -- higher dead zone for GDAXI (filters noise)
+            'dead_zone': 3.0,
+            'max_forecast': 20,
+            'min_forecast_entry': 1,
+
+            # Session: London
+            'session_start_hour': 7,
+            'session_end_hour': 12,
+            'holding_hours': 3,
+
+            # Time filter: London entry window
+            'use_time_filter': True,
+            'allowed_hours': [7, 8, 9, 10, 11, 12],
+
+            # Day filter: weekdays
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            # Protective stop (wide, safety net)
+            'use_protective_stop': True,
+            'protective_atr_mult': 5.0,
+
+            # Position sizing
+            'risk_percent': 0.01,
+            'max_position_pct': 0.10,
+            'capital_alloc_pct': 0.10,      # 10% of equity margin at max forecast
+
+            # Asset config
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'margin_pct': 5.0,
+
+            # Runner: resample both feeds to H1
+            'base_timeframe_minutes': 60,
+            'resample_reference_minutes': 60,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
 
 
 }

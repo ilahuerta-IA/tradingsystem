@@ -22,6 +22,7 @@ from strategies.helix_strategy import HELIXStrategy
 from strategies.gemini_strategy import GEMINIStrategy
 from strategies.ceres_strategy import CERESStrategy
 from strategies.luyten_strategy import LUYTENStrategy
+from strategies.vega_strategy import VEGAStrategy
 from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
 
 
@@ -39,6 +40,7 @@ STRATEGY_REGISTRY = {
     'GEMINI': GEMINIStrategy,
     'CERES': CERESStrategy,
     'LUYTEN': LUYTENStrategy,
+    'VEGA': VEGAStrategy,
 }
 
 
@@ -144,6 +146,11 @@ def run_backtest(config_name):
             return None
         
         ref_name = config.get('reference_symbol', 'REFERENCE')
+        # Determine if reference is a CFD index (needs ETFCSVData)
+        ref_is_cfd = ref_name.upper() in CFD_INDEX_SYMBOLS
+        ref_is_etf = ref_name.upper() in ETF_SYMBOLS
+        ref_is_non_forex = ref_is_cfd or ref_is_etf
+
         ref_kwargs = dict(
             dataname=str(ref_path),
             dtformat='%Y%m%d',
@@ -158,12 +165,28 @@ def run_backtest(config_name):
             openinterest=-1,
             fromdate=config['from_date'],
             todate=config['to_date'],
-            timeframe=bt.TimeFrame.Minutes,
-            compression=5,
         )
-        ref_data = bt.feeds.GenericCSVData(**ref_kwargs)
-        cerebro.adddata(ref_data, name=ref_name)
-        print(f'Reference data added: {ref_name} (accessible via self.datas[1])')
+
+        if ref_is_non_forex:
+            ref_data = ETFCSVData(**ref_kwargs)
+        else:
+            ref_kwargs['timeframe'] = bt.TimeFrame.Minutes
+            ref_kwargs['compression'] = 5
+            ref_data = bt.feeds.GenericCSVData(**ref_kwargs)
+
+        # Optional resampling for reference data (e.g. M5 -> H1 for VEGA)
+        resample_ref = params.get('resample_reference_minutes')
+        if resample_ref and resample_ref > 0:
+            ref_resampled = cerebro.resampledata(
+                ref_data,
+                timeframe=bt.TimeFrame.Minutes,
+                compression=resample_ref
+            )
+            ref_resampled._name = ref_name
+            print(f'Reference data added: {ref_name} (resampled {resample_ref}m, datas[1])')
+        else:
+            cerebro.adddata(ref_data, name=ref_name)
+            print(f'Reference data added: {ref_name} (accessible via self.datas[1])')
     
     # Set broker
     cerebro.broker.setcash(config.get('starting_cash', 100000.0))
@@ -231,6 +254,7 @@ def run_backtest(config_name):
     params.pop('leverage', None)
     params.pop('base_timeframe_minutes', None)
     params.pop('htf_data_minutes', None)
+    params.pop('resample_reference_minutes', None)
     
     # Auto-inject asset-specific params
     params['is_jpy_pair'] = is_jpy
