@@ -32,6 +32,12 @@ SAVE_ONLY = '--save-only' in sys.argv
 if SAVE_ONLY:
     matplotlib.use('Agg')
 
+# Optional pair filter: --pairs GDAXI,UK100,EUR50 (matches substring in pair name)
+PAIR_FILTER = None
+for arg in sys.argv[1:]:
+    if arg.startswith('--pairs='):
+        PAIR_FILTER = [x.strip() for x in arg.split('=', 1)[1].split(',')]
+
 OUT_DIR = Path('analysis')
 OUT_DIR.mkdir(exist_ok=True)
 
@@ -60,6 +66,24 @@ INDEX_PAIRS = [
         'index_a': 'SP500', 'index_b': 'AUS200',
         'fx': 'AUDUSD',
         'label': 'SP500 leads -> long AUS200',
+    },
+    {
+        'name': 'SP500_vs_GDAXI',
+        'index_a': 'SP500', 'index_b': 'GDAXI',
+        'fx': 'EURUSD',
+        'label': 'SP500 leads -> long GDAXI',
+    },
+    {
+        'name': 'SP500_vs_UK100',
+        'index_a': 'SP500', 'index_b': 'UK100',
+        'fx': 'EURUSD',
+        'label': 'SP500 leads -> long UK100',
+    },
+    {
+        'name': 'SP500_vs_EUR50',
+        'index_a': 'SP500', 'index_b': 'EUR50',
+        'fx': 'EURUSD',
+        'label': 'SP500 leads -> long EUR50',
     },
 ]
 
@@ -672,7 +696,13 @@ def main():
 
     all_verdicts = []
 
-    for pair_cfg in INDEX_PAIRS:
+    pairs_to_run = INDEX_PAIRS
+    if PAIR_FILTER:
+        pairs_to_run = [p for p in INDEX_PAIRS
+                        if any(f in p['name'] for f in PAIR_FILTER)]
+        print(f'  Pair filter: {PAIR_FILTER} -> {[p["name"] for p in pairs_to_run]}')
+
+    for pair_cfg in pairs_to_run:
         print(f'\n{"="*80}')
         print(f' PAIR: {pair_cfg["label"]}')
         print(f'{"="*80}')
