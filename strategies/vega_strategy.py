@@ -148,6 +148,7 @@ class VEGAStrategy(bt.Strategy):
         risk_percent=0.01,          # Risk per trade as fraction of equity
         max_position_pct=0.10,      # Max equity fraction in margin
         capital_alloc_pct=0.10,     # Max margin allocation at full forecast
+        max_loss_per_trade_pct=0.05,  # Max loss if protective stop hit (% equity)
 
         # === ASSET CONFIG (auto-injected by run_backtest.py) ===
         pip_value=1.0,              # CFD index: 1 point = $1
@@ -427,6 +428,10 @@ class VEGAStrategy(bt.Strategy):
         equity = self.broker.get_value()
         margin_per_contract = entry_price_b * (self.p.margin_pct / 100.0)
 
+        # JPY-denominated indices: margin is in JPY, convert to USD
+        if self.p.is_jpy_pair and self.p.jpy_rate > 1:
+            margin_per_contract = margin_per_contract / self.p.jpy_rate
+
         if margin_per_contract <= 0:
             return
 
@@ -440,6 +445,18 @@ class VEGAStrategy(bt.Strategy):
         abs_max = int(
             (equity * self.p.max_position_pct) / margin_per_contract)
         contracts = min(contracts, max(1, abs_max))
+
+        # DD cap: if protective stop hit, max loss <= max_loss_per_trade_pct
+        if self.p.use_protective_stop and atr_b_val > 0:
+            stop_dist = atr_b_val * self.p.protective_atr_mult
+            loss_per_contract = stop_dist
+            if self.p.is_jpy_pair and self.p.jpy_rate > 1:
+                loss_per_contract = loss_per_contract / self.p.jpy_rate
+            max_loss = equity * self.p.max_loss_per_trade_pct
+            if loss_per_contract > 0:
+                dd_cap = int(max_loss / loss_per_contract)
+                if dd_cap < contracts:
+                    contracts = max(1, dd_cap)
 
         # Execute order
         if self.direction == 1:
@@ -915,20 +932,23 @@ class VEGAStrategy(bt.Strategy):
 
             print(f"{'=' * 70}")
 
-        # Commission summary (CFD index: $0.0275/contract/order for SP500-like)
+        # Commission summary — read actual commission from broker's CommInfo
         total_contracts = sum(
             t.get('size', 0) for t in self.trade_reports if 'size' in t)
-        # Round-trip = 2 orders
-        est_commission = total_contracts * 2 * 0.275
+
+        # Use actual accumulated commission from CFDIndexCommission class
+        from lib.commission import CFDIndexCommission
+        actual_total_comm = CFDIndexCommission.total_commission
+        actual_total_contracts = CFDIndexCommission.total_contracts
         avg_commission = (
-            est_commission / total_trades if total_trades > 0 else 0)
+            actual_total_comm / total_trades if total_trades > 0 else 0)
 
         print(f"\n{'=' * 70}")
-        print('COMMISSION ESTIMATE (CFD Index)')
+        print('COMMISSION SUMMARY (CFD Index)')
         print(f"{'=' * 70}")
-        print(f'Total Contracts Traded:      {total_contracts:,.0f}')
-        print(f'Est. Total Commission:       ${est_commission:,.2f}')
-        print(f'Est. Avg Comm per Trade:     ${avg_commission:,.2f}')
+        print(f'Total Contract-Units Traded:  {actual_total_contracts:,.0f}')
+        print(f'Total Commission Paid:        ${actual_total_comm:,.2f}')
+        print(f'Avg Comm per Trade:           ${avg_commission:,.2f}')
         print(f"{'=' * 70}")
 
         # Final summary

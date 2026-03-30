@@ -195,11 +195,15 @@ def run_backtest(config_name):
     # Set commission scheme based on instrument type
     params = config['params']
     is_jpy = asset_name.upper().endswith('JPY')
+    is_jpy_index = False  # Updated below for JPY-denominated CFD indices
     
     if is_non_forex:
         # ETF / CFD index commission
         broker_key = config.get('broker_config_key', 'darwinex_zero_etf')
         broker_config = BROKER_CONFIG.get(broker_key, BROKER_CONFIG['darwinex_zero_etf'])
+
+        # Check if traded instrument is JPY-denominated (e.g. NI225)
+        is_jpy_index = broker_config.get('is_jpy_index', False)
 
         if is_cfd_index:
             # CFD indices: stocklike=False so margin is used, not full price
@@ -209,8 +213,11 @@ def run_backtest(config_name):
             commission = CFDIndexCommission(
                 commission=broker_config.get('commission_per_contract', 0.275),
                 margin_pct=broker_config.get('margin_percent', 5.0),
+                is_jpy_index=is_jpy_index,
+                jpy_rate=broker_config.get('jpy_rate', 150.0),
             )
         else:
+            is_jpy_index = False
             # ETFs: stocklike=True (DIA, TLT, GLD, etc.)
             ETFCommission.total_commission = 0.0
             ETFCommission.total_contracts = 0.0
@@ -257,8 +264,13 @@ def run_backtest(config_name):
     params.pop('resample_reference_minutes', None)
     
     # Auto-inject asset-specific params
-    params['is_jpy_pair'] = is_jpy
+    # For JPY-denominated CFD indices (NI225), is_jpy_index from broker config
+    is_jpy_traded = is_jpy or (is_non_forex and is_jpy_index)
+    params['is_jpy_pair'] = is_jpy_traded
     params['is_etf'] = is_non_forex
+
+    if is_jpy_traded and is_non_forex:
+        params['jpy_rate'] = broker_config.get('jpy_rate', 150.0)
     
     if is_non_forex:
         params['pip_value'] = params.get('pip_value', 0.01)

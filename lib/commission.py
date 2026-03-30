@@ -149,6 +149,13 @@ class CFDIndexCommission(bt.CommInfoBase):
     - Commission: variable per index (e.g. $0.275 for AUS200)
     - Margin: 5% (20:1 leverage)
     - stocklike=False so backtrader uses margin, not full price
+
+    JPY-denominated indices (NI225):
+    - Prices are in JPY but portfolio is in USD
+    - P&L must be divided by jpy_rate to convert JPY -> USD
+    - Margin must be divided by jpy_rate for correct USD sizing
+    - Commission is already in USD (pre-converted in broker config)
+    - Follows same pattern as DarwinexZeroCommission for forex JPY pairs
     """
     params = (
         ('stocklike', False),
@@ -159,6 +166,8 @@ class CFDIndexCommission(bt.CommInfoBase):
         ('commission', 0.275),
         ('margin_pct', 5.0),
         ('mult', 1.0),
+        ('is_jpy_index', False),
+        ('jpy_rate', 150.0),
     )
 
     # Debug counters (class-level)
@@ -167,7 +176,7 @@ class CFDIndexCommission(bt.CommInfoBase):
     total_contracts = 0.0
 
     def _getcommission(self, size, price, pseudoexec):
-        """Return commission based on contract count."""
+        """Return commission based on contract count (already in USD)."""
         contracts = abs(size)
         comm = contracts * self.p.commission
 
@@ -179,8 +188,35 @@ class CFDIndexCommission(bt.CommInfoBase):
         return comm
 
     def get_margin(self, price):
-        """Return margin requirement per contract."""
-        return price * (self.p.margin_pct / 100.0)
+        """Return margin requirement per contract.
+
+        JPY indices: divide by jpy_rate so BT margin is in USD,
+        allowing correct position sizing against USD-denominated equity.
+        """
+        margin = price * (self.p.margin_pct / 100.0)
+        if self.p.is_jpy_index:
+            margin = margin / self.p.jpy_rate
+        return margin
+
+    def profitandloss(self, size, price, newprice):
+        """Calculate P&L for CFD index positions.
+
+        JPY indices (NI225): raw P&L is in JPY, divide by jpy_rate
+        to get USD P&L. Same pattern as DarwinexZeroCommission.
+        """
+        pnl = size * (newprice - price)
+        if self.p.is_jpy_index:
+            pnl = pnl / self.p.jpy_rate
+        return pnl
+
+    def cashadjust(self, size, price, newprice):
+        """Adjust cash for non-stocklike instruments."""
+        if not self._stocklike:
+            pnl = size * (newprice - price)
+            if self.p.is_jpy_index:
+                pnl = pnl / self.p.jpy_rate
+            return pnl
+        return 0.0
 
 
 # =============================================================================

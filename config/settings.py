@@ -3994,11 +3994,13 @@ STRATEGIES_CONFIG = {
             'risk_percent': 0.01,
             'max_position_pct': 0.10,
             'capital_alloc_pct': 0.10,      # 10% of equity margin at max forecast
+            'max_loss_per_trade_pct': 0.05,  # Max 5% equity loss if stop hit
 
-            # Asset config
+            # Asset config (NI225 = JPY-denominated index)
             'pip_value': 1.0,
             'lot_size': 1,
             'margin_pct': 5.0,
+            'jpy_rate': 150.0,
 
             # Runner: resample both feeds to H1
             'base_timeframe_minutes': 60,
@@ -4115,13 +4117,15 @@ BROKER_CONFIG = {
         'margin_percent': 5.0,
     },
     'darwinex_zero_cfd_ni225': {
-        # NI225: 35 JPY/order/DW-contract, DW-contract = 100 x NI225
-        # Per BT unit (1 index point): 35/150/100 = ~$0.002 (negligible)
-        # DOMINANT COST = SPREAD: 3.0 puntos = $1.50/unit/side
-        # Model as commission: spread/2 per side per unit = 1.50
-        'commission_per_contract': 1.50,
+        # NI225: 35 JPY/order per DW-contract (100 × NI225 index)
+        # Per BT unit per order: 35/100 = 0.35 JPY → 0.35/150 = $0.0023 USD
+        # Spread: 3.0 pts → half-spread per side = 1.5 JPY/unit → $0.01 USD
+        # Total per BT unit per side: $0.0023 + $0.01 = $0.0123 USD
+        'commission_per_contract': 0.0123,
         'leverage': 20.0,
         'margin_percent': 5.0,
+        'is_jpy_index': True,
+        'jpy_rate': 150.0,
     },
     'darwinex_zero_cfd_gdaxi': {
         # GDAXI: 2.75 EUR/order/DW-contract, DW-contract = 10 x GDAXI
