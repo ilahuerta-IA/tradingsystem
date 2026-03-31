@@ -420,6 +420,11 @@ def print_summary(trades: List[Dict]):
 def analyze_by_spread(trades: List[Dict]):
     """Analyze performance by absolute spread ranges (signal trigger level)."""
     print_section('ANALYSIS BY |SPREAD| (z-score divergence)')
+    print('  |Spread| = |z_SP500 - z_TARGET|. Higher = larger divergence between indices.')
+    print('  This is the RAW signal before dead_zone scaling. NOT directly adjustable,')
+    print('  but dead_zone controls which spreads generate meaningful forecasts.')
+    print('  Spread < dead_zone produces weak forecast; spread >> dead_zone clips at max.')
+    print()
     spreads = [t['abs_spread'] for t in trades]
     ranges = _auto_ranges(spreads, num_bins=10)
     analyze_by_range(trades, lambda t: t['abs_spread'], ranges,
@@ -427,12 +432,14 @@ def analyze_by_spread(trades: List[Dict]):
 
 
 def analyze_by_forecast(trades: List[Dict]):
-    """Analyze by absolute forecast (signal strength).
-    
-    Higher |forecast| = stronger signal = larger position.
-    This reveals the minimum forecast threshold for profitable trades.
-    """
+    """Analyze by absolute forecast (signal strength)."""
     print_section('ANALYSIS BY |FORECAST| (signal strength)')
+    print('  forecast = clip(spread / dead_zone * max_forecast, -max_forecast, +max_forecast)')
+    print('  Higher |forecast| = stronger signal = larger position size.')
+    print('  This shows PF per INDEPENDENT range (e.g. 5-10 alone, 10-15 alone).')
+    print('  Compare with DEAD ZONE SWEEP below which is CUMULATIVE (>= threshold).')
+    print('  Adjustable via: min_forecast_entry (minimum to enter), dead_zone (scaling).')
+    print()
     forecasts = [t['abs_forecast'] for t in trades]
     ranges = _auto_ranges(forecasts, num_bins=8)
     analyze_by_range(trades, lambda t: t['abs_forecast'], ranges,
@@ -442,9 +449,13 @@ def analyze_by_forecast(trades: List[Dict]):
 def analyze_by_atr(trades: List[Dict]):
     """Analyze by ATR(B) ranges (volatility of target index)."""
     print_section('ANALYSIS BY ATR(B) (target volatility)')
+    print('  ATR(B) = Average True Range of target index (NI225/GDAXI) over atr_period bars.')
+    print('  High ATR = high volatility = bigger moves but also bigger risk per contract.')
+    print('  The DD cap (max_loss_per_trade_pct) reduces size when ATR is extreme.')
+    print('  NOT directly adjustable as entry filter. Used for position sizing and stop distance.')
+    print()
     atrs = [t['atr_b'] for t in trades]
     ranges = _auto_ranges(atrs, num_bins=8)
-    # Determine decimals from data magnitude
     decimals = 2 if max(atrs) >= 1 else 4
     analyze_by_range(trades, lambda t: t['atr_b'], ranges,
                      'ATR(B)', decimals=decimals)
@@ -453,6 +464,11 @@ def analyze_by_atr(trades: List[Dict]):
 def analyze_by_direction(trades: List[Dict]):
     """Analyze LONG vs SHORT performance."""
     print_section('ANALYSIS BY DIRECTION')
+    print('  LONG = bought target index (spread < -dead_zone, SP500 underperforming).')
+    print('  SHORT = sold target index (spread > +dead_zone, SP500 outperforming).')
+    print('  Persistent asymmetry across years = structural. Single-year = noise.')
+    print('  Adjustable via: allow_long / allow_short (optimization phase, not validation).')
+    print()
     analyze_by_group(
         trades, lambda t: t['direction'], 'Direction')
 
@@ -460,6 +476,10 @@ def analyze_by_direction(trades: List[Dict]):
 def analyze_by_hour(trades: List[Dict]):
     """Analyze by entry hour."""
     print_section('ANALYSIS BY ENTRY HOUR (UTC)')
+    print('  Entry hour within session window (session_start to session_end).')
+    print('  Most entries cluster at session_start (signal triggers on first H1 bar).')
+    print('  Later hours = signals that appeared mid-session. Adjustable via allowed_hours.')
+    print()
     analyze_by_group(
         trades, lambda t: t['hour'], 'Hour',
         lambda h: f'{h:02d}:00')
@@ -468,6 +488,9 @@ def analyze_by_hour(trades: List[Dict]):
 def analyze_by_day(trades: List[Dict]):
     """Analyze by day of week."""
     print_section('ANALYSIS BY DAY OF WEEK')
+    print('  Edge may vary by weekday due to positioning/flows (e.g. Fri pre-weekend).')
+    print('  Adjustable via: allowed_days (optimization phase, not validation).')
+    print()
     dow_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     analyze_by_group(
         trades, lambda t: t['day_of_week'], 'Day',
@@ -477,6 +500,10 @@ def analyze_by_day(trades: List[Dict]):
 def analyze_by_year(trades: List[Dict]):
     """Analyze by year for stability check."""
     print_section('ANALYSIS BY YEAR')
+    print('  CRITICAL for validation: the edge must be positive in MOST years.')
+    print('  If only 1-2 years carry all profit, the edge may be regime-dependent.')
+    print('  Target: PF > 1.0 in at least 5/7 years with current dead_zone.')
+    print()
     analyze_by_group(
         trades, lambda t: t['year'], 'Year', str)
 
@@ -484,26 +511,38 @@ def analyze_by_year(trades: List[Dict]):
 def analyze_by_exit_reason(trades: List[Dict]):
     """Analyze by exit reason distribution."""
     print_section('ANALYSIS BY EXIT REASON')
+    print('  TIME_EXIT = normal exit after holding_hours. PROT_STOP = safety net hit.')
+    print('  High % TIME_EXIT is expected (stop is wide safety net, rarely triggered).')
+    print()
     analyze_by_group(
         trades, lambda t: t.get('exit_reason', 'UNKNOWN'),
         'Exit Reason')
 
 
 def analyze_by_size(trades: List[Dict]):
-    """Analyze by position size (contracts)."""
-    print_section('ANALYSIS BY SIZE (contracts)')
-    analyze_by_group(
-        trades, lambda t: t['size'], 'Size',
-        lambda s: f'{s} contracts')
+    """Analyze by position size ranges (contracts)."""
+    print_section('ANALYSIS BY SIZE (contract ranges)')
+    print('  Position size is a RESULT of: forecast strength, equity, margin, DD cap.')
+    print('  NOT directly adjustable. Useful to detect if large positions amplify losses.')
+    print('  If worst PF is in largest size bucket, the DD cap or capital_alloc_pct may')
+    print('  need tightening. If best PF is in mid-range, sizing is well calibrated.')
+    print()
+    sizes = [t['size'] for t in trades]
+    ranges = _auto_ranges(sizes, num_bins=6)
+    analyze_by_range(trades, lambda t: t['size'], ranges,
+                     'Size (units)', decimals=0)
 
 
 def analyze_spread_vs_forecast_matrix(trades: List[Dict]):
-    """Cross-analysis: spread quintiles x forecast quintiles.
-    
-    This is the most important VEGA optimization table.
-    Shows which spread+forecast combinations are profitable.
-    """
+    """Cross-analysis: spread quintiles x forecast quintiles."""
     print_section('SPREAD x FORECAST MATRIX (quintiles)')
+    print('  2D view: which COMBINATIONS of spread + forecast are profitable.')
+    print('  Rows = |spread| quintiles, Columns = |forecast| quintiles.')
+    print('  Since forecast = f(spread, dead_zone), the diagonal is populated')
+    print('  and off-diagonal cells are sparse. Useful to spot the "sweet spot"')
+    print('  where both spread divergence AND forecast strength align.')
+    print('  NOT directly actionable — use DEAD ZONE SWEEP for parameter tuning.')
+    print()
 
     # Compute quintile thresholds
     abs_spreads = sorted([t['abs_spread'] for t in trades])
@@ -570,15 +609,22 @@ def analyze_spread_vs_forecast_matrix(trades: List[Dict]):
 
 
 def analyze_dead_zone_sweep(trades: List[Dict], config: Dict):
-    """Sweep min_forecast_entry to find optimal dead zone.
-    
-    Since forecast = clip(spread/dead_zone * 20, -20, +20),
-    filtering by |forecast| >= threshold is equivalent to
-    raising the effective dead zone.
-    """
+    """Sweep min_forecast_entry to find optimal dead zone."""
     print_section('DEAD ZONE EQUIVALENT SWEEP (min |forecast| filter)')
+    print('  THE KEY VALIDATION TABLE. Simulates raising min_forecast_entry.')
+    print('  Each row is CUMULATIVE: ">= 10" includes ALL trades with |forecast| >= 10.')
+    print('  Different from FORECAST analysis above (which shows independent ranges).')
+    print()
+    print('  forecast = clip(spread / dead_zone * max_forecast, -max_forecast, +max_forecast)')
+    print('  Raising min_forecast_entry filters out weak signals without changing dead_zone.')
+    print('  Eff. DZ = effective dead_zone equivalent (what dead_zone would need to be')
+    print('  to produce the same filter effect with min_forecast_entry=1).')
+    print()
+    print('  VALIDATION: look for a threshold where PF stabilizes above 1.10+')
+    print('  with sufficient trades. If no stable region exists, the edge is weak.')
+    print()
     current_dz = config.get('dead_zone', 1.0)
-    print(f'Config dead_zone = {current_dz}\n')
+    print(f'  Config dead_zone = {current_dz} (read from trade log header)\n')
 
     thresholds = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 20]
 
@@ -609,10 +655,14 @@ def analyze_dead_zone_sweep(trades: List[Dict], config: Dict):
         print(f'    To implement: set min_forecast_entry={best_thresh} in config')
 
 
-def analyze_holding_quality(trades: List[Dict]):
+def analyze_holding_quality(trades: List[Dict], config: Dict):
     """Analyze whether trades that exit via TIME_EXIT are profitable
     vs those hitting protective stop. Shows if holding period is optimal."""
     print_section('HOLDING QUALITY (time exit vs stop)')
+    print('  Compares TIME_EXIT (normal, holding_hours elapsed) vs PROT_STOP (safety net hit).')
+    print('  If TIME_EXIT PF >> PROT_STOP PF, the stop is a necessary evil (expected).')
+    print('  If PROT_STOP PF > TIME_EXIT PF, the stop is capturing bad entries early (good).')
+    print()
     
     time_exits = [t for t in trades if t.get('exit_reason') == 'TIME_EXIT']
     stop_exits = [t for t in trades if t.get('exit_reason') == 'PROT_STOP']
@@ -629,13 +679,48 @@ def analyze_holding_quality(trades: List[Dict]):
                   f'PF={pf_str:>4} | Avg=${m["avg_pnl"]:+.0f} | '
                   f'Net=${m["net_pnl"]:+,.0f}')
 
-    # Time exit P&L distribution by duration
-    if time_exits and 'duration_h' in time_exits[0]:
-        print(f'\n  Duration of TIME_EXIT trades:')
-        durations = [t['duration_h'] for t in time_exits]
-        dur_ranges = _auto_ranges(durations, num_bins=6)
-        analyze_by_range(time_exits, lambda t: t['duration_h'],
-                         dur_ranges, 'Duration (h)', decimals=0)
+    # Duration analysis with hourly bins
+    holding_hours = config.get('holding_hours', 6)
+    has_duration = [t for t in trades if 'duration_h' in t]
+    if has_duration:
+        print(f'\n  Duration breakdown (expected: ~{holding_hours}h from holding_hours config).')
+        print('  Trades > 24h likely cross a weekend (entry Fri -> exit Mon).')
+        print()
+
+        # Detect weekend crossers
+        weekend_trades = []
+        normal_trades = []
+        for t in has_duration:
+            entry_day = t['datetime'].weekday()
+            exit_day = t.get('exit_time')
+            if exit_day and entry_day == 4 and exit_day.weekday() == 0:
+                weekend_trades.append(t)
+            elif t['duration_h'] > 24:
+                weekend_trades.append(t)
+            else:
+                normal_trades.append(t)
+
+        if weekend_trades:
+            m = calculate_metrics(weekend_trades)
+            pf_str = format_pf(m['pf'])
+            print(f'  ** WEEKEND CROSSERS: {len(weekend_trades)} trades '
+                  f'(entry Fri -> exit Mon) | PF={pf_str} | '
+                  f'Net=${m["net_pnl"]:+,.0f}')
+            print()
+
+        # Hourly bins for all trades
+        durations = [t['duration_h'] for t in has_duration]
+        max_dur = max(durations)
+        # Create 1h bins up to 12h, then wider bins for outliers
+        bins = [(h, h + 1) for h in range(0, min(int(max_dur) + 2, 13))]
+        if max_dur > 12:
+            bins.append((12, 24))
+        if max_dur > 24:
+            bins.append((24, 72))
+        if max_dur > 72:
+            bins.append((72, max_dur + 1))
+        analyze_by_range(has_duration, lambda t: t['duration_h'],
+                         bins, 'Duration (h)', decimals=0)
 
 
 # =============================================================================
@@ -704,7 +789,7 @@ def main():
     analyze_by_day(trades)
     analyze_by_year(trades)
     analyze_by_exit_reason(trades)
-    analyze_holding_quality(trades)
+    analyze_holding_quality(trades, config)
     analyze_by_size(trades)
 
     print('\n' + '=' * 70)
