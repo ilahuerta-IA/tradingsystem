@@ -36,6 +36,7 @@ DATA FEEDS:
 """
 from __future__ import annotations
 import math
+import datetime as _dt
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -143,6 +144,9 @@ class VEGAStrategy(bt.Strategy):
         min_atr_entry=0.0,          # Min ATR(B) to enter (0=disabled)
         max_atr_entry=0.0,          # Max ATR(B) to enter (0=disabled)
 
+        # === DST ===
+        dst_mode='none',            # 'none', 'us', 'london_uk'
+
         # === PROTECTIVE STOP / TAKE PROFIT ===
         use_protective_stop=True,
         protective_atr_mult=5.0,    # Wide stop as safety net (rarely hit)
@@ -229,10 +233,58 @@ class VEGAStrategy(bt.Strategy):
         self._first_bar_dt = None
         self._last_bar_dt = None
 
+        # DST state
+        self._today_date = None
+        self._today_allowed_hours = list(self.p.allowed_hours)
+
         # Trade reporting
         self.trade_reports = []
         self.trade_report_file = None
         self._init_trade_reporting()
+
+    # =========================================================================
+    # DST OFFSET (ported from Luyten)
+    # =========================================================================
+
+    @staticmethod
+    def _bst_boundaries(year):
+        """BST: last Sunday of March .. last Sunday of October."""
+        mar31 = _dt.date(year, 3, 31)
+        bst_start = mar31 - _dt.timedelta(days=(mar31.weekday() + 1) % 7)
+        oct31 = _dt.date(year, 10, 31)
+        bst_end = oct31 - _dt.timedelta(days=(oct31.weekday() + 1) % 7)
+        return bst_start, bst_end
+
+    @staticmethod
+    def _us_dst_boundaries(year):
+        """US DST: 2nd Sunday of March .. 1st Sunday of November."""
+        mar1 = _dt.date(year, 3, 1)
+        first_sun_mar = mar1 + _dt.timedelta(days=(6 - mar1.weekday()) % 7)
+        dst_start = first_sun_mar + _dt.timedelta(days=7)
+        nov1 = _dt.date(year, 11, 1)
+        dst_end = nov1 + _dt.timedelta(days=(6 - nov1.weekday()) % 7)
+        return dst_start, dst_end
+
+    def _dst_offset_hours(self, today):
+        """Return hour offset for DST (-1 in summer, 0 in winter)."""
+        mode = self.p.dst_mode
+        if mode == 'none':
+            return 0
+        if mode == 'us':
+            dst_start, dst_end = self._us_dst_boundaries(today.year)
+            return -1 if dst_start <= today < dst_end else 0
+        if mode == 'london_uk':
+            bst_start, bst_end = self._bst_boundaries(today.year)
+            return -1 if bst_start <= today < bst_end else 0
+        return 0
+
+    def _update_dst(self, today):
+        """Recompute DST-adjusted allowed_hours once per day."""
+        if today == self._today_date:
+            return
+        self._today_date = today
+        offset = self._dst_offset_hours(today)
+        self._today_allowed_hours = [h + offset for h in self.p.allowed_hours]
 
     # =========================================================================
     # DATETIME HELPER
@@ -308,6 +360,9 @@ class VEGAStrategy(bt.Strategy):
             if self.p.use_time_filter:
                 self.trade_report_file.write(
                     f"Time Filter: {list(self.p.allowed_hours)}\n")
+            if self.p.dst_mode != 'none':
+                self.trade_report_file.write(
+                    f"DST Mode: {self.p.dst_mode}\n")
             if self.p.use_day_filter:
                 day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
                 days = [day_names[d] for d in self.p.allowed_days if d < 7]
@@ -668,10 +723,13 @@ class VEGAStrategy(bt.Strategy):
                 self.entry_price_b, self.protective_stop_b)
 
         elif self.state == "SCANNING":
-            # Time filter
+            # Update DST-adjusted hours (once per day)
+            self._update_dst(dt.date())
+
+            # Time filter (DST-aware)
             if self.p.use_time_filter:
                 if not check_time_filter(
-                        dt, self.p.allowed_hours, True):
+                        dt, self._today_allowed_hours, True):
                     return
 
             # Day filter

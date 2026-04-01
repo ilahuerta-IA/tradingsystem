@@ -3985,11 +3985,14 @@ STRATEGIES_CONFIG = {
 
             # Day filter: weekdays
             'use_day_filter': True,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'allowed_days': [0, 1, 2, 4],
+
+            # DST adjustment (shifts allowed_hours -1h in summer)
+            'dst_mode': 'london_uk',
 
             # ATR(B) volatility filter (0=disabled)
             'min_atr_entry': 0.0,
-            'max_atr_entry': 100.0,
+            'max_atr_entry': 0.0,
 
             # Protective stop / take profit
             'use_protective_stop': True,
