@@ -3949,7 +3949,7 @@ STRATEGIES_CONFIG = {
         'reference_symbol': 'NI225',
 
         'from_date': datetime.datetime(2012, 2, 1), #2012-02
-        'to_date': datetime.datetime(2021, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -3967,7 +3967,7 @@ STRATEGIES_CONFIG = {
             # Signal
             'dead_zone': 2.0,
             'max_forecast': 20,
-            'min_forecast_entry': 12,
+            'min_forecast_entry': 1,
 
             # Direction filter (True=allowed, False=disabled)
             'allow_long': True,
@@ -3981,7 +3981,7 @@ STRATEGIES_CONFIG = {
 
             # Time filter: London entry window
             'use_time_filter': True,
-            'allowed_hours': [8], #[7, 8, 9, 10, 11, 12],
+            'allowed_hours': [7, 8, 9, 10, 11, 12],
 
             # Day filter: weekdays
             'use_day_filter': True,
@@ -3992,7 +3992,7 @@ STRATEGIES_CONFIG = {
 
             # ATR(B) volatility filter (0=disabled)
             'min_atr_entry': 0.0,
-            'max_atr_entry': 0.0,
+            'max_atr_entry': 300.0,
 
             # Protective stop / take profit
             'use_protective_stop': True,
