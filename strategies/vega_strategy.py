@@ -140,6 +140,8 @@ class VEGAStrategy(bt.Strategy):
         allowed_hours=[7, 8, 9, 10, 11, 12],
         use_day_filter=True,
         allowed_days=[0, 1, 2, 3, 4],
+        min_atr_entry=0.0,          # Min ATR(B) to enter (0=disabled)
+        max_atr_entry=0.0,          # Max ATR(B) to enter (0=disabled)
 
         # === PROTECTIVE STOP / TAKE PROFIT ===
         use_protective_stop=True,
@@ -310,6 +312,10 @@ class VEGAStrategy(bt.Strategy):
                 day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
                 days = [day_names[d] for d in self.p.allowed_days if d < 7]
                 self.trade_report_file.write(f"Day Filter: {days}\n")
+            if self.p.min_atr_entry > 0 or self.p.max_atr_entry > 0:
+                atr_min = self.p.min_atr_entry if self.p.min_atr_entry > 0 else '-'
+                atr_max = self.p.max_atr_entry if self.p.max_atr_entry > 0 else '-'
+                self.trade_report_file.write(f"ATR Filter: [{atr_min}, {atr_max}]\n")
             self.trade_report_file.write("\n")
             print(f"[VEGA] Trade report: {report_path}")
         except Exception as e:
@@ -687,6 +693,13 @@ class VEGAStrategy(bt.Strategy):
                     self.trades_today = 0
                 if self.trades_today >= self.p.max_trades_per_day:
                     return
+
+            # ATR(B) volatility filter
+            atr_b_now = float(self.atr_b[0])
+            if self.p.min_atr_entry > 0 and atr_b_now < self.p.min_atr_entry:
+                return
+            if self.p.max_atr_entry > 0 and atr_b_now > self.p.max_atr_entry:
+                return
 
             # Dead zone / forecast threshold
             if abs(forecast) < self.p.min_forecast_entry:

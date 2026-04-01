@@ -3949,7 +3949,7 @@ STRATEGIES_CONFIG = {
         'reference_symbol': 'NI225',
 
         'from_date': datetime.datetime(2012, 2, 1), #2012-02
-        'to_date': datetime.datetime(2026, 1, 1),
+        'to_date': datetime.datetime(2021, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -3967,11 +3967,11 @@ STRATEGIES_CONFIG = {
             # Signal
             'dead_zone': 2.0,
             'max_forecast': 20,
-            'min_forecast_entry': 1,
+            'min_forecast_entry': 12,
 
             # Direction filter (True=allowed, False=disabled)
             'allow_long': True,
-            'allow_short': True,
+            'allow_short': False,
 
             # Session: London
             'session_start_hour': 7,
@@ -3981,16 +3981,20 @@ STRATEGIES_CONFIG = {
 
             # Time filter: London entry window
             'use_time_filter': True,
-            'allowed_hours': [7, 8, 9, 10, 11, 12],
+            'allowed_hours': [8], #[7, 8, 9, 10, 11, 12],
 
             # Day filter: weekdays
             'use_day_filter': True,
             'allowed_days': [0, 1, 2, 3, 4],
 
+            # ATR(B) volatility filter (0=disabled)
+            'min_atr_entry': 0.0,
+            'max_atr_entry': 100.0,
+
             # Protective stop / take profit
             'use_protective_stop': True,
-            'protective_atr_mult': 5.0,
-            'tp_atr_mult': 1.5,             # TP at 1.5x ATR (0=disabled)
+            'protective_atr_mult': 3.5,
+            'tp_atr_mult': 1.5,             # TP at 2.5x ATR (0=disabled)
 
             # Position sizing
             'risk_percent': 0.01,
@@ -4005,8 +4009,8 @@ STRATEGIES_CONFIG = {
             'jpy_rate': 150.0,
 
             # Runner: resample both feeds to H1
-            'base_timeframe_minutes': 60,
-            'resample_reference_minutes': 60,
+            'base_timeframe_minutes': 240,
+            'resample_reference_minutes': 240,
 
             # Debug
             'print_signals': False,
