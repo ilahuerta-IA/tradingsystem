@@ -512,6 +512,7 @@ def analyze_by_exit_reason(trades: List[Dict]):
     """Analyze by exit reason distribution."""
     print_section('ANALYSIS BY EXIT REASON')
     print('  TIME_EXIT = normal exit after holding_hours. PROT_STOP = safety net hit.')
+    print('  TP_EXIT = take profit reached (tp_atr_mult x ATR).')
     print('  High % TIME_EXIT is expected (stop is wide safety net, rarely triggered).')
     print()
     analyze_by_group(
@@ -658,18 +659,21 @@ def analyze_dead_zone_sweep(trades: List[Dict], config: Dict):
 def analyze_holding_quality(trades: List[Dict], config: Dict):
     """Analyze whether trades that exit via TIME_EXIT are profitable
     vs those hitting protective stop. Shows if holding period is optimal."""
-    print_section('HOLDING QUALITY (time exit vs stop)')
-    print('  Compares TIME_EXIT (normal, holding_hours elapsed) vs PROT_STOP (safety net hit).')
+    print_section('HOLDING QUALITY (time exit vs stop vs TP)')
+    print('  Compares TIME_EXIT (normal) vs PROT_STOP (safety net) vs TP_EXIT (take profit).')
+    print('  High TP_EXIT % = convergence captured early (good for live bracket orders).')
     print('  If TIME_EXIT PF >> PROT_STOP PF, the stop is a necessary evil (expected).')
     print('  If PROT_STOP PF > TIME_EXIT PF, the stop is capturing bad entries early (good).')
     print()
     
     time_exits = [t for t in trades if t.get('exit_reason') == 'TIME_EXIT']
     stop_exits = [t for t in trades if t.get('exit_reason') == 'PROT_STOP']
+    tp_exits = [t for t in trades if t.get('exit_reason') == 'TP_EXIT']
     other_exits = [t for t in trades
-                   if t.get('exit_reason') not in ('TIME_EXIT', 'PROT_STOP', None)]
+                   if t.get('exit_reason') not in ('TIME_EXIT', 'PROT_STOP', 'TP_EXIT', None)]
 
     for label, group in [('TIME_EXIT', time_exits),
+                         ('TP_EXIT', tp_exits),
                          ('PROT_STOP', stop_exits),
                          ('OTHER', other_exits)]:
         if group:

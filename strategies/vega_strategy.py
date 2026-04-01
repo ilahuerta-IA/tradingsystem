@@ -133,6 +133,7 @@ class VEGAStrategy(bt.Strategy):
         session_start_hour=7,       # London session start (UTC)
         session_end_hour=12,        # London session end (UTC)
         holding_hours=6,            # Hours to hold position
+        max_trades_per_day=0,       # Max entries per day (0=unlimited)
 
         # === FILTERS ===
         use_time_filter=True,
@@ -140,9 +141,10 @@ class VEGAStrategy(bt.Strategy):
         use_day_filter=True,
         allowed_days=[0, 1, 2, 3, 4],
 
-        # === PROTECTIVE STOP ===
+        # === PROTECTIVE STOP / TAKE PROFIT ===
         use_protective_stop=True,
         protective_atr_mult=5.0,    # Wide stop as safety net (rarely hit)
+        tp_atr_mult=0.0,            # Take profit in ATR multiples (0=disabled)
 
         # === POSITION SIZING ===
         risk_percent=0.01,          # Risk per trade as fraction of equity
@@ -512,6 +514,23 @@ class VEGAStrategy(bt.Strategy):
                 return True
         return False
 
+    def _check_take_profit(self):
+        """Check if take profit level reached based on ATR multiple."""
+        if self.p.tp_atr_mult <= 0 or self.entry_price_b is None:
+            return False
+
+        atr_b_val = float(self.atr_b[0])
+        if atr_b_val <= 0 or math.isnan(atr_b_val):
+            return False
+
+        tp_dist = atr_b_val * self.p.tp_atr_mult
+        current_price = float(self.data_b.close[0])
+
+        if self.direction == 1:     # Long B
+            return current_price >= self.entry_price_b + tp_dist
+        else:                       # Short B
+            return current_price <= self.entry_price_b - tp_dist
+
     def _execute_exit(self, dt, reason):
         """Close position on Index B."""
         self.last_exit_reason = reason
@@ -622,15 +641,20 @@ class VEGAStrategy(bt.Strategy):
         # === STATE MACHINE ===
 
         if self.state == "IN_POSITION":
+            # Check protective stop first (safety net)
+            if self._check_protective_stop():
+                self._execute_exit(dt, 'PROT_STOP')
+                return
+
+            # Check take profit
+            if self._check_take_profit():
+                self._execute_exit(dt, 'TP_EXIT')
+                return
+
             # Check holding period
             bars_held = len(self.data_b) - self.entry_bar
             if bars_held >= self.p.holding_hours:
                 self._execute_exit(dt, 'TIME_EXIT')
-                return
-
-            # Check protective stop
-            if self._check_protective_stop():
-                self._execute_exit(dt, 'PROT_STOP')
                 return
 
             # Update plot lines while in position
@@ -655,11 +679,21 @@ class VEGAStrategy(bt.Strategy):
                 self.p.session_end_hour + self.p.holding_hours)
             # No explicit block needed; allowed_hours handles entry window
 
+            # Max trades per day filter
+            if self.p.max_trades_per_day > 0:
+                current_date = dt.date()
+                if self.last_trade_date != current_date:
+                    self.last_trade_date = current_date
+                    self.trades_today = 0
+                if self.trades_today >= self.p.max_trades_per_day:
+                    return
+
             # Dead zone / forecast threshold
             if abs(forecast) < self.p.min_forecast_entry:
                 return
 
             # Enter
+            self.trades_today += 1
             self._execute_entry(dt, spread, forecast)
 
     # =========================================================================

@@ -3943,17 +3943,17 @@ STRATEGIES_CONFIG = {
         'active': True,
         'strategy_name': 'VEGA',
         'asset_name': 'SP500',
-        'data_path': 'data/SP500_5m_5Yea.csv',
+        'data_path': 'data/SP500_5m_15Yea.csv',
 
-        'reference_data_path': 'data/NI225_5m_5Yea.csv',
+        'reference_data_path': 'data/NI225_5m_15Yea.csv',
         'reference_symbol': 'NI225',
 
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2020, 4, 1),
+        'from_date': datetime.datetime(2012, 2, 1), #2012-02
+        'to_date': datetime.datetime(2026, 1, 1),
 
         'starting_cash': 100000.0,
 
-        'run_plot': True,
+        'run_plot': False,
         'generate_report': True,
         'save_log': True,
 
@@ -3965,7 +3965,7 @@ STRATEGIES_CONFIG = {
             'atr_period': 24,
 
             # Signal
-            'dead_zone': 1.0,
+            'dead_zone': 2.0,
             'max_forecast': 20,
             'min_forecast_entry': 1,
 
@@ -3976,7 +3976,8 @@ STRATEGIES_CONFIG = {
             # Session: London
             'session_start_hour': 7,
             'session_end_hour': 12,
-            'holding_hours': 6,
+            'holding_hours': 3,
+            'max_trades_per_day': 1,        # Max entries per day (0=unlimited)
 
             # Time filter: London entry window
             'use_time_filter': True,
@@ -3986,9 +3987,10 @@ STRATEGIES_CONFIG = {
             'use_day_filter': True,
             'allowed_days': [0, 1, 2, 3, 4],
 
-            # Protective stop (wide, safety net)
+            # Protective stop / take profit
             'use_protective_stop': True,
             'protective_atr_mult': 5.0,
+            'tp_atr_mult': 1.5,             # TP at 1.5x ATR (0=disabled)
 
             # Position sizing
             'risk_percent': 0.01,
