@@ -4034,7 +4034,7 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/GDAXI_5m_15Yea.csv',
         'reference_symbol': 'GDAXI',
 
-        'from_date': datetime.datetime(2012, 2, 1),
+        'from_date': datetime.datetime(2013, 10, 2), #2013-10-02
         'to_date': datetime.datetime(2025, 12, 31),
 
         'starting_cash': 100000.0,
@@ -4070,20 +4070,20 @@ STRATEGIES_CONFIG = {
             'allowed_hours': [7, 8, 9, 10, 11, 12],
 
             # Day filter: weekdays
-            'use_day_filter': True,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3],
 
             # DST adjustment (shifts allowed_hours -1h in summer)
             'dst_mode': 'london_uk',
 
             # ATR(B) volatility filter (0=disabled)
-            'min_atr_entry': 0.0,
-            'max_atr_entry': 0.0,
+            'min_atr_entry': 50.0,
+            'max_atr_entry': 250.0,
 
             # Protective stop / take profit
             'use_protective_stop': True,
             'protective_atr_mult': 3.5,
-            'tp_atr_mult': 1.5,             # TP at 1.5x ATR (0=disabled)
+            'tp_atr_mult': 2.5,             # TP at 2.5x ATR (0=disabled)
 
             # Position sizing
             'risk_percent': 0.01,
