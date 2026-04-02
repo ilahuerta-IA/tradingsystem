@@ -4029,13 +4029,13 @@ STRATEGIES_CONFIG = {
         'active': True,
         'strategy_name': 'VEGA',
         'asset_name': 'SP500',
-        'data_path': 'data/SP500_5m_5Yea.csv',
+        'data_path': 'data/SP500_5m_15Yea.csv',
 
-        'reference_data_path': 'data/GDAXI_5m_5Yea.csv',
+        'reference_data_path': 'data/GDAXI_5m_15Yea.csv',
         'reference_symbol': 'GDAXI',
 
-        'from_date': datetime.datetime(2020, 1, 1),
-        'to_date': datetime.datetime(2026, 1, 1),
+        'from_date': datetime.datetime(2012, 2, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -4046,7 +4046,7 @@ STRATEGIES_CONFIG = {
         'broker_config_key': 'darwinex_zero_cfd_gdaxi',
 
         'params': {
-            # Z-score (H1 bars)
+            # Z-score (H4 bars)
             'sma_period': 24,
             'atr_period': 24,
 
@@ -4063,6 +4063,7 @@ STRATEGIES_CONFIG = {
             'session_start_hour': 7,
             'session_end_hour': 12,
             'holding_hours': 3,
+            'max_trades_per_day': 1,        # Max entries per day (0=unlimited)
 
             # Time filter: London entry window
             'use_time_filter': True,
@@ -4072,23 +4073,32 @@ STRATEGIES_CONFIG = {
             'use_day_filter': True,
             'allowed_days': [0, 1, 2, 3, 4],
 
-            # Protective stop (wide, safety net)
+            # DST adjustment (shifts allowed_hours -1h in summer)
+            'dst_mode': 'london_uk',
+
+            # ATR(B) volatility filter (0=disabled)
+            'min_atr_entry': 0.0,
+            'max_atr_entry': 0.0,
+
+            # Protective stop / take profit
             'use_protective_stop': True,
-            'protective_atr_mult': 5.0,
+            'protective_atr_mult': 3.5,
+            'tp_atr_mult': 1.5,             # TP at 1.5x ATR (0=disabled)
 
             # Position sizing
             'risk_percent': 0.01,
             'max_position_pct': 0.10,
             'capital_alloc_pct': 0.10,      # 10% of equity margin at max forecast
+            'max_loss_per_trade_pct': 0.05,  # Max 5% equity loss if stop hit
 
-            # Asset config
+            # Asset config (GDAXI = EUR-denominated index)
             'pip_value': 1.0,
             'lot_size': 1,
             'margin_pct': 5.0,
 
-            # Runner: resample both feeds to H1
-            'base_timeframe_minutes': 60,
-            'resample_reference_minutes': 60,
+            # Runner: resample both feeds to H4
+            'base_timeframe_minutes': 240,
+            'resample_reference_minutes': 240,
 
             # Debug
             'print_signals': False,
