@@ -4106,6 +4106,87 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    'UK100_VEGA': {
+        'active': False,
+        'strategy_name': 'VEGA',
+        'asset_name': 'SP500',
+        'data_path': 'data/SP500_5m_15Yea.csv',
+
+        'reference_data_path': 'data/UK100_5m_15Yea.csv',
+        'reference_symbol': 'UK100',
+
+        'from_date': datetime.datetime(2012, 2, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'broker_config_key': 'darwinex_zero_cfd_uk100',
+
+        'params': {
+            # Z-score (H4 bars)
+            'sma_period': 24,
+            'atr_period': 24,
+
+            # Signal -- start with GDAXI-level dead zone
+            'dead_zone': 3.0,
+            'max_forecast': 20,
+            'min_forecast_entry': 1,
+
+            # Direction filter (True=allowed, False=disabled)
+            'allow_long': True,
+            'allow_short': True,
+
+            # Session: London
+            'session_start_hour': 7,
+            'session_end_hour': 12,
+            'holding_hours': 3,
+            'max_trades_per_day': 1,
+
+            # Time filter: London entry window
+            'use_time_filter': True,
+            'allowed_hours': [7, 8, 9, 10, 11, 12],
+
+            # Day filter: all weekdays (optimize later)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            # DST adjustment (shifts allowed_hours -1h in summer)
+            'dst_mode': 'london_uk',
+
+            # ATR(B) volatility filter (0=disabled, calibrate later)
+            'min_atr_entry': 0.0,
+            'max_atr_entry': 0.0,
+
+            # Protective stop / take profit (GDAXI champion as baseline)
+            'use_protective_stop': True,
+            'protective_atr_mult': 3.5,
+            'tp_atr_mult': 2.5,
+
+            # Position sizing
+            'risk_percent': 0.01,
+            'max_position_pct': 0.10,
+            'capital_alloc_pct': 0.10,
+            'max_loss_per_trade_pct': 0.05,
+
+            # Asset config (UK100 = GBP-denominated index)
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'margin_pct': 5.0,
+
+            # Runner: resample both feeds to H4
+            'base_timeframe_minutes': 240,
+            'resample_reference_minutes': 240,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
 
 }
 
@@ -4152,6 +4233,15 @@ BROKER_CONFIG = {
         # SPREAD: 0.8 puntos = $0.40/unit/side
         # Total per side: 0.30 + 0.40 = $0.70/unit/side
         'commission_per_contract': 0.70,
+        'leverage': 20.0,
+        'margin_percent': 5.0,
+    },
+    'darwinex_zero_cfd_uk100': {
+        # UK100: 2.75 GBP/order/DW-contract, DW-contract = 10 x UK100
+        # Per BT unit: 2.75/10 = 0.275 GBP ~ $0.35/unit/side (commission)
+        # SPREAD: 1.0 pts -> half-spread = 0.5 GBP/unit ~ $0.63/side
+        # Total per side: 0.35 + 0.63 = $0.98/unit/side
+        'commission_per_contract': 0.98,
         'leverage': 20.0,
         'margin_percent': 5.0,
     },
