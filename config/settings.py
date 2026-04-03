@@ -4119,7 +4119,7 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/GDAXI_5m_15Yea.csv',
         'reference_symbol': 'GDAXI',
 
-        'from_date': datetime.datetime(2013, 10, 2),
+        'from_date': datetime.datetime(2013, 10, 2), #2013-10-02
         'to_date': datetime.datetime(2025, 12, 31),
 
         'starting_cash': 100000.0,
@@ -4155,8 +4155,8 @@ STRATEGIES_CONFIG = {
             'allowed_hours': [7, 8, 9, 10, 11, 12],
 
             # Day filter: all weekdays (optimize later)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3],
 
             # DST adjustment (London session)
             'dst_mode': 'london_uk',
