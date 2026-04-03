@@ -4277,10 +4277,96 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    # AUS200/NDX New York -- AUS200 as reference, NDX as traded
+    # Divergence study Score=1.08 (DZ=3.0), Edge=0.0916, WR=57.6%
+    # AUS200 closed ~8h before NY open -> max lag -> divergence
+    # NDX traded (spread/ATR=0.41%, best in universe)
+    # 5 years data only (2020-2026)
+    # RESULTADO: PF=1.01, DD=35.81%, WR=51.8%, Net=$2,280 -> NO EDGE
+    # Edge del estudio (Score 1.08) insuficiente para superar costes operativos
+    'AUSDX_VEGA': {
+        'active': False,
+        'strategy_name': 'VEGA',
+        'asset_name': 'AUS200',
+        'data_path': 'data/AUS200_5m_5Yea.csv',
+
+        'reference_data_path': 'data/NDX_5m_15Yea.csv',
+        'reference_symbol': 'NDX',
+
+        'from_date': datetime.datetime(2020, 1, 1), #2020-01-01
+        'to_date': datetime.datetime(2025, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'broker_config_key': 'darwinex_zero_cfd_ndx',
+
+        'params': {
+            # Z-score (H4 bars)
+            'sma_period': 24,
+            'atr_period': 24,
+
+            # Signal -- DZ=3.0 from divergence study (Score 1.08)
+            'dead_zone': 3.0,
+            'max_forecast': 20,
+            'min_forecast_entry': 1,
+
+            # Direction filter (L+S)
+            'allow_long': True,
+            'allow_short': True,
+
+            # Session: NY open (14-18 UTC winter, 13-17 summer via DST=us)
+            'session_start_hour': 14,
+            'session_end_hour': 18,
+            'holding_hours': 3,
+            'max_trades_per_day': 1,
+
+            # Time filter: NY entry window
+            'use_time_filter': True,
+            'allowed_hours': [14, 15, 16, 17, 18],
+
+            # Day filter: no Friday (consistent with other VEGA configs)
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3],
+
+            # DST adjustment (NY session)
+            'dst_mode': 'us',
+
+            # ATR(B) volatility filter (disabled, calibrate later)
+            'min_atr_entry': 0.0,
+            'max_atr_entry': 0.0,
+
+            # Protective stop / take profit (proven baseline)
+            'use_protective_stop': True,
+            'protective_atr_mult': 3.5,
+            'tp_atr_mult': 2.5,
+
+            # Position sizing
+            'risk_percent': 0.01,
+            'max_position_pct': 0.10,
+            'capital_alloc_pct': 0.10,
+            'max_loss_per_trade_pct': 0.05,
+
+            # Asset config (NDX = USD-denominated index)
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'margin_pct': 5.0,
+
+            # Runner: resample both feeds to H4
+            'base_timeframe_minutes': 240,
+            'resample_reference_minutes': 240,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
 
 }
-
-# Broker settings for commission calculation
 BROKER_CONFIG = {
     'darwinex_zero': {
         'commission_per_lot': 2.50,  # USD per round-trip lot
