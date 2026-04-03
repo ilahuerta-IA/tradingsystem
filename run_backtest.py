@@ -28,7 +28,7 @@ from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, E
 
 # Non-forex symbol lists (both use ETFCSVData for datetime parsing)
 ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV']
-CFD_INDEX_SYMBOLS = ['SP500', 'AUS200', 'UK100', 'GDAXI', 'NI225', 'SPA35']
+CFD_INDEX_SYMBOLS = ['SP500', 'AUS200', 'UK100', 'GDAXI', 'NI225', 'SPA35', 'NDX', 'EUR50']
 
 # Strategy registry
 STRATEGY_REGISTRY = {

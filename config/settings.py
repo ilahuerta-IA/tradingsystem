@@ -4106,16 +4106,20 @@ STRATEGIES_CONFIG = {
         }
     },
 
-    'UK100_VEGA': {
-        'active': False,
+    # NDX/GDAXI London -- NDX as reference, GDAXI as traded
+    # Divergence study Score=4.10 (DZ=3.0), Edge=0.2520, WR=57.4%
+    # NDX closed/pre-market during London open -> lag -> divergence
+    # Spread/ATR(GDAXI)=0.96% -- proven tradeable
+    'NDAXI_VEGA': {
+        'active': True,
         'strategy_name': 'VEGA',
-        'asset_name': 'SP500',
-        'data_path': 'data/SP500_5m_15Yea.csv',
+        'asset_name': 'NDX',
+        'data_path': 'data/NDX_5m_15Yea.csv',
 
-        'reference_data_path': 'data/UK100_5m_15Yea.csv',
-        'reference_symbol': 'UK100',
+        'reference_data_path': 'data/GDAXI_5m_15Yea.csv',
+        'reference_symbol': 'GDAXI',
 
-        'from_date': datetime.datetime(2012, 2, 1),
+        'from_date': datetime.datetime(2013, 10, 2),
         'to_date': datetime.datetime(2025, 12, 31),
 
         'starting_cash': 100000.0,
@@ -4124,23 +4128,23 @@ STRATEGIES_CONFIG = {
         'generate_report': True,
         'save_log': True,
 
-        'broker_config_key': 'darwinex_zero_cfd_uk100',
+        'broker_config_key': 'darwinex_zero_cfd_gdaxi',
 
         'params': {
             # Z-score (H4 bars)
             'sma_period': 24,
             'atr_period': 24,
 
-            # Signal -- start with GDAXI-level dead zone
+            # Signal -- DZ=3.0 from divergence study (Score 4.10)
             'dead_zone': 3.0,
             'max_forecast': 20,
             'min_forecast_entry': 1,
 
-            # Direction filter (True=allowed, False=disabled)
+            # Direction filter (L+S as per GDAXI_VEGA proven)
             'allow_long': True,
             'allow_short': True,
 
-            # Session: London
+            # Session: London open
             'session_start_hour': 7,
             'session_end_hour': 12,
             'holding_hours': 3,
@@ -4154,99 +4158,14 @@ STRATEGIES_CONFIG = {
             'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
 
-            # DST adjustment (shifts allowed_hours -1h in summer)
+            # DST adjustment (London session)
             'dst_mode': 'london_uk',
-
-            # ATR(B) volatility filter (0=disabled, calibrate later)
-            'min_atr_entry': 0.0,
-            'max_atr_entry': 0.0,
-
-            # Protective stop / take profit (GDAXI champion as baseline)
-            'use_protective_stop': True,
-            'protective_atr_mult': 3.5,
-            'tp_atr_mult': 2.5,
-
-            # Position sizing
-            'risk_percent': 0.01,
-            'max_position_pct': 0.10,
-            'capital_alloc_pct': 0.10,
-            'max_loss_per_trade_pct': 0.05,
-
-            # Asset config (UK100 = GBP-denominated index)
-            'pip_value': 1.0,
-            'lot_size': 1,
-            'margin_pct': 5.0,
-
-            # Runner: resample both feeds to H4
-            'base_timeframe_minutes': 240,
-            'resample_reference_minutes': 240,
-
-            # Debug
-            'print_signals': False,
-            'export_reports': True,
-        }
-    },
-
-    # GDAXI/NDX New York -- Index B standalone (NY session)
-    # Z-score divergence: GDAXI vs NDX, trades NDX
-    # Spread/ATR = 0.41% (recent) -- best viable candidate
-    # Session: NY open (14-18 UTC winter, 13-17 summer via DST=us)
-    'NDX_VEGA': {
-        'active': True,
-        'strategy_name': 'VEGA',
-        'asset_name': 'GDAXI',
-        'data_path': 'data/GDAXI_5m_15Yea.csv',
-
-        'reference_data_path': 'data/NDX_5m_15Yea.csv',
-        'reference_symbol': 'NDX',
-
-        'from_date': datetime.datetime(2013, 10, 2),
-        'to_date': datetime.datetime(2025, 12, 31),
-
-        'starting_cash': 100000.0,
-
-        'run_plot': False,
-        'generate_report': True,
-        'save_log': True,
-
-        'broker_config_key': 'darwinex_zero_cfd_ndx',
-
-        'params': {
-            # Z-score (H4 bars)
-            'sma_period': 24,
-            'atr_period': 24,
-
-            # Signal -- start with GDAXI-level dead zone
-            'dead_zone': 3.0,
-            'max_forecast': 20,
-            'min_forecast_entry': 1,
-
-            # Direction filter (True=allowed, False=disabled)
-            'allow_long': True,
-            'allow_short': True,
-
-            # Session: NY open
-            'session_start_hour': 14,
-            'session_end_hour': 18,
-            'holding_hours': 3,
-            'max_trades_per_day': 1,
-
-            # Time filter: NY entry window (winter hours, DST shifts -1h in summer)
-            'use_time_filter': True,
-            'allowed_hours': [14, 15, 16, 17, 18],
-
-            # Day filter: all weekdays (optimize later)
-            'use_day_filter': False,
-            'allowed_days': [0, 1, 2, 3, 4],
-
-            # DST adjustment (shifts allowed_hours -1h in summer)
-            'dst_mode': 'us',
 
             # ATR(B) volatility filter (disabled, calibrate later)
             'min_atr_entry': 0.0,
             'max_atr_entry': 0.0,
 
-            # Protective stop / take profit (GDAXI champion as baseline)
+            # Protective stop / take profit (GDAXI champion baseline)
             'use_protective_stop': True,
             'protective_atr_mult': 3.5,
             'tp_atr_mult': 2.5,
@@ -4257,7 +4176,7 @@ STRATEGIES_CONFIG = {
             'capital_alloc_pct': 0.10,
             'max_loss_per_trade_pct': 0.05,
 
-            # Asset config (NDX = USD-denominated index)
+            # Asset config (GDAXI = EUR-denominated index)
             'pip_value': 1.0,
             'lot_size': 1,
             'margin_pct': 5.0,
