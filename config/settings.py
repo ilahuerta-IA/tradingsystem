@@ -4191,6 +4191,92 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    # UK100/GDAXI Tokyo -- UK100 as reference, GDAXI as traded
+    # Divergence study Score=2.26 (DZ=3.0), Edge=0.1583, WR=55.4%
+    # UK100 closed during Tokyo session -> divergence accumulates overnight
+    # RESULT: PF=1.03, DD=27% -- NO EDGE. GDAXI CFD nocturnal = illiquid
+    'UKAXI_VEGA': {
+        'active': False,
+        'strategy_name': 'VEGA',
+        'asset_name': 'UK100',
+        'data_path': 'data/UK100_5m_15Yea.csv',
+
+        'reference_data_path': 'data/GDAXI_5m_15Yea.csv',
+        'reference_symbol': 'GDAXI',
+
+        'from_date': datetime.datetime(2013, 10, 2), #2013-10-02
+        'to_date': datetime.datetime(2025, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'broker_config_key': 'darwinex_zero_cfd_gdaxi',
+
+        'params': {
+            # Z-score (H4 bars)
+            'sma_period': 24,
+            'atr_period': 24,
+
+            # Signal -- DZ=3.0 from divergence study (Score 2.26)
+            'dead_zone': 3.0,
+            'max_forecast': 20,
+            'min_forecast_entry': 1,
+
+            # Direction filter (L+S, proven for GDAXI)
+            'allow_long': True,
+            'allow_short': True,
+
+            # Session: Tokyo (0-5 UTC winter)
+            'session_start_hour': 0,
+            'session_end_hour': 5,
+            'holding_hours': 3,
+            'max_trades_per_day': 1,
+
+            # Time filter: Tokyo entry window
+            'use_time_filter': True,
+            'allowed_hours': [0, 1, 2, 3, 4, 5],
+
+            # Day filter: no Friday (proven pattern for GDAXI)
+            'use_day_filter': True,
+            'allowed_days': [0, 1, 2, 3],
+
+            # DST adjustment -- Tokyo session, no DST in Japan
+            # but GDAXI has European DST. Use london_uk to shift hours.
+            'dst_mode': 'london_uk',
+
+            # ATR(B) volatility filter (disabled, calibrate later)
+            'min_atr_entry': 0.0,
+            'max_atr_entry': 0.0,
+
+            # Protective stop / take profit (GDAXI proven baseline)
+            'use_protective_stop': True,
+            'protective_atr_mult': 3.5,
+            'tp_atr_mult': 2.5,
+
+            # Position sizing
+            'risk_percent': 0.01,
+            'max_position_pct': 0.10,
+            'capital_alloc_pct': 0.10,
+            'max_loss_per_trade_pct': 0.05,
+
+            # Asset config (GDAXI = EUR-denominated index)
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'margin_pct': 5.0,
+
+            # Runner: resample both feeds to H4
+            'base_timeframe_minutes': 240,
+            'resample_reference_minutes': 240,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
 
 }
 
