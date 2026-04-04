@@ -4365,6 +4365,95 @@ STRATEGIES_CONFIG = {
         }
     },
 
+    # EUR50/NDX New York -- EUR50 as reference, NDX as traded
+    # Divergence study Score=1.06 (DZ=3.0), Edge=0.0729, WR=55.2%
+    # EUR50 closes ~14:30 UTC (Xetra) -> lag before NY open
+    # NDX traded (spread/ATR=0.41%, best in universe)
+    # 5 years data only (2020-2026)
+    # LAST VEGA CANDIDATE -- VEGA now exhausted with 3 validated configs
+    # RESULT: PF=0.96, DD=38.75%, WR=52.6%, Net=-$12,784 -> NEGATIVE edge
+    # Score 1.06 worst of all candidates tested. Confirms Score < 2.0 = no edge.
+    'EURDX_VEGA': {
+        'active': False,
+        'strategy_name': 'VEGA',
+        'asset_name': 'EUR50',
+        'data_path': 'data/EUR50_5m_5Yea.csv',
+
+        'reference_data_path': 'data/NDX_5m_15Yea.csv',
+        'reference_symbol': 'NDX',
+
+        'from_date': datetime.datetime(2020, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+
+        'broker_config_key': 'darwinex_zero_cfd_ndx',
+
+        'params': {
+            # Z-score (H4 bars)
+            'sma_period': 24,
+            'atr_period': 24,
+
+            # Signal -- DZ=3.0 from divergence study (Score 1.06)
+            'dead_zone': 3.0,
+            'max_forecast': 20,
+            'min_forecast_entry': 1,
+
+            # Direction filter (L+S)
+            'allow_long': True,
+            'allow_short': True,
+
+            # Session: NY open (14-18 UTC winter, 13-17 summer via DST=us)
+            'session_start_hour': 14,
+            'session_end_hour': 18,
+            'holding_hours': 3,
+            'max_trades_per_day': 1,
+
+            # Time filter: NY entry window
+            'use_time_filter': True,
+            'allowed_hours': [14, 15, 16, 17, 18],
+
+            # Day filter: all days (optimize later if edge exists)
+            'use_day_filter': False,
+            'allowed_days': [0, 1, 2, 3, 4],
+
+            # DST adjustment (NY session)
+            'dst_mode': 'us',
+
+            # ATR(B) volatility filter (disabled, calibrate later)
+            'min_atr_entry': 0.0,
+            'max_atr_entry': 0.0,
+
+            # Protective stop / take profit (proven baseline)
+            'use_protective_stop': True,
+            'protective_atr_mult': 3.5,
+            'tp_atr_mult': 2.5,
+
+            # Position sizing
+            'risk_percent': 0.01,
+            'max_position_pct': 0.10,
+            'capital_alloc_pct': 0.10,
+            'max_loss_per_trade_pct': 0.05,
+
+            # Asset config (NDX = USD-denominated index)
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'margin_pct': 5.0,
+
+            # Runner: resample both feeds to H4
+            'base_timeframe_minutes': 240,
+            'resample_reference_minutes': 240,
+
+            # Debug
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
 
 }
 BROKER_CONFIG = {
