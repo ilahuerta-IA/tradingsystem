@@ -13,6 +13,8 @@ Usage:
     python tools/portfolio_backtest.py --assets USDJPY EURJPY
     python tools/portfolio_backtest.py --exclude TLT_KOI DIA_KOI
     python tools/portfolio_backtest.py -p -q --from-date 2025-12-01 --to-date 2026-02-14  # Walk-forward
+    python tools/portfolio_backtest.py --vega -p -q                  # VEGA portfolio (from settings_vega)
+    python tools/portfolio_backtest.py --vega -p -q --from-date 2024-01-01  # VEGA walk-forward
 """
 import sys
 import os
@@ -36,11 +38,25 @@ from strategies.koi_strategy import KOIStrategy
 from strategies.sedna_strategy import SEDNAStrategy
 from strategies.gemini_strategy import GEMINIStrategy
 from strategies.luyten_strategy import LUYTENStrategy
-from lib.commission import ForexCommission, ETFCommission, ETFCSVData
+from strategies.vega_strategy import VEGAStrategy
+from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
+
+# Optional: VEGA private settings (gitignored)
+try:
+    from config.settings_vega import (
+        VEGA_STRATEGIES_CONFIG, VEGA_BROKER_CONFIG,
+        VEGA_ALLOCATION, VEGA_TOTAL_CAPITAL,
+    )
+    VEGA_AVAILABLE = True
+except ImportError:
+    VEGA_AVAILABLE = False
 
 
 # ETF symbols list
 ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV']
+
+# CFD index symbols (use ETFCSVData for datetime parsing, CFDIndexCommission)
+CFD_INDEX_SYMBOLS = ['SP500', 'AUS200', 'UK100', 'GDAXI', 'NI225', 'SPA35', 'NDX', 'EUR50']
 
 # Strategy registry
 STRATEGY_REGISTRY = {
@@ -49,6 +65,7 @@ STRATEGY_REGISTRY = {
     'SEDNA': SEDNAStrategy,
     'GEMINI': GEMINIStrategy,
     'LUYTEN': LUYTENStrategy,
+    'VEGA': VEGAStrategy,
 }
 
 # =============================================================================
@@ -130,11 +147,11 @@ def _get_portfolio_risk(config_name):
 
 
 def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
-                        from_date=None, to_date=None):
+                        from_date=None, to_date=None, vega_mode=False):
     """Run a single backtest and return results.
     
     If use_portfolio=True, overrides starting_cash and risk_percent
-    from PORTFOLIO_ALLOCATION config.
+    from PORTFOLIO_ALLOCATION (or VEGA_ALLOCATION if vega_mode).
     If from_date/to_date provided, overrides config date range.
     """
     # Initialize Cerebro
@@ -144,6 +161,11 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
     data_path = Path(config['data_path'])
     asset_name = config['asset_name']
     is_etf = asset_name.upper() in ETF_SYMBOLS
+    is_cfd_index = asset_name.upper() in CFD_INDEX_SYMBOLS
+    is_non_forex = is_etf or is_cfd_index
+    
+    effective_from = from_date if from_date else config['from_date']
+    effective_to = to_date if to_date else config['to_date']
     
     feed_kwargs = dict(
         dataname=str(data_path),
@@ -157,43 +179,101 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
         close=5,
         volume=6,
         openinterest=-1,
-        fromdate=from_date if from_date else config['from_date'],
-        todate=to_date if to_date else config['to_date'],
+        fromdate=effective_from,
+        todate=effective_to,
     )
     
-    if is_etf:
+    if is_non_forex:
         data = ETFCSVData(**feed_kwargs)
     else:
         feed_kwargs['timeframe'] = bt.TimeFrame.Minutes
         feed_kwargs['compression'] = 5
         data = bt.feeds.GenericCSVData(**feed_kwargs)
     
-    cerebro.adddata(data, name=asset_name)
+    # Get params early (needed for resampling decisions)
+    params = config.get('params', {}).copy()
     
-    # GEMINI needs a second data feed (reference pair)
-    if config['strategy_name'] == 'GEMINI' and 'reference_data_path' in config:
-        ref_path = Path(config['reference_data_path'])
-        ref_kwargs = feed_kwargs.copy()
-        ref_kwargs['dataname'] = str(ref_path)
-        ref_data = bt.feeds.GenericCSVData(**ref_kwargs)
-        cerebro.adddata(ref_data, name=config.get('reference_symbol', 'REF'))
+    # Resample primary feed if base_timeframe_minutes > 5 (e.g. VEGA M5->H4)
+    base_tf = params.get('base_timeframe_minutes', 0)
+    if base_tf and base_tf > 5:
+        data_base = cerebro.resampledata(
+            data,
+            timeframe=bt.TimeFrame.Minutes,
+            compression=base_tf
+        )
+        data_base._name = asset_name
+    else:
+        cerebro.adddata(data, name=asset_name)
+    
+    # Reference data feed (VEGA dual-index and GEMINI cross-pair)
+    reference_data_path = config.get('reference_data_path')
+    if reference_data_path:
+        ref_path = Path(reference_data_path)
+        ref_name = config.get('reference_symbol', 'REF')
+        ref_is_cfd = ref_name.upper() in CFD_INDEX_SYMBOLS
+        ref_is_etf = ref_name.upper() in ETF_SYMBOLS
+        ref_is_non_forex = ref_is_cfd or ref_is_etf
+        
+        ref_kwargs = dict(
+            dataname=str(ref_path),
+            dtformat='%Y%m%d',
+            tmformat='%H:%M:%S',
+            datetime=0, time=1, open=2, high=3, low=4, close=5,
+            volume=6, openinterest=-1,
+            fromdate=effective_from,
+            todate=effective_to,
+        )
+        
+        if ref_is_non_forex:
+            ref_data = ETFCSVData(**ref_kwargs)
+        else:
+            ref_kwargs['timeframe'] = bt.TimeFrame.Minutes
+            ref_kwargs['compression'] = 5
+            ref_data = bt.feeds.GenericCSVData(**ref_kwargs)
+        
+        # Resample reference if requested (VEGA: M5->H4)
+        resample_ref = params.get('resample_reference_minutes')
+        if resample_ref and resample_ref > 0:
+            ref_resampled = cerebro.resampledata(
+                ref_data,
+                timeframe=bt.TimeFrame.Minutes,
+                compression=resample_ref
+            )
+            ref_resampled._name = ref_name
+        else:
+            cerebro.adddata(ref_data, name=ref_name)
     
     # Get strategy class and add with params
     strategy_class = STRATEGY_REGISTRY.get(config['strategy_name'])
     if not strategy_class:
         raise ValueError(f"Unknown strategy: {config['strategy_name']}")
     
-    # Get params and auto-inject asset-specific parameters (same as run_backtest.py)
-    params = config.get('params', {}).copy()
+    # Auto-inject asset-specific parameters (same as run_backtest.py)
     params['print_signals'] = False
     
-    # Auto-inject pair type flags
+    # Determine JPY status
     is_jpy = asset_name.upper().endswith('JPY')
-    params['is_jpy_pair'] = is_jpy
-    params['is_etf'] = is_etf
+    is_jpy_index = False
     
-    # Auto-inject pip_value if not explicitly set
-    if is_etf:
+    # Resolve broker config for commission setup
+    broker_key = config.get('broker_config_key')
+    if vega_mode and broker_key:
+        active_broker_config = VEGA_BROKER_CONFIG.get(broker_key, BROKER_CONFIG.get(broker_key, {}))
+    elif broker_key:
+        active_broker_config = BROKER_CONFIG.get(broker_key, {})
+    else:
+        active_broker_config = {}
+    is_jpy_index = active_broker_config.get('is_jpy_index', False)
+    is_jpy_traded = is_jpy or (is_non_forex and is_jpy_index)
+    
+    params['is_jpy_pair'] = is_jpy_traded
+    params['is_etf'] = is_non_forex
+    
+    if is_jpy_traded and is_non_forex:
+        params['jpy_rate'] = active_broker_config.get('jpy_rate', 150.0)
+    
+    # Auto-inject pip_value
+    if is_non_forex:
         params['pip_value'] = params.get('pip_value', 0.01)
         params['margin_pct'] = params.get('margin_pct', 20.0)
     elif is_jpy:
@@ -201,27 +281,48 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
     else:
         params['pip_value'] = params.get('pip_value', 0.0001)
     
-    # Portfolio mode: override risk_percent and use micro lots for proper sizing
+    # Portfolio mode: override risk_percent
     if use_portfolio:
-        params['risk_percent'] = _get_portfolio_risk(config_name)
-        # Use micro lots (0.01 lot = 1,000 units) for forex in portfolio mode.
-        # With risk_pcts of 0.50-1.50%, positions are small enough that
-        # standard lots (100K) would force min 1 lot = over-risk.
-        # Darwinex supports micro lots (0.01 lot).
-        if not is_etf:
-            params['lot_size'] = 1000
+        if vega_mode:
+            alloc = VEGA_ALLOCATION.get(config_name, {})
+            params['risk_percent'] = alloc.get('risk_pct', 1.00) / 100.0
+        else:
+            params['risk_percent'] = _get_portfolio_risk(config_name)
+            # Use micro lots for forex in portfolio mode
+            if not is_non_forex:
+                params['lot_size'] = 1000
+    
+    # Remove runner-only keys that strategies don't declare as params
+    params.pop('base_timeframe_minutes', None)
+    params.pop('resample_reference_minutes', None)
     
     cerebro.addstrategy(strategy_class, **params)
     
     # Broker settings - portfolio mode overrides starting_cash
     if use_portfolio:
-        starting_cash = _get_portfolio_cash(config_name)
+        if vega_mode:
+            starting_cash = VEGA_TOTAL_CAPITAL
+        else:
+            starting_cash = _get_portfolio_cash(config_name)
     else:
         starting_cash = config.get('starting_cash', 100000.0)
     cerebro.broker.setcash(starting_cash)
     
-    # Commission
-    if is_etf:
+    # Commission scheme
+    if is_cfd_index:
+        # CFD index commission (VEGA, LUYTEN)
+        if not active_broker_config:
+            active_broker_config = BROKER_CONFIG.get('darwinex_zero_etf', {})
+        CFDIndexCommission.total_commission = 0.0
+        CFDIndexCommission.total_contracts = 0.0
+        CFDIndexCommission.commission_calls = 0
+        commission = CFDIndexCommission(
+            commission=active_broker_config.get('commission_per_contract', 0.275),
+            margin_pct=active_broker_config.get('margin_percent', 5.0),
+            is_jpy_index=is_jpy_index,
+            jpy_rate=active_broker_config.get('jpy_rate', 150.0),
+        )
+    elif is_etf:
         broker_config = BROKER_CONFIG.get('darwinex_zero_etf', BROKER_CONFIG['darwinex_zero'])
         ETFCommission.total_commission = 0.0
         ETFCommission.total_contracts = 0.0
@@ -289,6 +390,7 @@ def run_single_backtest(config_name, config, silent=False, use_portfolio=False,
         'max_drawdown_pct': max_drawdown_pct,
         'yearly_stats': yearly_stats,
         'portfolio_mode': use_portfolio,
+        'vega_mode': vega_mode,
     }
 
 
@@ -386,8 +488,9 @@ def print_portfolio_summary(results):
     # sum starting_cash (that would be N * $50K). Instead, use total capital
     # and sum net PnLs.
     is_portfolio = any(r.get('portfolio_mode', False) for r in results)
+    is_vega = any(r.get('vega_mode', False) for r in results)
     if is_portfolio:
-        total_starting = PORTFOLIO_TOTAL_CAPITAL
+        total_starting = VEGA_TOTAL_CAPITAL if (is_vega and VEGA_AVAILABLE) else PORTFOLIO_TOTAL_CAPITAL
         total_net_pnl = sum(r['net_pnl'] for r in results)
         total_final = total_starting + total_net_pnl
     else:
@@ -410,9 +513,10 @@ def print_portfolio_summary(results):
     print(f"  Net P&L:              ${total_net_pnl:,.0f}")
     # Weighted max drawdown: each config's DD weighted by allocation
     if is_portfolio:
+        alloc_src = VEGA_ALLOCATION if (is_vega and VEGA_AVAILABLE) else PORTFOLIO_ALLOCATION
         weighted_dd = 0.0
         for r in results:
-            alloc = PORTFOLIO_ALLOCATION.get(r['config_name'], {})
+            alloc = alloc_src.get(r['config_name'], {})
             weight = alloc.get('allocation', 1.0 / len(results))
             weighted_dd += r['max_drawdown_pct'] * weight
         avg_dd = weighted_dd
@@ -427,15 +531,18 @@ def print_portfolio_summary(results):
     print(f"{'='*80}\n")
 
 
-def list_configs():
+def list_configs(vega_mode=False):
     """List all available configurations."""
+    source = VEGA_STRATEGIES_CONFIG if vega_mode else STRATEGIES_CONFIG
+    label = 'VEGA' if vega_mode else 'AVAILABLE'
+    
     print("\n" + "=" * 70)
-    print("  AVAILABLE CONFIGURATIONS")
+    print(f"  {label} CONFIGURATIONS")
     print("=" * 70)
     
     # Group by strategy
     by_strategy = defaultdict(list)
-    for name, cfg in STRATEGIES_CONFIG.items():
+    for name, cfg in source.items():
         by_strategy[cfg['strategy_name']].append((name, cfg))
     
     for strategy in sorted(by_strategy.keys()):
@@ -443,7 +550,10 @@ def list_configs():
         print(f"  {'-'*50}")
         for name, cfg in sorted(by_strategy[strategy]):
             status = "* ACTIVE" if cfg.get('active', True) else "  inactive"
-            print(f"    {name:<25} {cfg['asset_name']:<10} {status}")
+            alloc_src = VEGA_ALLOCATION if vega_mode else PORTFOLIO_ALLOCATION
+            alloc = alloc_src.get(name, {})
+            risk_str = f"  risk {alloc['risk_pct']:.2f}%" if alloc else ''
+            print(f"    {name:<25} {cfg['asset_name']:<10} {status}{risk_str}")
     
     print("\n")
 
@@ -460,6 +570,7 @@ Examples:
   python tools/portfolio_backtest.py --strategies KOI SEDNA
   python tools/portfolio_backtest.py --assets USDJPY EURJPY DIA
   python tools/portfolio_backtest.py --exclude TLT_KOI TLT_PRO
+  python tools/portfolio_backtest.py --vega -p -q              # VEGA portfolio
         """
     )
     
@@ -483,8 +594,15 @@ Examples:
                         help='Override start date for all configs (e.g., 2025-12-01)')
     parser.add_argument('--to-date', metavar='YYYY-MM-DD',
                         help='Override end date for all configs (e.g., 2026-02-14)')
+    parser.add_argument('--vega', action='store_true',
+                        help='Run VEGA portfolio from config/settings_vega.py')
     
     args = parser.parse_args()
+    
+    # Validate VEGA mode
+    if args.vega and not VEGA_AVAILABLE:
+        print('ERROR: config/settings_vega.py not found. Create it first.')
+        return
     
     # Parse date overrides
     date_from = None
@@ -494,9 +612,13 @@ Examples:
     if args.to_date:
         date_to = datetime.strptime(args.to_date, '%Y-%m-%d')
 
+    # Select config source based on mode
+    vega_mode = args.vega
+    source_configs = VEGA_STRATEGIES_CONFIG if vega_mode else STRATEGIES_CONFIG
+    
     # List mode
     if args.list:
-        list_configs()
+        list_configs(vega_mode=vega_mode)
         return
     
     # Determine which configs to run
@@ -505,13 +627,13 @@ Examples:
     if args.configs:
         # Specific configs
         for name in args.configs:
-            if name in STRATEGIES_CONFIG:
-                configs_to_run[name] = STRATEGIES_CONFIG[name]
+            if name in source_configs:
+                configs_to_run[name] = source_configs[name]
             else:
                 print(f"Warning: Config '{name}' not found, skipping.")
     else:
         # Filter from all configs
-        for name, cfg in STRATEGIES_CONFIG.items():
+        for name, cfg in source_configs.items():
             # Check active status
             if not args.all and not cfg.get('active', True):
                 continue
@@ -535,13 +657,22 @@ Examples:
         print("No configurations to run. Use --list to see available configs.")
         return
     
+    # Select capital and allocation source
+    if vega_mode:
+        total_capital = VEGA_TOTAL_CAPITAL
+        alloc_source = VEGA_ALLOCATION
+    else:
+        total_capital = PORTFOLIO_TOTAL_CAPITAL
+        alloc_source = PORTFOLIO_ALLOCATION
+    
     # Print header
+    mode_label = 'VEGA' if vega_mode else 'PORTFOLIO'
     print("\n" + "=" * 80)
-    print("  PORTFOLIO BACKTEST RUNNER")
+    print(f"  {mode_label} BACKTEST RUNNER")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  Running {len(configs_to_run)} configuration(s)")
     if args.portfolio:
-        print(f"  Mode: PORTFOLIO (capital: ${PORTFOLIO_TOTAL_CAPITAL:,.0f}, tiered risk)")
+        print(f"  Mode: PORTFOLIO (capital: ${total_capital:,.0f}, tiered risk)")
     else:
         print(f"  Mode: INDIVIDUAL (each config uses its own starting_cash & risk)")
     if date_from or date_to:
@@ -552,11 +683,11 @@ Examples:
     
     for name in sorted(configs_to_run.keys()):
         cfg = configs_to_run[name]
-        alloc = PORTFOLIO_ALLOCATION.get(name, {})
+        alloc = alloc_source.get(name, {})
         if args.portfolio and alloc:
             risk = alloc['risk_pct']
             print(f"    . {name} ({cfg['asset_name']} - {cfg['strategy_name']}) "
-                  f"[${PORTFOLIO_TOTAL_CAPITAL:,.0f} | risk {risk:.2f}%]")
+                  f"[${total_capital:,.0f} | risk {risk:.2f}%]")
         else:
             print(f"    . {name} ({cfg['asset_name']} - {cfg['strategy_name']})")
     
@@ -574,7 +705,8 @@ Examples:
             result = run_single_backtest(name, cfg, silent=args.quiet,
                                          use_portfolio=args.portfolio,
                                          from_date=date_from,
-                                         to_date=date_to)
+                                         to_date=date_to,
+                                         vega_mode=vega_mode)
             results.append(result)
             
             if not args.quiet:

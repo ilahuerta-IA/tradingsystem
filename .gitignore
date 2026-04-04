@@ -68,3 +68,6 @@ Thumbs.db
 # All private context lives in context/ folder. Root CONTEXT.md is just a pointer.
 CONTEXT.md
 context/
+
+# Private VEGA settings (live demo configs with risk allocation)
+config/settings_vega.py
