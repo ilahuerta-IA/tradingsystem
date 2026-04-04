@@ -532,6 +532,213 @@ def print_portfolio_monthly_heatmap(portfolio_monthly, capital):
 
 
 # =============================================================================
+# RISK SIMULATION
+# =============================================================================
+
+def scale_trades(trades, risk_mult):
+    """Scale trade P&L by risk multiplier (linear scaling from 1% baseline)."""
+    return [{**t, 'pnl': t['pnl'] * risk_mult} for t in trades]
+
+
+def simulate_portfolio(all_trades, risk_map, capital):
+    """Simulate portfolio with specific risk per config, return key metrics."""
+    scaled = {}
+    for name, trades in all_trades.items():
+        mult = risk_map.get(name, 1.0)
+        scaled[name] = scale_trades(trades, mult)
+
+    # Combine all trades by month
+    all_months = set()
+    by_config_month = {}
+    for name, trades in scaled.items():
+        by_month = defaultdict(list)
+        for t in trades:
+            key = (t['year'], t['month'])
+            by_month[key].append(t['pnl'])
+            all_months.add(key)
+        by_config_month[name] = by_month
+
+    sorted_months = sorted(all_months)
+    equity = capital
+    peak = capital
+    max_dd = 0
+    by_year_pnl = defaultdict(float)
+    monthly_rets = []
+    worst_month_pnl = 0
+    negative_years = 0
+
+    for (year, month) in sorted_months:
+        month_pnl = sum(
+            sum(by_config_month[name].get((year, month), []))
+            for name in scaled
+        )
+        equity_start = equity
+        equity += month_pnl
+        if equity > peak:
+            peak = equity
+        dd = (peak - equity) / peak * 100 if peak > 0 else 0
+        if dd > max_dd:
+            max_dd = dd
+        by_year_pnl[year] += month_pnl
+        monthly_rets.append(month_pnl / equity_start * 100 if equity_start > 0 else 0)
+        if month_pnl < worst_month_pnl:
+            worst_month_pnl = month_pnl
+
+    years = sorted(by_year_pnl.keys())
+    annual_rets = [by_year_pnl[y] / capital * 100 for y in years]
+    negative_years = sum(1 for r in annual_rets if r < 0)
+    avg_annual = sum(annual_rets) / len(annual_rets) if annual_rets else 0
+    std_annual = (sum((r - avg_annual) ** 2 for r in annual_rets) / len(annual_rets)) ** 0.5 if annual_rets else 0
+    worst_year = min(annual_rets) if annual_rets else 0
+    total_return = (equity - capital) / capital * 100
+
+    # Monthly std
+    avg_mo = sum(monthly_rets) / len(monthly_rets) if monthly_rets else 0
+    std_mo = (sum((r - avg_mo) ** 2 for r in monthly_rets) / len(monthly_rets)) ** 0.5 if monthly_rets else 0
+
+    return {
+        'total_return': total_return,
+        'avg_annual': avg_annual,
+        'std_annual': std_annual,
+        'max_dd': max_dd,
+        'worst_year': worst_year,
+        'worst_month_pnl': worst_month_pnl,
+        'negative_years': negative_years,
+        'avg_monthly': avg_mo,
+        'std_monthly': std_mo,
+        'final_equity': equity,
+        'annual_rets': annual_rets,
+        'years': years,
+    }
+
+
+def run_simulation_grid(all_trades, capital):
+    """Run a grid of risk allocations and display results."""
+    configs = sorted(all_trades.keys())
+
+    # Risk levels to test (as multiplier of baseline 1%)
+    risk_levels = [0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.60, 0.75, 1.00]
+
+    print(f'\n{"=" * 110}')
+    print(f'  RISK SIMULATION GRID — Target: ~15% annual, <10% max DD')
+    print(f'  Capital: ${capital:,.0f} | Baseline: 1.00% risk per config')
+    print(f'  Each cell shows: Avg Annual% / Max DD% / Worst Year%')
+    print('=' * 110)
+
+    # PHASE 1: Uniform risk (same % for all configs)
+    print(f'\n  PHASE 1: UNIFORM RISK (same % all configs)')
+    print(f'  {"Risk%":>7}  {"Avg/Y":>7}  {"MaxDD":>7}  {"WrstY":>7}  {"StdY":>6}  '
+          f'{"NegY":>4}  {"WrstMo":>10}  {"Final$":>12}  {"Verdict":>12}')
+    print('-' * 110)
+
+    for risk in risk_levels:
+        risk_map = {name: risk for name in configs}
+        r = simulate_portfolio(all_trades, risk_map, capital)
+        # Verdict
+        if r['avg_annual'] >= 12 and r['avg_annual'] <= 20 and r['max_dd'] <= 10:
+            verdict = 'TARGET'
+        elif r['avg_annual'] >= 10 and r['max_dd'] <= 15:
+            verdict = 'acceptable'
+        elif r['max_dd'] > 20:
+            verdict = 'TOO RISKY'
+        else:
+            verdict = ''
+        print(f'  {risk * 100:>6.2f}%  {r["avg_annual"]:>6.1f}%  {r["max_dd"]:>6.1f}%  '
+              f'{r["worst_year"]:>6.1f}%  {r["std_annual"]:>5.1f}%  {r["negative_years"]:>3}   '
+              f'${r["worst_month_pnl"]:>9,.0f}  ${r["final_equity"]:>11,.0f}  {verdict:>12}')
+
+    # PHASE 2: Differentiated risk (reduce NI225, keep GDAXI/NDAXI)
+    print(f'\n  PHASE 2: DIFFERENTIATED RISK (NI225 reduced, GDAXI/NDAXI equal)')
+    print(f'  {"NI225%":>7} {"GD/ND%":>7}  {"Avg/Y":>7}  {"MaxDD":>7}  {"WrstY":>7}  {"StdY":>6}  '
+          f'{"NegY":>4}  {"WrstMo":>10}  {"Final$":>12}  {"Verdict":>12}')
+    print('-' * 110)
+
+    ni225_levels = [0.10, 0.15, 0.20, 0.25, 0.30]
+    other_levels = [0.20, 0.25, 0.30, 0.35, 0.40, 0.50]
+
+    for ni_risk in ni225_levels:
+        for other_risk in other_levels:
+            risk_map = {
+                'NI225_VEGA': ni_risk,
+                'GDAXI_VEGA': other_risk,
+                'NDAXI_VEGA': other_risk,
+            }
+            r = simulate_portfolio(all_trades, risk_map, capital)
+            if r['avg_annual'] >= 12 and r['avg_annual'] <= 20 and r['max_dd'] <= 10:
+                verdict = '** TARGET **'
+            elif r['avg_annual'] >= 10 and r['max_dd'] <= 15:
+                verdict = 'acceptable'
+            elif r['max_dd'] > 20:
+                verdict = 'TOO RISKY'
+            elif r['avg_annual'] < 8:
+                verdict = 'too low'
+            else:
+                verdict = ''
+            # Only print interesting ones
+            if r['avg_annual'] >= 8 and r['max_dd'] <= 20:
+                print(f'  {ni_risk * 100:>6.2f} {other_risk * 100:>6.2f}%  {r["avg_annual"]:>6.1f}%  '
+                      f'{r["max_dd"]:>6.1f}%  {r["worst_year"]:>6.1f}%  {r["std_annual"]:>5.1f}%  '
+                      f'{r["negative_years"]:>3}   ${r["worst_month_pnl"]:>9,.0f}  '
+                      f'${r["final_equity"]:>11,.0f}  {verdict:>12}')
+
+    # PHASE 3: Fully independent (all three different)
+    print(f'\n  PHASE 3: BEST CANDIDATES (fine-tuned)')
+    print(f'  {"NI225%":>7} {"GDAXI%":>7} {"NDAXI%":>7}  {"Avg/Y":>7}  {"MaxDD":>7}  {"WrstY":>7}  '
+          f'{"StdY":>6}  {"NegY":>4}  {"Final$":>12}  {"Verdict":>12}')
+    print('-' * 110)
+
+    # Test fine-grained combos around the sweet spot
+    fine = [0.15, 0.20, 0.25, 0.30, 0.35]
+    best_score = -999
+    best_combo = None
+
+    for ni in fine:
+        for gd in fine:
+            for nd in fine:
+                risk_map = {
+                    'NI225_VEGA': ni,
+                    'GDAXI_VEGA': gd,
+                    'NDAXI_VEGA': nd,
+                }
+                r = simulate_portfolio(all_trades, risk_map, capital)
+                # Score: maximize return while penalizing DD and variance
+                # Target: 15% annual, 10% DD
+                dd_penalty = max(0, r['max_dd'] - 10) * 3
+                low_ret_penalty = max(0, 12 - r['avg_annual']) * 2
+                neg_year_penalty = r['negative_years'] * 5
+                score = r['avg_annual'] - dd_penalty - low_ret_penalty - neg_year_penalty - r['std_annual'] * 0.3
+
+                if score > best_score:
+                    best_score = score
+                    best_combo = (ni, gd, nd, r, score)
+
+                # Print good candidates
+                if r['avg_annual'] >= 10 and r['max_dd'] <= 12 and r['negative_years'] == 0:
+                    if r['avg_annual'] >= 12 and r['max_dd'] <= 10:
+                        verdict = '** TARGET **'
+                    else:
+                        verdict = 'close'
+                    print(f'  {ni * 100:>6.2f} {gd * 100:>6.2f}% {nd * 100:>6.2f}%  '
+                          f'{r["avg_annual"]:>6.1f}%  {r["max_dd"]:>6.1f}%  {r["worst_year"]:>6.1f}%  '
+                          f'{r["std_annual"]:>5.1f}%  {r["negative_years"]:>3}   '
+                          f'${r["final_equity"]:>11,.0f}  {verdict:>12}')
+
+    if best_combo:
+        ni, gd, nd, r, score = best_combo
+        print(f'\n  BEST OVERALL (score={score:.1f}):')
+        print(f'    NI225={ni*100:.2f}%  GDAXI={gd*100:.2f}%  NDAXI={nd*100:.2f}%')
+        print(f'    Avg/Y={r["avg_annual"]:.1f}%  MaxDD={r["max_dd"]:.1f}%  '
+              f'WrstY={r["worst_year"]:.1f}%  StdY={r["std_annual"]:.1f}%  '
+              f'NegYears={r["negative_years"]}  Final=${r["final_equity"]:,.0f}')
+
+        # Show yearly breakdown for best combo
+        print(f'\n    Yearly breakdown:')
+        for year, ret in zip(r['years'], r['annual_rets']):
+            bar = '+' * int(ret) if ret >= 0 else '-' * int(abs(ret))
+            print(f'      {year}: {ret:>+6.1f}%  {bar}')
+
+
+# =============================================================================
 # AUTO-DETECT LOGS
 # =============================================================================
 
@@ -563,6 +770,7 @@ def main():
     parser.add_argument('--yearly', '-y', action='store_true', help='Show yearly summary per config')
     parser.add_argument('--heatmap', action='store_true', help='Show monthly return heatmap')
     parser.add_argument('--all', '-a', action='store_true', help='Show all tables')
+    parser.add_argument('--simulate', '-s', action='store_true', help='Run risk allocation simulation grid')
     args = parser.parse_args()
 
     if args.all:
@@ -570,8 +778,8 @@ def main():
         args.yearly = True
         args.heatmap = True
 
-    # Default: show comparison + risk summary + heatmap
-    show_default = not (args.monthly or args.yearly or args.heatmap)
+    # Default: show comparison + risk summary + heatmap (unless simulate mode)
+    show_default = not (args.monthly or args.yearly or args.heatmap or args.simulate)
     if show_default:
         args.heatmap = True
 
@@ -629,6 +837,10 @@ def main():
 
     if args.heatmap:
         print_portfolio_monthly_heatmap(portfolio_monthly, capital)
+
+    # Risk simulation
+    if args.simulate:
+        run_simulation_grid(all_trades, capital)
 
     print()
 
