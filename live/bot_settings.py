@@ -41,6 +41,12 @@ ENABLED_CONFIGS = {
     
     # SEDNA strategy (ETFs) - disabled until broker availability confirmed
     "DIA_SEDNA": False,
+
+    # VEGA strategy (Cross-Index Z-Score Divergence, H4)
+    # Deployed 2026-04-05: transitioning from M5 to H4 structural approach
+    "NI225_VEGA": True,   # SP500→JPN225, London session, LONG only
+    "GDAXI_VEGA": True,   # SP500→GER40, London session, LONG+SHORT
+    "NDAXI_VEGA": True,   # NAS100→GER40, London session, LONG+SHORT
 }
 
 # Strategy type mapping (which checker class to use)
@@ -66,7 +72,29 @@ STRATEGY_TYPES = {
     # GEMINI
     "EURUSD_GEMINI": "GEMINI",
     "USDCHF_GEMINI": "GEMINI",
+    # VEGA
+    "NI225_VEGA": "VEGA",
+    "GDAXI_VEGA": "VEGA",
+    "NDAXI_VEGA": "VEGA",
 }
+
+
+# =============================================================================
+# SYMBOL MAPPING (BT name → broker name)
+# =============================================================================
+# CFD index symbol names differ between BT data (Dukascopy) and broker (FOREX.comGLOBAL).
+# Forex pairs (EURUSD, etc.) are identical and don't need mapping.
+
+SYMBOL_MAP = {
+    "SP500": "SPX500",
+    "GDAXI": "GER40",
+    "NI225": "JPN225",
+    "NDX": "NAS100",
+}
+
+# VEGA configs trade the reference_symbol, not asset_name.
+# This set identifies configs where the executor uses reference_symbol for orders.
+VEGA_CONFIGS = {"NI225_VEGA", "GDAXI_VEGA", "NDAXI_VEGA"}
 
 
 # =============================================================================
@@ -157,6 +185,12 @@ LOG_BACKUP_COUNT = 5
 #   D = 0.50%  (weaker edge, conservative)
 
 RISK_OVERRIDES = {
+    # VEGA -- 0.35% uniform (margin-allocation sizing, not SL-based)
+    # Note: VEGA checker uses its own sizing (capital_alloc_pct), not executor's SL formula.
+    # These are here for documentation; actual sizing is in VEGAChecker.calculate_vega_lots().
+    "NI225_VEGA":    0.0035,
+    "GDAXI_VEGA":    0.0035,
+    "NDAXI_VEGA":    0.0035,
     # Tier A -- 1.50%
     "USDCHF_PRO":    0.015,
     "USDCHF_GEMINI": 0.015,

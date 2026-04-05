@@ -394,7 +394,8 @@ class OrderExecutor:
         entry_price: float,
         stop_loss: float,
         take_profit: float,
-        comment: str = ""
+        comment: str = "",
+        volume_override: float = 0.0,
     ) -> ExecutionResult:
         """
         Execute a LONG (BUY) order with SL/TP.
@@ -405,6 +406,7 @@ class OrderExecutor:
             stop_loss: Stop loss price
             take_profit: Take profit price
             comment: Optional order comment
+            volume_override: If > 0, use this volume instead of calculating
             
         Returns:
             ExecutionResult with details
@@ -440,8 +442,11 @@ class OrderExecutor:
                     timestamp=now
                 )
             
-            # Calculate lot size
-            volume = self._calculate_lot_size(symbol, entry_price, stop_loss)
+            # Volume: override or calculate from SL distance
+            if volume_override > 0:
+                volume = volume_override
+            else:
+                volume = self._calculate_lot_size(symbol, entry_price, stop_loss)
             
             # Get symbol info for proper price formatting
             symbol_info = mt5.symbol_info(symbol)
@@ -548,7 +553,160 @@ class OrderExecutor:
     def get_trade_history(self) -> List[Dict]:
         """Get trade history for this session."""
         return self.trade_history.copy()
-    
+
+    def execute_short(
+        self,
+        symbol: str,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float,
+        comment: str = "",
+        volume_override: float = 0.0,
+    ) -> ExecutionResult:
+        """
+        Execute a SHORT (SELL) order with SL/TP.
+
+        Mirror of execute_long() with ORDER_TYPE_SELL at tick.bid.
+
+        Args:
+            symbol: Trading symbol (broker name)
+            entry_price: Expected entry price (for sizing, actual uses market)
+            stop_loss: Stop loss price (above entry for short)
+            take_profit: Take profit price (below entry for short)
+            comment: Optional order comment
+            volume_override: If > 0, use this volume instead of calculating
+
+        Returns:
+            ExecutionResult with details
+        """
+        now = datetime.now()
+
+        if not self.connector.is_connected():
+            return ExecutionResult(
+                success=False,
+                result=OrderResult.NO_CONNECTION,
+                message="Not connected to MT5",
+                timestamp=now
+            )
+
+        if not self.can_open_position(symbol):
+            return ExecutionResult(
+                success=False,
+                result=OrderResult.POSITION_EXISTS,
+                message=f"Position already exists for {symbol}",
+                timestamp=now
+            )
+
+        try:
+            tick = mt5.symbol_info_tick(symbol)
+            if tick is None:
+                return ExecutionResult(
+                    success=False,
+                    result=OrderResult.FAILED,
+                    message=f"Could not get tick for {symbol}",
+                    timestamp=now
+                )
+
+            # Volume: override or calculate from SL distance
+            if volume_override > 0:
+                volume = volume_override
+            else:
+                volume = self._calculate_lot_size(symbol, entry_price, stop_loss)
+
+            symbol_info = mt5.symbol_info(symbol)
+            if symbol_info is None:
+                return ExecutionResult(
+                    success=False,
+                    result=OrderResult.FAILED,
+                    message=f"Symbol not found: {symbol}",
+                    timestamp=now
+                )
+
+            digits = symbol_info.digits
+            stop_loss = round(stop_loss, digits)
+            take_profit = round(take_profit, digits)
+
+            filling_mode = self._get_filling_mode(symbol)
+
+            request = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": symbol,
+                "volume": volume,
+                "type": mt5.ORDER_TYPE_SELL,
+                "price": tick.bid,  # Market sell at bid
+                "sl": stop_loss,
+                "tp": take_profit,
+                "deviation": 20,
+                "magic": self.magic_number,
+                "comment": comment or f"TradingSystem {self.config_name}",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": filling_mode,
+            }
+
+            self.logger.info(
+                f"Sending SELL order: {symbol} "
+                f"vol={volume:.2f}, SL={stop_loss:.5f}, TP={take_profit:.5f}"
+            )
+
+            result = mt5.order_send(request)
+
+            if result is None:
+                error = mt5.last_error()
+                return ExecutionResult(
+                    success=False,
+                    result=OrderResult.FAILED,
+                    message=f"Order send failed: {error}",
+                    timestamp=now
+                )
+
+            if result.retcode != mt5.TRADE_RETCODE_DONE:
+                return ExecutionResult(
+                    success=False,
+                    result=OrderResult.REJECTED,
+                    message=f"Order rejected: {result.retcode} - {result.comment}",
+                    timestamp=now
+                )
+
+            execution = ExecutionResult(
+                success=True,
+                result=OrderResult.SUCCESS,
+                order_ticket=result.order,
+                position_ticket=result.order,
+                executed_price=result.price,
+                executed_volume=result.volume,
+                message="Short order executed successfully",
+                timestamp=now
+            )
+
+            trade_log = {
+                'timestamp': now,
+                'symbol': symbol,
+                'type': 'SELL',
+                'volume': result.volume,
+                'price': result.price,
+                'sl': stop_loss,
+                'tp': take_profit,
+                'ticket': result.order,
+                'config': self.config_name,
+            }
+            self.trade_history.append(trade_log)
+
+            self.logger.info(
+                f"[OK] SELL executed: {symbol} @ {result.price:.5f}, "
+                f"vol={result.volume:.2f}, ticket={result.order}"
+            )
+
+            return execution
+
+        except Exception as e:
+            self.logger.error(f"Short order execution error: {e}")
+            return ExecutionResult(
+                success=False,
+                result=OrderResult.FAILED,
+                message=f"Exception: {str(e)}",
+                timestamp=now
+            )
+
     def close_position(self, ticket: int) -> ExecutionResult:
         """
         Close an open position.

@@ -29,6 +29,8 @@ from .bot_settings import (
     MAX_RECONNECT_ATTEMPTS,
     RECONNECT_DELAY_SECONDS,
     CANDLE_CLOSE_BUFFER_SECONDS,
+    SYMBOL_MAP,
+    VEGA_CONFIGS,
 )
 from .connector import MT5Connector
 from .data_provider import DataProvider, Timeframe
@@ -425,6 +427,60 @@ class MultiStrategyMonitor:
         self._log_event("ERROR", {"error": "reconnection_failed"})
         return False
     
+    def _check_vega_time_exits(self):
+        """
+        Close VEGA positions that have exceeded their holding period.
+        Called every candle cycle. SL/TP are on server; this handles time-exit only.
+        """
+        if not self.open_positions:
+            return
+        
+        now = datetime.now()
+        tickets_to_close = []
+        
+        for ticket, pos_info in self.open_positions.items():
+            if not pos_info.get("vega_time_exit"):
+                continue
+            
+            open_time = pos_info.get("vega_open_time")
+            holding_minutes = pos_info.get("vega_holding_minutes", 720)  # default 3 H4 bars
+            
+            if open_time and (now - open_time).total_seconds() >= holding_minutes * 60:
+                tickets_to_close.append(ticket)
+        
+        for ticket in tickets_to_close:
+            pos_info = self.open_positions[ticket]
+            config_name = pos_info.get("config", "UNKNOWN")
+            
+            self.logger.info(
+                f"[{config_name}] VEGA TIME-EXIT: closing ticket {ticket} "
+                f"after {pos_info.get('vega_holding_minutes', 0)} min hold"
+            )
+            
+            # Find the executor for this config
+            executor = self.executors.get(config_name)
+            if not executor:
+                self.logger.error(f"[{config_name}] No executor found for time-exit of ticket {ticket}")
+                continue
+            
+            result = executor.close_position(ticket)
+            
+            if result.success:
+                self.logger.info(f"[{config_name}] VEGA TIME-EXIT executed @ {result.executed_price:.5f}")
+                self._log_event("VEGA_TIME_EXIT", {
+                    "config": config_name,
+                    "symbol": pos_info.get("symbol"),
+                    "ticket": ticket,
+                    "direction": pos_info.get("direction"),
+                    "entry": pos_info.get("entry"),
+                    "close_price": result.executed_price,
+                    "hold_minutes": pos_info.get("vega_holding_minutes"),
+                })
+            else:
+                self.logger.error(
+                    f"[{config_name}] VEGA TIME-EXIT failed for ticket {ticket}: {result.message}"
+                )
+
     def _check_closed_positions(self):
         """
         Check if any tracked positions have been closed (by SL/TP or manually).
@@ -637,6 +693,10 @@ class MultiStrategyMonitor:
         
         return self.running
     
+    def _map_symbol(self, bt_symbol: str) -> str:
+        """Map BT symbol name to broker symbol name."""
+        return SYMBOL_MAP.get(bt_symbol, bt_symbol)
+
     def _process_candle(self):
         """
         Process the closed candle for all active checkers.
@@ -646,19 +706,46 @@ class MultiStrategyMonitor:
         # Fetch data for each symbol once
         symbol_data: Dict[str, Any] = {}
         
+        # Determine which timeframes are needed per symbol
+        # Build a map: bt_symbol -> set of required timeframes
+        symbol_timeframes: Dict[str, set] = {}
+        for config_name, checker in self.checkers.items():
+            config = STRATEGIES_CONFIG.get(config_name, {})
+            symbol = config.get("asset_name") or config.get("symbol")
+            ref_symbol = config.get("reference_symbol")
+            
+            if config_name in VEGA_CONFIGS:
+                tf = Timeframe.H4
+            else:
+                tf = Timeframe.M5
+            
+            if symbol:
+                symbol_timeframes.setdefault(symbol, set()).add(tf)
+            if ref_symbol:
+                symbol_timeframes.setdefault(ref_symbol, set()).add(tf)
+        
         for symbol in self.active_symbols:
             try:
-                bars = self.data_provider.get_bars(
-                    symbol=symbol,
-                    timeframe=Timeframe.M5,
-                    count=500  # Enough history for EMA warmup (matches BT depth)
-                )
+                # Use H4 if any checker needs it for this symbol, else M5
+                timeframes_needed = symbol_timeframes.get(symbol, {Timeframe.M5})
                 
-                if bars is None or bars.empty:
-                    self.logger.warning(f"No data for {symbol}")
-                    continue
-                
-                symbol_data[symbol] = bars
+                for tf in timeframes_needed:
+                    broker_symbol = self._map_symbol(symbol)
+                    count = 100 if tf == Timeframe.H4 else 500
+                    
+                    bars = self.data_provider.get_bars(
+                        symbol=broker_symbol,
+                        timeframe=tf,
+                        count=count,
+                    )
+                    
+                    if bars is None or bars.empty:
+                        self.logger.warning(f"No data for {broker_symbol} ({tf.name})")
+                        continue
+                    
+                    # Store with key = (bt_symbol, timeframe_name)
+                    key = f"{symbol}_{tf.name}" if tf != Timeframe.M5 else symbol
+                    symbol_data[key] = bars
                 
             except Exception as e:
                 self.logger.error(f"Failed to fetch data for {symbol}: {e}")
@@ -712,15 +799,21 @@ class MultiStrategyMonitor:
         for config_name, checker in self.checkers.items():
             config = STRATEGIES_CONFIG.get(config_name, {})
             symbol = config.get("asset_name") or config.get("symbol")
+            reference_symbol = config.get("reference_symbol")
             
-            if symbol not in symbol_data:
+            # VEGA uses H4 data keys; others use M5 (plain symbol key)
+            if config_name in VEGA_CONFIGS:
+                data_key = f"{symbol}_H4"
+                ref_key = f"{reference_symbol}_H4" if reference_symbol else None
+            else:
+                data_key = symbol
+                ref_key = reference_symbol
+            
+            if data_key not in symbol_data:
                 continue
             
-            bars = symbol_data[symbol]
-            
-            # Get reference data for dual-feed strategies (GEMINI)
-            reference_symbol = config.get("reference_symbol")
-            reference_bars = symbol_data.get(reference_symbol) if reference_symbol else None
+            bars = symbol_data[data_key]
+            reference_bars = symbol_data.get(ref_key) if ref_key else None
             
             # Guard: warn if dual-feed strategy has no reference data
             if reference_symbol and reference_bars is None:
@@ -730,7 +823,13 @@ class MultiStrategyMonitor:
                 )
             
             try:
-                self._check_and_execute(config_name, checker, symbol, bars, reference_bars)
+                # For VEGA: traded symbol is reference_symbol, not asset_name
+                if config_name in VEGA_CONFIGS:
+                    traded_bt_symbol = reference_symbol or symbol
+                else:
+                    traded_bt_symbol = symbol
+                
+                self._check_and_execute(config_name, checker, traded_bt_symbol, bars, reference_bars)
             except Exception as e:
                 self.stats.errors_count += 1
                 self.logger.error(
@@ -797,26 +896,72 @@ class MultiStrategyMonitor:
             self.logger.error(f"[{config_name}] No executor found")
             return
         
-        # Check if we can execute
-        if not executor.can_open_position(symbol):
-            self.logger.info(f"[{config_name}] Position already open on {symbol}")
+        # Map BT symbol to broker symbol for execution
+        broker_symbol = self._map_symbol(symbol)
+        
+        # Check if we can execute (OCA check uses broker symbol)
+        if not executor.can_open_position(broker_symbol):
+            self.logger.info(f"[{config_name}] Position already open on {broker_symbol}")
             return
         
-        # Only LONG for now (both strategies are long-only)
-        if signal.direction != SignalDirection.LONG:
-            self.logger.debug(f"[{config_name}] Non-LONG signal ignored")
-            return
+        # Direction gate: non-VEGA strategies are LONG-only
+        if config_name not in VEGA_CONFIGS:
+            if signal.direction != SignalDirection.LONG:
+                self.logger.debug(f"[{config_name}] Non-LONG signal ignored (non-VEGA)")
+                return
         
-        # Execute
+        # VEGA-specific lot sizing (margin-allocation, not SL-based)
+        volume_override = 0.0
+        if config_name in VEGA_CONFIGS and hasattr(checker, 'calculate_vega_lots'):
+            try:
+                import MetaTrader5 as mt5_mod
+                account = mt5_mod.account_info()
+                equity = account.equity if account else 50000.0
+                symbol_info_raw = mt5_mod.symbol_info(broker_symbol)
+                if symbol_info_raw:
+                    sym_info = {
+                        'volume_min': symbol_info_raw.volume_min,
+                        'volume_max': symbol_info_raw.volume_max,
+                        'volume_step': symbol_info_raw.volume_step,
+                    }
+                    forecast = getattr(signal, 'forecast', 10.0)
+                    volume_override = checker.calculate_vega_lots(
+                        equity=equity,
+                        entry_price=signal.entry_price,
+                        atr_val=signal.atr or 100.0,
+                        forecast=forecast,
+                        symbol_info=sym_info,
+                    )
+                    self.logger.info(
+                        f"[{config_name}] VEGA sizing: equity=${equity:,.0f}, "
+                        f"forecast={forecast:.1f}, volume={volume_override:.2f}"
+                    )
+            except Exception as e:
+                self.logger.warning(f"[{config_name}] VEGA sizing failed: {e}, using SL-based")
+        
+        # Execute LONG or SHORT
         self.state = MonitorState.EXECUTING
         
-        result = executor.execute_long(
-            symbol=symbol,
-            entry_price=signal.entry_price,
-            stop_loss=signal.stop_loss,
-            take_profit=signal.take_profit,
-            comment=config_name
-        )
+        if signal.direction == SignalDirection.LONG:
+            result = executor.execute_long(
+                symbol=broker_symbol,
+                entry_price=signal.entry_price,
+                stop_loss=signal.stop_loss,
+                take_profit=signal.take_profit,
+                comment=config_name,
+                volume_override=volume_override,
+            )
+            direction_str = "LONG"
+        else:
+            result = executor.execute_short(
+                symbol=broker_symbol,
+                entry_price=signal.entry_price,
+                stop_loss=signal.stop_loss,
+                take_profit=signal.take_profit,
+                comment=config_name,
+                volume_override=volume_override,
+            )
+            direction_str = "SHORT"
         
         if result.success:
             self.stats.trades_executed += 1
@@ -830,16 +975,17 @@ class MultiStrategyMonitor:
             slippage_pips = (result.executed_price - signal.entry_price) / pip_value
             
             self.logger.info(
-                f"[{config_name}] EXECUTED: {symbol} @ {result.executed_price:.5f} "
+                f"[{config_name}] EXECUTED: {broker_symbol} {direction_str} "
+                f"@ {result.executed_price:.5f} "
                 f"(signal: {signal.entry_price:.5f}, slippage: {slippage_pips:+.1f} pips)"
             )
             
             self._log_event("TRADE", {
                 "version": __version__,
                 "config": config_name,
-                "symbol": symbol,
+                "symbol": broker_symbol,
                 "strategy": checker.strategy_name,
-                "direction": "LONG",
+                "direction": direction_str,
                 "entry": result.executed_price,
                 "signal_entry": signal.entry_price,
                 "slippage_pips": round(slippage_pips, 1),
@@ -851,17 +997,26 @@ class MultiStrategyMonitor:
             
             # Track position for close detection
             if result.order_ticket:
-                self.open_positions[result.order_ticket] = {
+                pos_data = {
                     "config": config_name,
-                    "symbol": symbol,
+                    "symbol": broker_symbol,
                     "strategy": checker.strategy_name,
-                    "direction": "LONG",
+                    "direction": direction_str,
                     "entry": result.executed_price,
                     "volume": result.executed_volume,
                     "sl": signal.stop_loss,
                     "tp": signal.take_profit,
                     "open_time": datetime.now().isoformat(),
                 }
+                
+                # VEGA time-exit tracking
+                if config_name in VEGA_CONFIGS:
+                    holding_bars = getattr(signal, 'holding_bars', 3)
+                    pos_data["vega_time_exit"] = True
+                    pos_data["vega_open_time"] = datetime.now()
+                    pos_data["vega_holding_minutes"] = holding_bars * 240  # H4 bars
+                
+                self.open_positions[result.order_ticket] = pos_data
         else:
             self.logger.warning(f"[{config_name}] Execution failed: {result.message}")
             self._log_event("EXECUTION_FAILED", {
@@ -975,6 +1130,9 @@ class MultiStrategyMonitor:
                     
                     # Check for closed positions (SL/TP hits)
                     self._check_closed_positions()
+                    
+                    # VEGA time-based exits
+                    self._check_vega_time_exits()
                     
                     # Reset error counter on success
                     consecutive_errors = 0
