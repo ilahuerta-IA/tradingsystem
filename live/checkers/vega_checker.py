@@ -318,14 +318,14 @@ class VEGAChecker(BaseChecker):
         if len(df) < self.sma_period + 5 or len(reference_df) < self.sma_period + 5:
             return self._create_no_signal("Insufficient data for SMA/ATR warmup")
 
-        # Use second-to-last bar (last CLOSED bar) — iloc[-1] may be forming
-        # H4 bars fetched mid-cycle: last bar is incomplete
-        if len(df) < 2 or len(reference_df) < 2:
-            return self._create_no_signal("Need at least 2 bars")
+        # data_provider.get_bars(include_current=False) already excludes the
+        # forming bar.  df[-1] / reference_df[-1] are the last CLOSED bars,
+        # equivalent to close[0] in BT's next().
+        # FIX 2026-04-05: removed redundant iloc[:-1] that caused 1-bar (4h) lag.
 
         # Get bar time from traded index (reference_df = Index B = traded)
         if "time" in reference_df.columns:
-            bar_time_broker = reference_df["time"].iloc[-2]
+            bar_time_broker = reference_df["time"].iloc[-1]
             if isinstance(bar_time_broker, pd.Timestamp):
                 bar_time_broker = bar_time_broker.to_pydatetime()
         else:
@@ -338,9 +338,9 @@ class VEGAChecker(BaseChecker):
 
         utc_time = broker_to_utc(bar_time_broker)
 
-        # === COMPUTE Z-SCORES (on closed bars, excluding forming bar) ===
-        df_closed = df.iloc[:-1]
-        ref_closed = reference_df.iloc[:-1]
+        # === COMPUTE Z-SCORES (on closed bars — forming bar already excluded) ===
+        df_closed = df
+        ref_closed = reference_df
 
         # Index A (leader) — SMA, ATR, z-score
         sma_a = self._calculate_sma(df_closed["close"], self.sma_period)

@@ -11,6 +11,7 @@ import time
 import signal
 import sys
 import traceback
+import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -160,6 +161,12 @@ class MultiStrategyMonitor:
         
         # Track open positions for close detection {ticket: {config, symbol, entry, sl, tp, open_time}}
         self.open_positions: Dict[int, Dict[str, Any]] = {}
+        
+        # VEGA: last known H4 bar time per config (for bar-counting time-exit)
+        self._last_h4_bar_times: Dict[str, datetime] = {}
+        
+        # VEGA position state persistence (survives bot restarts)
+        self._vega_state_file = self.log_dir / "vega_positions_state.json"
         
         # Heartbeat tracking for dead-bot detection
         self._heartbeat_counter: int = 0
@@ -398,9 +405,74 @@ class MultiStrategyMonitor:
             
             if recovered > 0:
                 self.logger.info(f"Recovered {recovered} existing position(s) for tracking")
+            
+            # Merge persisted VEGA metadata (time-exit info) into recovered positions
+            self._load_vega_state()
                 
         except Exception as e:
             self.logger.error(f"Error recovering positions: {e}")
+    
+    def _save_vega_state(self):
+        """Persist VEGA position metadata to disk for restart recovery."""
+        try:
+            vega_state = {}
+            for ticket, pos_info in self.open_positions.items():
+                if pos_info.get("vega_time_exit"):
+                    entry_bar = pos_info.get("vega_entry_bar_time")
+                    vega_state[str(ticket)] = {
+                        "config": pos_info.get("config"),
+                        "vega_entry_bar_time": entry_bar.isoformat() if entry_bar else None,
+                        "vega_holding_bars": pos_info.get("vega_holding_bars", 3),
+                    }
+            
+            with open(self._vega_state_file, "w") as f:
+                json.dump(vega_state, f, indent=2)
+            
+        except Exception as e:
+            self.logger.error(f"Error saving VEGA state: {e}")
+    
+    def _load_vega_state(self):
+        """Load persisted VEGA metadata and merge into recovered positions."""
+        if not self._vega_state_file.exists():
+            return
+        
+        try:
+            with open(self._vega_state_file, "r") as f:
+                vega_state = json.load(f)
+            
+            merged = 0
+            for ticket_str, meta in vega_state.items():
+                ticket = int(ticket_str)
+                if ticket in self.open_positions:
+                    self.open_positions[ticket]["vega_time_exit"] = True
+                    bar_time_str = meta.get("vega_entry_bar_time")
+                    if bar_time_str:
+                        self.open_positions[ticket]["vega_entry_bar_time"] = (
+                            datetime.fromisoformat(bar_time_str)
+                        )
+                    self.open_positions[ticket]["vega_holding_bars"] = meta.get(
+                        "vega_holding_bars", 3
+                    )
+                    merged += 1
+                    self.logger.info(
+                        f"[{meta.get('config')}] Restored VEGA time-exit state for #{ticket}"
+                    )
+            
+            if merged > 0:
+                self.logger.info(f"Merged VEGA metadata for {merged} position(s)")
+            
+            # Clean stale entries (positions no longer open)
+            open_tickets = {str(t) for t in self.open_positions}
+            stale = [k for k in vega_state if k not in open_tickets]
+            if stale:
+                for k in stale:
+                    del vega_state[k]
+                with open(self._vega_state_file, "w") as f:
+                    json.dump(vega_state, f, indent=2)
+                self.logger.info(f"Cleaned {len(stale)} stale VEGA state entries")
+                
+        except Exception as e:
+            self.logger.error(f"Error loading VEGA state: {e}")
     
     def _check_connection(self) -> bool:
         """Check and repair MT5 connection if needed."""
@@ -430,22 +502,35 @@ class MultiStrategyMonitor:
     def _check_vega_time_exits(self):
         """
         Close VEGA positions that have exceeded their holding period.
-        Called every candle cycle. SL/TP are on server; this handles time-exit only.
+        Uses H4 bar counting (not wall-clock) to match BT behavior.
+        FIX 2026-04-05: wall-clock caused premature weekend closes.
         """
         if not self.open_positions:
             return
         
-        now = datetime.now()
         tickets_to_close = []
         
         for ticket, pos_info in self.open_positions.items():
             if not pos_info.get("vega_time_exit"):
                 continue
             
-            open_time = pos_info.get("vega_open_time")
-            holding_minutes = pos_info.get("vega_holding_minutes", 720)  # default 3 H4 bars
+            entry_bar_time = pos_info.get("vega_entry_bar_time")
+            holding_bars = pos_info.get("vega_holding_bars", 3)
+            config_name = pos_info.get("config", "UNKNOWN")
             
-            if open_time and (now - open_time).total_seconds() >= holding_minutes * 60:
+            if not entry_bar_time:
+                continue
+            
+            # Get the latest H4 bar time for this config
+            current_bar_time = self._last_h4_bar_times.get(config_name)
+            if not current_bar_time:
+                continue
+            
+            # Count elapsed H4 bars (each bar = 4 hours of market time)
+            elapsed = current_bar_time - entry_bar_time
+            bars_elapsed = int(elapsed.total_seconds() / (4 * 3600))
+            
+            if bars_elapsed >= holding_bars:
                 tickets_to_close.append(ticket)
         
         for ticket in tickets_to_close:
@@ -454,7 +539,7 @@ class MultiStrategyMonitor:
             
             self.logger.info(
                 f"[{config_name}] VEGA TIME-EXIT: closing ticket {ticket} "
-                f"after {pos_info.get('vega_holding_minutes', 0)} min hold"
+                f"after {pos_info.get('vega_holding_bars', 0)} H4 bars hold"
             )
             
             # Find the executor for this config
@@ -474,12 +559,19 @@ class MultiStrategyMonitor:
                     "direction": pos_info.get("direction"),
                     "entry": pos_info.get("entry"),
                     "close_price": result.executed_price,
-                    "hold_minutes": pos_info.get("vega_holding_minutes"),
+                    "hold_bars": pos_info.get("vega_holding_bars"),
                 })
             else:
                 self.logger.error(
                     f"[{config_name}] VEGA TIME-EXIT failed for ticket {ticket}: {result.message}"
                 )
+        
+        # Remove closed positions and persist updated state
+        if tickets_to_close:
+            for ticket in tickets_to_close:
+                if ticket in self.open_positions:
+                    del self.open_positions[ticket]
+            self._save_vega_state()
 
     def _check_closed_positions(self):
         """
@@ -826,6 +918,13 @@ class MultiStrategyMonitor:
                 # For VEGA: traded symbol is reference_symbol, not asset_name
                 if config_name in VEGA_CONFIGS:
                     traded_bt_symbol = reference_symbol or symbol
+                    # Track latest H4 bar time for bar-counting time-exit
+                    ref_data = reference_bars if reference_bars is not None else bars
+                    if "time" in ref_data.columns and len(ref_data) > 0:
+                        last_bar = ref_data["time"].iloc[-1]
+                        if isinstance(last_bar, pd.Timestamp):
+                            last_bar = last_bar.to_pydatetime()
+                        self._last_h4_bar_times[config_name] = last_bar
                 else:
                     traded_bt_symbol = symbol
                 
@@ -1009,14 +1108,18 @@ class MultiStrategyMonitor:
                     "open_time": datetime.now().isoformat(),
                 }
                 
-                # VEGA time-exit tracking
+                # VEGA time-exit tracking (bar-counting, not wall-clock)
                 if config_name in VEGA_CONFIGS:
                     holding_bars = getattr(signal, 'holding_bars', 3)
                     pos_data["vega_time_exit"] = True
-                    pos_data["vega_open_time"] = datetime.now()
-                    pos_data["vega_holding_minutes"] = holding_bars * 240  # H4 bars
+                    pos_data["vega_entry_bar_time"] = self._last_h4_bar_times.get(config_name)
+                    pos_data["vega_holding_bars"] = holding_bars
                 
                 self.open_positions[result.order_ticket] = pos_data
+                
+                # Persist VEGA state for restart recovery
+                if config_name in VEGA_CONFIGS:
+                    self._save_vega_state()
         else:
             self.logger.warning(f"[{config_name}] Execution failed: {result.message}")
             self._log_event("EXECUTION_FAILED", {
