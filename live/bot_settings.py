@@ -126,9 +126,12 @@ VEGA_CONFIGS = {"NI225_VEGA", "GDAXI_VEGA", "NDAXI_VEGA"}
 #   Fixed in v0.5.3.
 #
 
-# Current broker UTC offset (hours)
-# - FOREX.comGLOBAL: UTC+2 (winter) / UTC+3 (summer)
-# - OANDA: UTC+0
+# Broker UTC offset -- WINTER BASE only.
+# Actual offset is computed automatically by get_broker_utc_offset() in timezone.py:
+#   BROKER_FOLLOWS_DST=True -> March-October = base+1 (summer), rest = base (winter).
+# Do NOT change this value seasonally; DST is automatic.
+# - FOREX.comGLOBAL: base=2 (winter UTC+2, summer UTC+3)
+# - OANDA: base=0
 BROKER_UTC_OFFSET = 2
 
 # Does broker follow EET daylight saving time?
