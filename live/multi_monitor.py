@@ -1127,6 +1127,19 @@ class MultiStrategyMonitor:
                 "reason": result.message,
                 "signal": signal.to_dict()
             })
+            
+            # VEGA retry: on transient MT5 errors, reset checker bar tracking
+            # so the signal is re-evaluated on the next polling cycle.
+            # 10017 = Trade disabled (weekend/maintenance)
+            # 10018 = Market closed
+            # FIX 2026-04-05 v0.7.2
+            if config_name in VEGA_CONFIGS:
+                retryable_codes = ["10017", "10018"]
+                if any(code in result.message for code in retryable_codes):
+                    checker._last_processed_bar_time = None
+                    self.logger.info(
+                        f"[{config_name}] Retryable error — bar unmarked for retry next cycle"
+                    )
     
     def start(self) -> bool:
         """

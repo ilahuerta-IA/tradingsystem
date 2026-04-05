@@ -338,6 +338,20 @@ class VEGAChecker(BaseChecker):
 
         utc_time = broker_to_utc(bar_time_broker)
 
+        # Stale bar guard: reject bars older than 1 H4 period (4h + 30min buffer)
+        # Prevents phantom signals on weekend/holiday restarts.
+        # FIX 2026-04-05 v0.7.2: bot started Saturday, processed Friday's bar,
+        # MT5 rejected (10017 trade disabled), signal consumed and lost.
+        from datetime import datetime as _dt, timezone as _tz
+        now_utc = _dt.now(_tz.utc).replace(tzinfo=None)
+        bar_age_seconds = (now_utc - utc_time).total_seconds()
+        max_bar_age_seconds = 4 * 3600 + 1800  # 4h30m
+        if bar_age_seconds > max_bar_age_seconds:
+            return self._create_no_signal(
+                f"Stale bar: age {bar_age_seconds/3600:.1f}h > limit 4.5h "
+                f"(bar UTC={utc_time}, now UTC={now_utc:%H:%M})"
+            )
+
         # === COMPUTE Z-SCORES (on closed bars — forming bar already excluded) ===
         df_closed = df
         ref_closed = reference_df
