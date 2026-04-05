@@ -14,26 +14,26 @@ Only values here, no code. Functions go in separate modules.
 
 ENABLED_CONFIGS = {
     # Sunset Ogle strategy (Forex)
-    "EURUSD_PRO": True,
-    "EURJPY_PRO": True,
+    "EURUSD_PRO": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
+    "EURJPY_PRO": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
     "USDCAD_PRO": False,  # Disabled: high spread/slippage destroys edge
-    "USDCHF_PRO": True,
+    "USDCHF_PRO": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
     "USDJPY_PRO": False,  # PAUSED 2026-02-28: 1/11 WR in OOS (p=1.6%). Re-evaluate Jun 2026
     
     # KOI strategy (Forex)
-    "EURUSD_KOI": True,
+    "EURUSD_KOI": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
     "USDCAD_KOI": False,  # Disabled: high spread/slippage destroys edge
-    "USDCHF_KOI": True,
-    "USDJPY_KOI": True,  # REACTIVATED 2026-03-01: WF 9/10, 2025 PF 2.13 (no degradation). Ogle-specific issue, not regime. PRO stays paused.
-    "EURJPY_KOI": True,
+    "USDCHF_KOI": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
+    "USDJPY_KOI": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
+    "EURJPY_KOI": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
     
     # SEDNA strategy (Forex - JPY pairs)
-    "USDJPY_SEDNA": True,  # REACTIVATED 2026-03-01: WF 9/10, 2025 PF 2.46 (strongest OOS year). Ogle-specific issue, not regime. PRO stays paused.
-    "EURJPY_SEDNA": True,
+    "USDJPY_SEDNA": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
+    "EURJPY_SEDNA": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
     
     # GEMINI strategy (correlation divergence EURUSD/USDCHF)
-    "EURUSD_GEMINI": True,
-    "USDCHF_GEMINI": True,
+    "EURUSD_GEMINI": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
+    "USDCHF_GEMINI": False,  # PAUSED 2026-04-05: M5 phase closed, transitioning to H4
     
     # KOI strategy (ETFs) - disabled until broker availability confirmed
     "DIA_KOI": False,
