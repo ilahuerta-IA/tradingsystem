@@ -3942,9 +3942,7 @@ STRATEGIES_CONFIG = {
         'strategy_name': 'CONNORS',
         'asset_name': 'SP500',
         # Para Daily: usar CSV pre-resampleado (backtrader 5m→Daily se cuelga)
-        # Para intraday (H1/H4): cambiar a SP500_5m_15Yea.csv + base_timeframe_minutes
         'data_path': 'data/SP500_daily_15Yea.csv',
-        # 'data_path': 'data/SP500_5m_15Yea.csv',  # Para H1(60) / H4(240)
 
         'from_date': datetime.datetime(2010, 1, 1),
         'to_date': datetime.datetime(2025, 12, 31),
@@ -3966,23 +3964,78 @@ STRATEGIES_CONFIG = {
             'rsi_threshold': 10,
             'max_hold_days': 20,
 
-            # Resample: 60=H1, 240=H4. Para Daily con CSV pre-resampleado, dejar 0
-            # Con SP500_5m → usar 60/240. Con SP500_daily → usar 0 (ya es daily)
+            # No resample — data is already daily
             'base_timeframe_minutes': 0,
 
             # --- Optional SL/TP by ATR (off = Connors original) ---
             'atr_period': 14,
-            'use_protective_stop': False,   # True = SL a atr_sl_multiplier × ATR
-            'atr_sl_multiplier': 2.0,       # Distancia SL en múltiplos de ATR
-            'sl_buffer_pips': 0.0,          # Buffer extra sobre el SL
-            'use_take_profit': False,       # True = TP a atr_tp_multiplier × ATR
-            'atr_tp_multiplier': 3.0,       # Distancia TP en múltiplos de ATR
+            'use_protective_stop': False,
+            'atr_sl_multiplier': 2.0,
+            'sl_buffer_pips': 0.0,
+            'use_take_profit': False,
+            'atr_tp_multiplier': 3.0,
 
             # --- Sizing ---
-            # 'fixed' = fixed_contracts BT units
-            # 'risk'  = dynamic (requiere use_protective_stop=True)
             'sizing_mode': 'fixed',
             'fixed_contracts': 10,          # 1 DW contract = 10 BT units ($10/point)
+
+            'risk_percent': 0.01,
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 5.0,
+
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+    # =========================================================================
+    # CONNORS H4 — Fractal scaling: periodos ×6 (6 velas H4/día trading)
+    # SMA(200d)=1200 H4 bars, RSI(2d)=12 H4 bars, etc.
+    # =========================================================================
+    'SP500_CONNORS_H4': {
+        'active': True,
+        'strategy_name': 'CONNORS',
+        'asset_name': 'SP500',
+        'data_path': 'data/SP500_5m_15Yea.csv',
+
+        'from_date': datetime.datetime(2010, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'broker_config_key': 'darwinex_zero_cfd_sp500',
+
+        'params': {
+            # Connors H4: RSI se mantiene corto (oscilador acotado, no escala)
+            # Solo escalan los periodos de tendencia/salida (×6 barras/día)
+            'rsi_period': 2,                 # NO escala — debe ser ultra-corto
+            'sma_trend_period': 1200,        # 200 días × 6 = 1200 barras H4
+            'sma_exit_period': 30,           # 5 días × 6 = 30 barras H4
+            'rsi_threshold': 10,             # Adimensional, no escala
+            'max_hold_days': 120,            # 20 días × 6 = 120 barras H4
+
+            # Resample 5m → H4
+            'base_timeframe_minutes': 240,
+
+            # --- Optional SL/TP by ATR ---
+            'atr_period': 84,               # 14 días × 6 = 84 barras H4
+            'use_protective_stop': False,
+            'atr_sl_multiplier': 2.0,
+            'sl_buffer_pips': 0.0,
+            'use_take_profit': False,
+            'atr_tp_multiplier': 3.0,
+
+            # --- Sizing ---
+            'sizing_mode': 'fixed',
+            'fixed_contracts': 10,
 
             'risk_percent': 0.01,
             'pip_value': 1.0,
