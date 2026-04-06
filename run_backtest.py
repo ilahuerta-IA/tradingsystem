@@ -317,6 +317,8 @@ def run_backtest(config_name):
     
     # Get commission statistics based on instrument type
     num_trades = len(getattr(strategy, 'trade_reports', []))
+    if num_trades == 0:
+        num_trades = getattr(strategy, 'trades', 0)
     
     if is_non_forex:
         broker_key = config.get('broker_config_key', 'darwinex_zero_etf')

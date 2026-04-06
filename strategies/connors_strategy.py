@@ -11,12 +11,18 @@ All values taken directly from Connors' research:
   - Timeout: max_hold_days (default 20)
   - Direction: LONG only
 
+Optional (off by default):
+  - Protective SL: atr_sl_multiplier x ATR below entry
+  - Take Profit:   atr_tp_multiplier x ATR above entry
+  - Dynamic sizing: risk_percent based on SL distance
+
 Validated on SP500 Daily 15Y (2010-2024):
   Score 4.17, 118 trades, WR 78.8%, 80% positive years.
 
 Reference: tools/connors_rsi2_definitive.py
 """
 
+import os
 from collections import defaultdict
 from datetime import datetime
 
@@ -36,6 +42,14 @@ class CONNORSStrategy(bt.Strategy):
         rsi_threshold=10,
         max_hold_days=20,
 
+        # --- Optional SL/TP by ATR (off by default = Connors original) ---
+        atr_period=14,
+        use_protective_stop=False,
+        atr_sl_multiplier=2.0,
+        sl_buffer_pips=0.0,
+        use_take_profit=False,
+        atr_tp_multiplier=3.0,
+
         # --- Asset / Risk (auto-injected by run_backtest.py) ---
         risk_percent=0.01,
         pip_value=1.0,
@@ -46,12 +60,10 @@ class CONNORSStrategy(bt.Strategy):
         margin_pct=5.0,
 
         # --- Sizing mode ---
-        # 'risk' = ATR-based virtual stop for position sizing
-        # 'fixed' = fixed number of contracts
+        # 'risk' = dynamic sizing based on SL distance (requires use_protective_stop)
+        # 'fixed' = fixed number of BT units
         sizing_mode='fixed',
-        fixed_contracts=1,
-        atr_period=14,
-        atr_sl_multiplier=2.0,
+        fixed_contracts=10,
 
         # --- Output ---
         print_signals=False,
@@ -63,14 +75,18 @@ class CONNORSStrategy(bt.Strategy):
                               safediv=True)
         self.sma_trend = bt.ind.SMA(self.data.close, period=self.p.sma_trend_period)
         self.sma_exit = bt.ind.SMA(self.data.close, period=self.p.sma_exit_period)
-
-        if self.p.sizing_mode == 'risk':
-            self.atr = bt.ind.ATR(self.data, period=self.p.atr_period)
+        self.atr = bt.ind.ATR(self.data, period=self.p.atr_period)
 
         # Order tracking
         self.order = None
+        self.stop_order = None
+        self.limit_order = None
         self.entry_bar = 0
         self.entry_price = 0.0
+        self.stop_level = 0.0
+        self.take_level = 0.0
+        self._entry_size = 0
+        self.last_exit_reason = None
 
         # Statistics
         self.trades = 0
@@ -84,8 +100,51 @@ class CONNORSStrategy(bt.Strategy):
         self._first_bar_dt = None
         self._last_bar_dt = None
 
+        # Trade reports (used by run_backtest.py for commission summary)
+        self.trade_reports = []
+        self._current_trade_idx = None
+
+        # Trade log file
+        self.trade_report_file = None
+
     def start(self):
         self._starting_cash = self.broker.get_value()
+        self._init_trade_reporting()
+
+    def _init_trade_reporting(self):
+        """Initialize trade log file in logs/."""
+        if not self.p.export_reports:
+            return
+        logs_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'CONNORS_trades_{timestamp}.txt'
+        filepath = os.path.join(logs_dir, filename)
+        self.trade_report_file = open(filepath, 'w', encoding='utf-8')
+        f = self.trade_report_file
+        f.write("=" * 80 + "\n")
+        f.write("CONNORS RSI(2) TRADE LOG\n")
+        f.write("=" * 80 + "\n")
+        f.write(f"RSI: period={self.p.rsi_period}, threshold=<{self.p.rsi_threshold}\n")
+        f.write(f"SMA Trend: {self.p.sma_trend_period}, SMA Exit: {self.p.sma_exit_period}\n")
+        f.write(f"Max Hold: {self.p.max_hold_days} days\n")
+        f.write(f"ATR: period={self.p.atr_period}\n")
+        if self.p.use_protective_stop:
+            f.write(f"Protective Stop: ON ({self.p.atr_sl_multiplier}x ATR)\n")
+        else:
+            f.write("Protective Stop: OFF\n")
+        if self.p.use_take_profit:
+            f.write(f"Take Profit: ON ({self.p.atr_tp_multiplier}x ATR)\n")
+        else:
+            f.write("Take Profit: OFF\n")
+        f.write(f"Sizing: {self.p.sizing_mode}")
+        if self.p.sizing_mode == 'fixed':
+            f.write(f" ({self.p.fixed_contracts} units)\n")
+        else:
+            f.write(f" (risk={self.p.risk_percent*100:.2f}%)\n")
+        f.write("=" * 80 + "\n\n")
+        f.flush()
 
     def prenext(self):
         self._track_portfolio()
@@ -107,30 +166,100 @@ class CONNORSStrategy(bt.Strategy):
             # --- ENTRY LOGIC ---
             if (self.data.close[0] > self.sma_trend[0]
                     and self.rsi[0] < self.p.rsi_threshold):
-                size = self._calc_size()
-                if size > 0:
-                    self.order = self.buy(size=size)
-                    self.entry_bar = len(self)
-                    if self.p.print_signals:
-                        print(f"  [ENTRY] {dt} | RSI={self.rsi[0]:.1f} "
-                              f"| Close={self.data.close[0]:.2f} "
-                              f"| Size={size}")
+                self._execute_entry(dt)
         else:
-            # --- EXIT LOGIC ---
+            # --- EXIT LOGIC (only if no bracket orders active) ---
             bars_held = len(self) - self.entry_bar
             reason = None
 
-            if self.data.close[0] > self.sma_exit[0]:
+            # Check protective stop (manual check per bar)
+            if (self.p.use_protective_stop and self.stop_level > 0
+                    and self.data.low[0] <= self.stop_level):
+                reason = 'STOP_LOSS'
+            # Check take profit (manual check per bar)
+            elif (self.p.use_take_profit and self.take_level > 0
+                    and self.data.high[0] >= self.take_level):
+                reason = 'TAKE_PROFIT'
+            elif self.data.close[0] > self.sma_exit[0]:
                 reason = 'SMA_EXIT'
             elif bars_held >= self.p.max_hold_days:
                 reason = 'TIMEOUT'
 
             if reason:
+                self.last_exit_reason = reason
                 self.order = self.close()
                 if self.p.print_signals:
                     print(f"  [EXIT]  {dt} | Reason={reason} "
                           f"| Bars={bars_held} "
                           f"| Close={self.data.close[0]:.2f}")
+
+    # -----------------------------------------------------------------
+    # Entry execution
+    # -----------------------------------------------------------------
+
+    def _execute_entry(self, dt):
+        """Execute entry with position sizing and optional SL/TP levels."""
+        entry_price = self.data.close[0]
+        atr_val = self.atr[0]
+
+        if atr_val <= 0:
+            return
+
+        # Calculate SL/TP levels
+        sl_buffer = self.p.sl_buffer_pips * self.p.pip_value
+        self.stop_level = entry_price - (atr_val * self.p.atr_sl_multiplier) - sl_buffer
+        self.take_level = entry_price + (atr_val * self.p.atr_tp_multiplier)
+
+        # Position sizing
+        size = self._calc_size(entry_price)
+        if size <= 0:
+            return
+
+        self._entry_size = size
+        self.order = self.buy(size=size)
+        self.entry_bar = len(self)
+
+        # Record entry in trade report
+        trade_idx = len(self.trade_reports)
+        self.trade_reports.append({
+            'entry_time': dt,
+            'entry_price': entry_price,
+            'size': size,
+            'rsi': self.rsi[0],
+            'atr': atr_val,
+            'sl': self.stop_level if self.p.use_protective_stop else None,
+            'tp': self.take_level if self.p.use_take_profit else None,
+            'pnl': 0.0,
+            'exit_reason': None,
+            'exit_time': None,
+        })
+        self._current_trade_idx = trade_idx
+
+        # Write to log file
+        if self.trade_report_file:
+            f = self.trade_report_file
+            f.write("ENTRY #%d\n" % (trade_idx + 1))
+            f.write("Time: %s\n" % dt.strftime('%Y-%m-%d %H:%M:%S'))
+            f.write("Entry Price: %.2f\n" % entry_price)
+            f.write("Size: %d contracts\n" % size)
+            f.write("RSI(2): %.1f\n" % self.rsi[0])
+            f.write("ATR: %.2f\n" % atr_val)
+            if self.p.use_protective_stop:
+                f.write("Protective Stop: %.2f\n" % self.stop_level)
+            if self.p.use_take_profit:
+                f.write("Take Profit: %.2f\n" % self.take_level)
+            f.write("\n")
+            f.flush()
+
+        if self.p.print_signals:
+            sl_str = f" SL={self.stop_level:.2f}" if self.p.use_protective_stop else ""
+            tp_str = f" TP={self.take_level:.2f}" if self.p.use_take_profit else ""
+            print(f"  [ENTRY] {dt} | RSI={self.rsi[0]:.1f} "
+                  f"| Close={entry_price:.2f} | Size={size}{sl_str}{tp_str}")
+
+    # -----------------------------------------------------------------
+    # Order / Trade notifications
+    # -----------------------------------------------------------------
 
     def notify_order(self, order):
         if order.status in [order.Completed]:
@@ -155,24 +284,56 @@ class CONNORSStrategy(bt.Strategy):
             self.losses += 1
             self.gross_loss += abs(pnl)
 
+        # Determine exit reason
+        reason = self.last_exit_reason or ('WIN' if pnl > 0 else 'LOSS')
+        self.last_exit_reason = None
+
         self._trade_pnls.append({
             'date': dt,
             'year': dt.year,
             'pnl': pnl,
             'is_winner': pnl > 0,
+            'exit_reason': reason,
+            'bars_held': len(self) - self.entry_bar,
         })
+
+        # Update trade report
+        self._record_trade_exit(dt, pnl, reason)
+
+    def _record_trade_exit(self, dt, pnl, reason):
+        """Record exit details to log and trade_reports list."""
+        if self._current_trade_idx is None:
+            return
+        if self._current_trade_idx < len(self.trade_reports):
+            report = self.trade_reports[self._current_trade_idx]
+            report['pnl'] = pnl
+            report['exit_reason'] = reason
+            report['exit_time'] = dt
+
+        if self.trade_report_file:
+            try:
+                f = self.trade_report_file
+                f.write("EXIT #%d\n" % (self._current_trade_idx + 1))
+                f.write("Time: %s\n" % dt.strftime('%Y-%m-%d %H:%M:%S'))
+                f.write("Exit Reason: %s\n" % reason)
+                f.write("P&L: $%.2f\n" % pnl)
+                f.write("=" * 80 + "\n\n")
+                f.flush()
+            except Exception:
+                pass
+        self._current_trade_idx = None
 
     # -----------------------------------------------------------------
     # Position sizing
     # -----------------------------------------------------------------
 
-    def _calc_size(self):
+    def _calc_size(self, entry_price):
         if self.p.sizing_mode == 'fixed':
             return self.p.fixed_contracts
 
-        # Risk-based sizing using virtual ATR stop
-        entry = self.data.close[0]
-        virtual_stop = entry - self.p.atr_sl_multiplier * self.atr[0]
+        # Risk-based sizing: need a real SL distance
+        if not self.p.use_protective_stop or self.stop_level <= 0:
+            return self.p.fixed_contracts
 
         if self.p.is_etf:
             pair_type = 'ETF'
@@ -182,8 +343,8 @@ class CONNORSStrategy(bt.Strategy):
             pair_type = 'STANDARD'
 
         return calculate_position_size(
-            entry_price=entry,
-            stop_loss=virtual_stop,
+            entry_price=entry_price,
+            stop_loss=self.stop_level,
             equity=self.broker.get_value(),
             risk_percent=self.p.risk_percent,
             pair_type=pair_type,
@@ -398,10 +559,22 @@ class CONNORSStrategy(bt.Strategy):
         print("  SMA Exit: %d" % self.p.sma_exit_period)
         print("  RSI Threshold: < %d" % self.p.rsi_threshold)
         print("  Max Hold: %d days" % self.p.max_hold_days)
+        if self.p.use_protective_stop:
+            print("  Protective Stop: %.1fx ATR" % self.p.atr_sl_multiplier)
+        else:
+            print("  Protective Stop: OFF")
+        if self.p.use_take_profit:
+            print("  Take Profit: %.1fx ATR" % self.p.atr_tp_multiplier)
+        else:
+            print("  Take Profit: OFF")
         print("  Sizing: %s" % self.p.sizing_mode)
         if self.p.sizing_mode == 'fixed':
-            print("  Fixed Contracts: %d" % self.p.fixed_contracts)
+            print("  Fixed Contracts: %d BT units" % self.p.fixed_contracts)
         else:
             print("  Risk: %.2f%%" % (self.p.risk_percent * 100))
-            print("  ATR SL Mult: %.1f" % self.p.atr_sl_multiplier)
         print("=" * 70)
+
+        # Close report file
+        if self.trade_report_file:
+            self.trade_report_file.close()
+            print("\nTrade report saved.")
