@@ -3941,7 +3941,10 @@ STRATEGIES_CONFIG = {
         'active': True,
         'strategy_name': 'CONNORS',
         'asset_name': 'SP500',
+        # Para Daily: usar CSV pre-resampleado (backtrader 5m→Daily se cuelga)
+        # Para intraday (H1/H4): cambiar a SP500_5m_15Yea.csv + base_timeframe_minutes
         'data_path': 'data/SP500_daily_15Yea.csv',
+        # 'data_path': 'data/SP500_5m_15Yea.csv',  # Para H1(60) / H4(240)
 
         'from_date': datetime.datetime(2010, 1, 1),
         'to_date': datetime.datetime(2025, 12, 31),
@@ -3963,11 +3966,23 @@ STRATEGIES_CONFIG = {
             'rsi_threshold': 10,
             'max_hold_days': 20,
 
-            # No resampling — data is already daily
+            # Resample: 60=H1, 240=H4. Para Daily con CSV pre-resampleado, dejar 0
+            # Con SP500_5m → usar 60/240. Con SP500_daily → usar 0 (ya es daily)
+            'base_timeframe_minutes': 0,
 
-            # Fixed 1 DW contract = 10 BT units ($10/point, matches study)
+            # --- Optional SL/TP by ATR (off = Connors original) ---
+            'atr_period': 14,
+            'use_protective_stop': False,   # True = SL a atr_sl_multiplier × ATR
+            'atr_sl_multiplier': 2.0,       # Distancia SL en múltiplos de ATR
+            'sl_buffer_pips': 0.0,          # Buffer extra sobre el SL
+            'use_take_profit': False,       # True = TP a atr_tp_multiplier × ATR
+            'atr_tp_multiplier': 3.0,       # Distancia TP en múltiplos de ATR
+
+            # --- Sizing ---
+            # 'fixed' = fixed_contracts BT units
+            # 'risk'  = dynamic (requiere use_protective_stop=True)
             'sizing_mode': 'fixed',
-            'fixed_contracts': 10,
+            'fixed_contracts': 10,          # 1 DW contract = 10 BT units ($10/point)
 
             'risk_percent': 0.01,
             'pip_value': 1.0,
