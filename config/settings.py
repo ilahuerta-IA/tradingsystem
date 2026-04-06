@@ -3930,6 +3930,59 @@ STRATEGIES_CONFIG = {
 
 
     # =========================================================================
+    # CONNORS RSI(2) STRATEGY (Published Mean-Reversion, Zero Optimization)
+    # Entry: RSI(2) < 10 when Close > SMA(200)
+    # Exit: Close > SMA(5) or max 20 days
+    # Validated: Score 4.17, 118 trades, WR 78.8%, 80% positive years (15Y)
+    # Reference: tools/connors_rsi2_definitive.py
+    # =========================================================================
+
+    'SP500_CONNORS': {
+        'active': True,
+        'strategy_name': 'CONNORS',
+        'asset_name': 'SP500',
+        'data_path': 'data/SP500_daily_15Yea.csv',
+
+        'from_date': datetime.datetime(2010, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+
+        'starting_cash': 100000.0,
+
+        'run_plot': False,
+        'generate_report': True,
+        'save_log': True,
+        'debug_mode': False,
+
+        'broker_config_key': 'darwinex_zero_cfd_sp500',
+
+        'params': {
+            # Connors published parameters (DO NOT OPTIMIZE)
+            'rsi_period': 2,
+            'sma_trend_period': 200,
+            'sma_exit_period': 5,
+            'rsi_threshold': 10,
+            'max_hold_days': 20,
+
+            # No resampling — data is already daily
+
+            # Fixed 1 DW contract = 10 BT units ($10/point, matches study)
+            'sizing_mode': 'fixed',
+            'fixed_contracts': 10,
+
+            'risk_percent': 0.01,
+            'pip_value': 1.0,
+            'lot_size': 1,
+            'jpy_rate': 1.0,
+            'is_etf': True,
+            'margin_pct': 5.0,
+
+            'print_signals': False,
+            'export_reports': True,
+        }
+    },
+
+
+    # =========================================================================
     # VEGA STRATEGY CONFIGURATIONS (Cross-Index Z-Score Divergence)
     # Concept: London repricing of lagging index vs SP500 z-score divergence
     # Signal: spread = z_SP500 - z_TARGET; trade opposite direction on TARGET

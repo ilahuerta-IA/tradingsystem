@@ -23,6 +23,7 @@ from strategies.gemini_strategy import GEMINIStrategy
 from strategies.ceres_strategy import CERESStrategy
 from strategies.luyten_strategy import LUYTENStrategy
 from strategies.vega_strategy import VEGAStrategy
+from strategies.connors_strategy import CONNORSStrategy
 from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
 
 
@@ -41,6 +42,7 @@ STRATEGY_REGISTRY = {
     'CERES': CERESStrategy,
     'LUYTEN': LUYTENStrategy,
     'VEGA': VEGAStrategy,
+    'CONNORS': CONNORSStrategy,
 }
 
 
@@ -109,9 +111,20 @@ def run_backtest(config_name):
     #
     # base_timeframe_minutes: resample primary feed to a different base TF
     # (e.g. 15 -> strategy runs on 15m bars instead of raw 5m)
+    # For daily (1440+), use bt.TimeFrame.Days for proper trading-day alignment
     params = config['params']
     base_tf = params.get('base_timeframe_minutes', 0)
-    if base_tf and base_tf > 5:
+    if base_tf and base_tf >= 1440:
+        days_compression = base_tf // 1440
+        data_base = cerebro.resampledata(
+            data,
+            timeframe=bt.TimeFrame.Days,
+            compression=days_compression
+        )
+        data_base._name = asset_name
+        print(f'Loaded data from {data_path}')
+        print(f'Base timeframe resampled: Daily (datas[0])')
+    elif base_tf and base_tf > 5:
         data_base = cerebro.resampledata(
             data,
             timeframe=bt.TimeFrame.Minutes,
