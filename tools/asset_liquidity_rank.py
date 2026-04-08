@@ -9,7 +9,7 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SPREADS = {
     'SP500': 0.80, 'NDX': 1.80, 'GDAXI': 2.00, 'NI225': 12.0,
     'UK100': 1.00, 'EUR50': 1.50, 'AUS200': 3.00,
-    'XAUUSD': 0.35, 'EURUSD': 0.00012, 'USDJPY': 0.014,
+    'XAUUSD': 0.69, 'EURUSD': 0.00012, 'USDJPY': 0.014,
     'USDCHF': 0.00015, 'AUDUSD': 0.00015, 'NZDUSD': 0.00018,
     'GLD': 0.15, 'DIA': 0.20, 'XLE': 0.05, 'TLT': 0.10,
     'EWZ': 0.10, 'XLU': 0.05, 'SLV': 0.05,

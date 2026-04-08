@@ -42,7 +42,7 @@ ASSET_FILES = {
 
 # Broker spreads in points
 SPREADS = {
-    'GDAXI': 2.0, 'XAUUSD': 0.35, 'NDX': 1.8, 'UK100': 1.0,
+    'GDAXI': 2.0, 'XAUUSD': 0.69, 'NDX': 1.8, 'UK100': 1.0,
     'SP500': 0.8, 'NI225': 12.0,
 }
 
@@ -551,7 +551,7 @@ def print_holding_report(all_results):
                     else:
                         profile = "FLAT →"
 
-            print(f"  {r['fwd_bars']:>4} {r['fwd_hours']:>5}h {r['n']:>7} "
+            print(f"  {r['fwd_bars']:>4} {r['fwd_hours']:>5}  {r['n']:>7} "
                   f"{fmt(r['edge'])} {fmtp(r['wr'])} "
                   f"{fmt(r['edge_per_bar'])} {profile:>10}")
     print()
@@ -633,6 +633,9 @@ def parse_args():
     parser.add_argument('--test', type=str, default=None,
                         choices=['trend', 'volatility', 'timing', 'holding'],
                         help='Run specific test only')
+    parser.add_argument('--tf', type=str, default='H4',
+                        choices=['H4', 'D1'],
+                        help='Timeframe for bars (H4 or D1=Daily)')
     parser.add_argument('--save', action='store_true',
                         help='Save results to analysis/')
     return parser.parse_args()
@@ -648,14 +651,19 @@ def main():
     else:
         assets = list(ASSET_FILES.keys())
 
+    tf = args.tf
     tests = (['trend', 'volatility', 'timing', 'holding']
              if args.test is None else [args.test])
+    # D1 has no intraday hours -- skip timing test
+    if tf == 'D1' and 'timing' in tests:
+        tests = [t for t in tests if t != 'timing']
 
     print("=" * 90)
-    print("MOMENTUM REGIME PRE-STUDY")
+    print(f"MOMENTUM REGIME PRE-STUDY ({tf})")
     print("=" * 90)
     print(f"Assets: {', '.join(assets)}")
     print(f"Tests:  {', '.join(tests)}")
+    print(f"Timeframe: {tf}")
     print(f"Mom lookback: {MOM_DAYS} trading days")
     print(f"ATR period: {ATR_PERIOD} bars")
     print(f"Forward bars: {FORWARD_BARS}")
@@ -667,8 +675,10 @@ def main():
     for sym in assets:
         h4, daily = load_data(sym)
         if h4 is not None:
-            cache[sym] = {'h4': h4, 'daily': daily}
-            print(f"  {sym}: {len(h4):,} H4 bars, {len(daily):,} daily bars "
+            # Use daily bars as trading bars when --tf D1
+            bars = daily if tf == 'D1' else h4
+            cache[sym] = {'h4': bars, 'daily': daily}
+            print(f"  {sym}: {len(bars):,} {tf} bars, {len(daily):,} daily bars "
                   f"({daily.index[0].date()} to {daily.index[-1].date()})")
         else:
             print(f"  {sym}: NO DATA -- skipping")
