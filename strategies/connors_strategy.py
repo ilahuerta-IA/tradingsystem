@@ -30,6 +30,7 @@ import backtrader as bt
 import numpy as np
 
 from lib.position_sizing import calculate_position_size
+from lib.filters import check_time_filter, check_day_filter
 
 
 class CONNORSStrategy(bt.Strategy):
@@ -49,6 +50,14 @@ class CONNORSStrategy(bt.Strategy):
         sl_buffer_pips=0.0,
         use_take_profit=False,
         atr_tp_multiplier=3.0,
+
+        # --- Entry filters (all off by default = no filtering) ---
+        use_time_filter=False,
+        allowed_hours=[],           # e.g. [7,8,9,10,11,12] = only enter 07-12 UTC
+        use_day_filter=False,
+        allowed_days=[],            # e.g. [0,1,2,3] = Mon-Thu (skip Fri)
+        min_atr_entry=0.0,          # Min ATR to enter (0=disabled)
+        max_atr_entry=0.0,          # Max ATR to enter (0=disabled)
 
         # --- Asset / Risk (auto-injected by run_backtest.py) ---
         risk_percent=0.01,
@@ -143,6 +152,13 @@ class CONNORSStrategy(bt.Strategy):
             f.write(f" ({self.p.fixed_contracts} units)\n")
         else:
             f.write(f" (risk={self.p.risk_percent*100:.2f}%)\n")
+        # Filters
+        if self.p.use_time_filter:
+            f.write(f"Hour Filter: {self.p.allowed_hours}\n")
+        if self.p.use_day_filter:
+            f.write(f"Day Filter: {self.p.allowed_days}\n")
+        if self.p.min_atr_entry > 0 or self.p.max_atr_entry > 0:
+            f.write(f"ATR Filter: [{self.p.min_atr_entry}, {self.p.max_atr_entry}]\n")
         f.write("=" * 80 + "\n\n")
         f.flush()
 
@@ -166,6 +182,20 @@ class CONNORSStrategy(bt.Strategy):
             # --- ENTRY LOGIC ---
             if (self.data.close[0] > self.sma_trend[0]
                     and self.rsi[0] < self.p.rsi_threshold):
+
+                # --- Entry filters ---
+                if not check_time_filter(dt, self.p.allowed_hours,
+                                         self.p.use_time_filter):
+                    return
+                if not check_day_filter(dt, self.p.allowed_days,
+                                        self.p.use_day_filter):
+                    return
+                atr_now = float(self.atr[0])
+                if self.p.min_atr_entry > 0 and atr_now < self.p.min_atr_entry:
+                    return
+                if self.p.max_atr_entry > 0 and atr_now > self.p.max_atr_entry:
+                    return
+
                 self._execute_entry(dt)
         else:
             # --- EXIT LOGIC (only if no bracket orders active) ---
@@ -572,6 +602,21 @@ class CONNORSStrategy(bt.Strategy):
             print("  Fixed Contracts: %d BT units" % self.p.fixed_contracts)
         else:
             print("  Risk: %.2f%%" % (self.p.risk_percent * 100))
+        # Filters
+        if self.p.use_time_filter:
+            print("  Hour Filter: %s" % self.p.allowed_hours)
+        else:
+            print("  Hour Filter: OFF")
+        if self.p.use_day_filter:
+            print("  Day Filter: %s" % self.p.allowed_days)
+        else:
+            print("  Day Filter: OFF")
+        if self.p.min_atr_entry > 0 or self.p.max_atr_entry > 0:
+            lo = self.p.min_atr_entry if self.p.min_atr_entry > 0 else '-'
+            hi = self.p.max_atr_entry if self.p.max_atr_entry > 0 else '-'
+            print("  ATR Filter: [%s, %s]" % (lo, hi))
+        else:
+            print("  ATR Filter: OFF")
         print("=" * 70)
 
         # Close report file

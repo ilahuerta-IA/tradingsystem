@@ -3945,7 +3945,7 @@ STRATEGIES_CONFIG = {
         'data_path': 'data/SP500_daily_15Yea.csv',
 
         'from_date': datetime.datetime(2010, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'to_date': datetime.datetime(2021, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -3970,13 +3970,21 @@ STRATEGIES_CONFIG = {
             # --- Optional SL/TP by ATR (off = Connors original) ---
             'atr_period': 14,
             'use_protective_stop': False,
-            'atr_sl_multiplier': 2.0,
+            'atr_sl_multiplier': 2.5,
             'sl_buffer_pips': 0.0,
             'use_take_profit': False,
-            'atr_tp_multiplier': 3.0,
+            'atr_tp_multiplier': 3.5,
+
+            # --- Entry filters (all off = Connors original, no filtering) ---
+            'use_time_filter': False,
+            'allowed_hours': [],            # N/A for Daily
+            'use_day_filter': False,
+            'allowed_days': [],             # e.g. [0,1,2,3] = Mon-Thu
+            'min_atr_entry': 0.0,           # 0 = disabled
+            'max_atr_entry': 0.0,           # 0 = disabled
 
             # --- Sizing ---
-            'sizing_mode': 'fixed',
+            'sizing_mode': 'risk',
             'fixed_contracts': 10,          # 1 DW contract = 10 BT units ($10/point)
 
             'risk_percent': 0.01,
@@ -4001,8 +4009,8 @@ STRATEGIES_CONFIG = {
         'asset_name': 'SP500',
         'data_path': 'data/SP500_5m_15Yea.csv',
 
-        'from_date': datetime.datetime(2010, 1, 1),
-        'to_date': datetime.datetime(2025, 12, 31),
+        'from_date': datetime.datetime(2013, 1, 1), #2013-07
+        'to_date': datetime.datetime(2021, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -4027,14 +4035,22 @@ STRATEGIES_CONFIG = {
 
             # --- Optional SL/TP by ATR ---
             'atr_period': 84,               # 14 días × 6 = 84 barras H4
-            'use_protective_stop': False,
-            'atr_sl_multiplier': 2.0,
+            'use_protective_stop': True,
+            'atr_sl_multiplier': 2.5,
             'sl_buffer_pips': 0.0,
-            'use_take_profit': False,
-            'atr_tp_multiplier': 3.0,
+            'use_take_profit': True,
+            'atr_tp_multiplier': 3.5,
+
+            # --- Entry filters ---
+            'use_time_filter': False,
+            'allowed_hours': [],            # e.g. [7,8,9,10,11,12] UTC
+            'use_day_filter': False,
+            'allowed_days': [],             # e.g. [0,1,2,3] = Mon-Thu
+            'min_atr_entry': 0.0,           # 0 = disabled
+            'max_atr_entry': 0.0,           # 0 = disabled
 
             # --- Sizing ---
-            'sizing_mode': 'fixed',
+            'sizing_mode': 'risk',
             'fixed_contracts': 10,
 
             'risk_percent': 0.01,
