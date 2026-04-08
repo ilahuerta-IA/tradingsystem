@@ -22,6 +22,7 @@ Validated on SP500 Daily 15Y (2010-2024):
 Reference: tools/connors_rsi2_definitive.py
 """
 
+import datetime as _dt
 import os
 from collections import defaultdict
 from datetime import datetime
@@ -58,6 +59,9 @@ class CONNORSStrategy(bt.Strategy):
         allowed_days=[],            # e.g. [0,1,2,3] = Mon-Thu (skip Fri)
         min_atr_entry=0.0,          # Min ATR to enter (0=disabled)
         max_atr_entry=0.0,          # Max ATR to enter (0=disabled)
+
+        # --- DST (Axiom 11: regional sessions MUST use dst_mode) ---
+        dst_mode='none',            # 'none', 'us', 'london_uk'
 
         # --- Asset / Risk (auto-injected by run_backtest.py) ---
         risk_percent=0.01,
@@ -113,8 +117,60 @@ class CONNORSStrategy(bt.Strategy):
         self.trade_reports = []
         self._current_trade_idx = None
 
+        # DST state
+        self._today_date = None
+        self._today_allowed_hours = list(self.p.allowed_hours)
+
         # Trade log file
         self.trade_report_file = None
+
+    # -----------------------------------------------------------------
+    # DST offset (ported from VEGA, Axiom 11)
+    # -----------------------------------------------------------------
+
+    @staticmethod
+    def _bst_boundaries(year):
+        """BST: last Sunday of March .. last Sunday of October."""
+        mar31 = _dt.date(year, 3, 31)
+        bst_start = mar31 - _dt.timedelta(days=(mar31.weekday() + 1) % 7)
+        oct31 = _dt.date(year, 10, 31)
+        bst_end = oct31 - _dt.timedelta(days=(oct31.weekday() + 1) % 7)
+        return bst_start, bst_end
+
+    @staticmethod
+    def _us_dst_boundaries(year):
+        """US DST: 2nd Sunday of March .. 1st Sunday of November."""
+        mar1 = _dt.date(year, 3, 1)
+        first_sun_mar = mar1 + _dt.timedelta(days=(6 - mar1.weekday()) % 7)
+        dst_start = first_sun_mar + _dt.timedelta(days=7)
+        nov1 = _dt.date(year, 11, 1)
+        dst_end = nov1 + _dt.timedelta(days=(6 - nov1.weekday()) % 7)
+        return dst_start, dst_end
+
+    def _dst_offset_hours(self, today):
+        """Return hour offset for DST (-1 in summer, 0 in winter)."""
+        mode = self.p.dst_mode
+        if mode == 'none':
+            return 0
+        if mode == 'us':
+            dst_start, dst_end = self._us_dst_boundaries(today.year)
+            return -1 if dst_start <= today < dst_end else 0
+        if mode == 'london_uk':
+            bst_start, bst_end = self._bst_boundaries(today.year)
+            return -1 if bst_start <= today < bst_end else 0
+        return 0
+
+    def _update_dst(self, today):
+        """Recompute DST-adjusted allowed_hours once per day."""
+        if today == self._today_date:
+            return
+        self._today_date = today
+        offset = self._dst_offset_hours(today)
+        self._today_allowed_hours = [h + offset for h in self.p.allowed_hours]
+
+    # -----------------------------------------------------------------
+    # Lifecycle
+    # -----------------------------------------------------------------
 
     def start(self):
         self._starting_cash = self.broker.get_value()
@@ -159,6 +215,8 @@ class CONNORSStrategy(bt.Strategy):
             f.write(f"Day Filter: {self.p.allowed_days}\n")
         if self.p.min_atr_entry > 0 or self.p.max_atr_entry > 0:
             f.write(f"ATR Filter: [{self.p.min_atr_entry}, {self.p.max_atr_entry}]\n")
+        if self.p.dst_mode != 'none':
+            f.write(f"DST Mode: {self.p.dst_mode}\n")
         f.write("=" * 80 + "\n\n")
         f.flush()
 
@@ -184,7 +242,9 @@ class CONNORSStrategy(bt.Strategy):
                     and self.rsi[0] < self.p.rsi_threshold):
 
                 # --- Entry filters ---
-                if not check_time_filter(dt, self.p.allowed_hours,
+                # Update DST-adjusted hours (once per day)
+                self._update_dst(dt.date())
+                if not check_time_filter(dt, self._today_allowed_hours,
                                          self.p.use_time_filter):
                     return
                 if not check_day_filter(dt, self.p.allowed_days,

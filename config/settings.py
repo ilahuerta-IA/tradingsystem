@@ -3983,6 +3983,9 @@ STRATEGIES_CONFIG = {
             'min_atr_entry': 0.0,           # 0 = disabled
             'max_atr_entry': 0.0,           # 0 = disabled
 
+            # --- DST (Axiom 11: data is UTC, US session shifts in summer) ---
+            'dst_mode': 'us',
+
             # --- Sizing ---
             'sizing_mode': 'risk',
             'fixed_contracts': 10,          # 1 DW contract = 10 BT units ($10/point)
@@ -4000,8 +4003,8 @@ STRATEGIES_CONFIG = {
     },
 
     # =========================================================================
-    # CONNORS H4 — Fractal scaling: periodos ×6 (6 velas H4/día trading)
-    # SMA(200d)=1200 H4 bars, RSI(2d)=12 H4 bars, etc.
+    # CONNORS H4 -- Fractal scaling: periods x6 (6 H4 bars per trading day)
+    # SMA(200d)=1200 H4 bars, RSI(2) stays short (bounded oscillator)
     # =========================================================================
     'SP500_CONNORS_H4': {
         'active': True,
@@ -4022,19 +4025,19 @@ STRATEGIES_CONFIG = {
         'broker_config_key': 'darwinex_zero_cfd_sp500',
 
         'params': {
-            # Connors H4: RSI se mantiene corto (oscilador acotado, no escala)
-            # Solo escalan los periodos de tendencia/salida (×6 barras/día)
-            'rsi_period': 2,                 # NO escala — debe ser ultra-corto
-            'sma_trend_period': 1200,        # 200 días × 6 = 1200 barras H4
-            'sma_exit_period': 30,           # 5 días × 6 = 30 barras H4
-            'rsi_threshold': 10,             # Adimensional, no escala
-            'max_hold_days': 120,            # 20 días × 6 = 120 barras H4
+            # Connors H4: RSI stays short (bounded oscillator, does not scale)
+            # Only trend/exit periods scale (×6 bars/day)
+            'rsi_period': 2,                 # Does NOT scale — must be ultra-short
+            'sma_trend_period': 1200,        # 200 days × 6 = 1200 H4 bars
+            'sma_exit_period': 30,           # 5 days × 6 = 30 H4 bars
+            'rsi_threshold': 10,             # Dimensionless, does not scale
+            'max_hold_days': 120,            # 20 days × 6 = 120 H4 bars
 
             # Resample 5m → H4
             'base_timeframe_minutes': 240,
 
             # --- Optional SL/TP by ATR ---
-            'atr_period': 84,               # 14 días × 6 = 84 barras H4
+            'atr_period': 84,               # 14 days × 6 = 84 H4 bars
             'use_protective_stop': True,
             'atr_sl_multiplier': 2.5,
             'sl_buffer_pips': 0.0,
@@ -4048,6 +4051,9 @@ STRATEGIES_CONFIG = {
             'allowed_days': [],             # e.g. [0,1,2,3] = Mon-Thu
             'min_atr_entry': 0.0,           # 0 = disabled
             'max_atr_entry': 0.0,           # 0 = disabled
+
+            # --- DST (Axiom 11: data is UTC, US session shifts in summer) ---
+            'dst_mode': 'us',
 
             # --- Sizing ---
             'sizing_mode': 'risk',
