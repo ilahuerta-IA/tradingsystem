@@ -183,7 +183,7 @@ def load_and_resample(symbol, path, tf_minutes):
         df['Date'].astype(str) + ' ' + df['Time'])
     df.set_index('datetime', inplace=True)
 
-    rule = f'{tf_minutes}min'
+    rule = 'D' if tf_minutes >= 1440 else f'{tf_minutes}min'
     resampled = df.resample(rule).agg({
         'Open': 'first',
         'High': 'max',
@@ -392,8 +392,8 @@ def parse_args():
     parser.add_argument('--session', type=str, default=None,
                         help='Specific session (e.g. London)')
     parser.add_argument('--tf', type=str, default='H4',
-                        choices=['H1', 'H4'],
-                        help='Timeframe (default: H4)')
+                        choices=['H1', 'H4', 'D1'],
+                        help='Timeframe (default: H4, D1=Daily)')
     parser.add_argument('--min-score', type=float, default=0.0,
                         help='Minimum Score to display (default: 0)')
     parser.add_argument('--hedge', action='store_true',
@@ -413,7 +413,7 @@ def main():
     args = parse_args()
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    tf_minutes = 240 if args.tf == 'H4' else 60
+    tf_minutes = {'H1': 60, 'H4': 240, 'D1': 1440}[args.tf]
     tf_label = args.tf
 
     print("=" * 80)
@@ -441,7 +441,10 @@ def main():
         pairs = DEFAULT_PAIRS
 
     # Filter sessions
-    if args.session:
+    # D1 bars have no intraday hour => use AllDay (full 0-24h mask)
+    if tf_minutes >= 1440:
+        sessions = {'AllDay': (0, 24)}
+    elif args.session:
         sessions = {args.session: SESSIONS[args.session]}
     else:
         sessions = SESSIONS
@@ -663,7 +666,7 @@ def main():
                 ref_sym = row['ref']
                 trd_sym = row['traded']
                 sess = row['session']
-                sh, eh = SESSIONS[sess]
+                sh, eh = SESSIONS.get(sess, (0, 24)) if sess != 'AllDay' else (0, 24)
 
                 def make_mask(idx, _sh=sh, _eh=eh):
                     return session_mask(idx, _sh, _eh)
