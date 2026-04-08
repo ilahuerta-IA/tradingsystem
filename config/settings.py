@@ -3938,10 +3938,10 @@ STRATEGIES_CONFIG = {
     # =========================================================================
 
     'SP500_CONNORS': {
-        'active': True,
+        'active': False,  # DISCARDED: OOS PF 1.03, breakeven after commissions
         'strategy_name': 'CONNORS',
         'asset_name': 'SP500',
-        # Para Daily: usar CSV pre-resampleado (backtrader 5m→Daily se cuelga)
+        # Daily: use pre-resampled CSV (backtrader 5m->Daily hangs)
         'data_path': 'data/SP500_daily_15Yea.csv',
 
         'from_date': datetime.datetime(2010, 1, 1),
@@ -4007,13 +4007,13 @@ STRATEGIES_CONFIG = {
     # SMA(200d)=1200 H4 bars, RSI(2) stays short (bounded oscillator)
     # =========================================================================
     'SP500_CONNORS_H4': {
-        'active': True,
+        'active': False,  # DISCARDED: OOS PF 1.03, +$2,557 in 4 years
         'strategy_name': 'CONNORS',
         'asset_name': 'SP500',
         'data_path': 'data/SP500_5m_15Yea.csv',
 
         'from_date': datetime.datetime(2013, 1, 1), #2013-07
-        'to_date': datetime.datetime(2021, 12, 31),
+        'to_date': datetime.datetime(2025, 12, 31),
 
         'starting_cash': 100000.0,
 
@@ -4046,9 +4046,9 @@ STRATEGIES_CONFIG = {
 
             # --- Entry filters ---
             'use_time_filter': False,
-            'allowed_hours': [],            # e.g. [7,8,9,10,11,12] UTC
+            'allowed_hours': [0, 8, 12, 16, 20],            # e.g. [7,8,9,10,11,12] UTC
             'use_day_filter': False,
-            'allowed_days': [],             # e.g. [0,1,2,3] = Mon-Thu
+            'allowed_days': [0,2,3],             # e.g. [0,1,2,3] = Mon-Thu
             'min_atr_entry': 0.0,           # 0 = disabled
             'max_atr_entry': 0.0,           # 0 = disabled
 
