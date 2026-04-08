@@ -229,6 +229,7 @@ def parse_connors_log(filepath: str) -> Tuple[List[Dict], Dict]:
             'year': entry_time.year,
             'month': entry_time.month,
             'day_of_week': entry_time.weekday(),
+            'hour': entry_time.hour,
         }
 
         ex = exits_by_id.get(trade_id)
@@ -522,6 +523,18 @@ def analyze_by_day(trades: List[Dict]):
         lambda d: dow_names[d])
 
 
+def analyze_by_hour(trades: List[Dict]):
+    """Analyze by entry hour (UTC)."""
+    print_section('ANALYSIS BY ENTRY HOUR (UTC)')
+    print('  Entry hour in UTC. For H4 data, entries cluster at bar boundaries.')
+    print('  Use with dst_mode=us to shift allowed_hours in summer (-1h).')
+    print('  Adjustable via: allowed_hours + dst_mode in settings.')
+    print()
+    analyze_by_group(
+        trades, lambda t: t['hour'], 'Hour',
+        lambda h: f'{h:02d}:00')
+
+
 def analyze_by_atr(trades: List[Dict]):
     """Analyze by ATR regime (market volatility)."""
     print_section('ANALYSIS BY ATR (volatility regime)')
@@ -702,6 +715,7 @@ def main():
     analyze_by_year(trades)
     analyze_by_month(trades)
     analyze_by_day(trades)
+    analyze_by_hour(trades)
     analyze_by_size(trades)
     analyze_drawdown_periods(trades)
 
