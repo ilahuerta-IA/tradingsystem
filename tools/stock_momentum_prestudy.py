@@ -21,6 +21,7 @@ Usage:
   python tools/stock_momentum_prestudy.py                           # Top 20 NDX stocks
   python tools/stock_momentum_prestudy.py --universe dj30           # All 30 DJ30 stocks
   python tools/stock_momentum_prestudy.py --universe dj30 --top 15  # Top 15 DJ30 by mom
+  python tools/stock_momentum_prestudy.py --universe sp500 --top 50 --exclude-current  # SP500 pre-study
   python tools/stock_momentum_prestudy.py --stocks NVDA AAPL        # Specific stocks
   python tools/stock_momentum_prestudy.py --top 30                  # Top 30 by momentum
 """
@@ -66,6 +67,31 @@ DJ30_TICKERS = [
     'DIS', 'GS', 'HD', 'HON', 'IBM', 'JNJ', 'JPM', 'KO', 'MCD', 'MMM',
     'MRK', 'MSFT', 'NKE', 'NVDA', 'PG', 'SHW', 'TRV', 'UNH', 'V', 'VZ',
     'WMT',
+]
+
+# S&P 500 top ~100 by market cap (non-NDX, non-DJ30 overlap included;
+# filter with --exclude-current to remove ALTAIR active assets)
+SP500_TICKERS = [
+    # Mega/Large cap non-tech
+    'BRK-B', 'JPM', 'V', 'JNJ', 'UNH', 'XOM', 'PG', 'MA', 'HD', 'CVX',
+    'MRK', 'ABBV', 'KO', 'PEP', 'BAC', 'PFE', 'WMT', 'MCD', 'CSCO', 'TMO',
+    'ABT', 'DHR', 'ACN', 'NKE', 'NEE', 'LIN', 'PM', 'UPS', 'RTX', 'LOW',
+    'SPGI', 'GS', 'CAT', 'BLK', 'AXP', 'DE', 'SCHW', 'MDLZ', 'CI', 'AMT',
+    'CB', 'SYK', 'ZTS', 'BMY', 'MO', 'SO', 'DUK', 'CL', 'TGT', 'MMC',
+    'ICE', 'CME', 'SHW', 'PNC', 'USB', 'APD', 'FDX', 'TFC', 'EMR', 'NSC',
+    'ITW', 'HUM', 'ETN', 'AON', 'ECL', 'SLB', 'PSA', 'WM', 'CCI', 'GD',
+    'AFL', 'F', 'GM', 'AIG', 'MET', 'PRU', 'TRV', 'ALL', 'COF', 'BK',
+    'WELL', 'O', 'SPG', 'PLD', 'EQIX', 'DLR', 'PSX', 'VLO', 'MPC', 'OXY',
+    'COP', 'EOG', 'DVN', 'FANG', 'HAL', 'WMB', 'KMI', 'LYB', 'DOW', 'PPG',
+    'DD', 'FCX', 'NEM', 'IR', 'ROK', 'GE', 'HON', 'LMT', 'NOC', 'BA',
+    'GEV', 'CARR', 'OTIS', 'JCI', 'A', 'WAT', 'IQV', 'EW', 'BSX', 'ISRG',
+    'DXCM', 'PODD', 'MDT', 'BDX', 'GEHC', 'HCA', 'ELV', 'CNC', 'MCK',
+]
+
+# Current ALTAIR active assets (NDX-7 + DJ30-5) to exclude from new studies
+ALTAIR_CURRENT = [
+    'NVDA', 'AMAT', 'AMD', 'AVGO', 'GOOGL', 'MSFT', 'NFLX',  # NDX-7
+    'CAT', 'V', 'JPM', 'AXP', 'GS',                            # DJ30-5
 ]
 
 # Darwinex Zero CFD stock costs
@@ -376,9 +402,9 @@ def test_holding(all_data, tickers):
             profile = ""
             if fwd == FORWARD_DAYS[-1]:
                 if len(edges) >= 2 and edges[-1] > edges[0] * 0.8:
-                    profile = "TREND ↗"
+                    profile = "TREND"
                 else:
-                    profile = "DECAY ↘"
+                    profile = "DECAY"
 
             edges.append(edge)
 
@@ -450,10 +476,12 @@ def print_summary(trend_res, vol_res, hold_res):
 def parse_args():
     p = argparse.ArgumentParser(description="Stock Momentum Pre-Study")
     p.add_argument('--stocks', nargs='+', help='Specific tickers to test')
-    p.add_argument('--universe', choices=['ndx', 'dj30'], default='ndx',
-                   help='Stock universe: ndx (Nasdaq 100) or dj30 (Dow Jones 30)')
+    p.add_argument('--universe', choices=['ndx', 'dj30', 'sp500'], default='ndx',
+                   help='Stock universe: ndx, dj30, or sp500')
     p.add_argument('--top', type=int, default=20, help='Top N stocks by momentum (default: 20)')
     p.add_argument('--years', type=int, default=DOWNLOAD_YEARS, help='Years of data to download')
+    p.add_argument('--exclude-current', action='store_true',
+                   help='Exclude current ALTAIR assets (NDX-7 + DJ30-5)')
     return p.parse_args()
 
 
@@ -474,12 +502,26 @@ def main():
         tickers_to_download = args.stocks
     else:
         # Download from selected universe
-        if args.universe == 'dj30':
+        if args.universe == 'sp500':
+            tickers_to_download = SP500_TICKERS
+            print(f"Universe: S&P 500 top ({len(SP500_TICKERS)} stocks)")
+        elif args.universe == 'dj30':
             tickers_to_download = DJ30_TICKERS
             print(f"Universe: Dow Jones 30 ({len(DJ30_TICKERS)} stocks)")
         else:
             tickers_to_download = NDX100_TICKERS
             print(f"Universe: Nasdaq 100 ({len(NDX100_TICKERS)} stocks)")
+
+    # Exclude current ALTAIR assets if requested
+    if args.exclude_current:
+        before = len(tickers_to_download)
+        tickers_to_download = [t for t in tickers_to_download
+                               if t not in ALTAIR_CURRENT]
+        excluded = before - len(tickers_to_download)
+        if excluded > 0:
+            print(f"Excluded {excluded} current ALTAIR assets: "
+                  f"{', '.join(t for t in ALTAIR_CURRENT if t not in tickers_to_download)}")
+            print(f"Remaining: {len(tickers_to_download)} stocks")
 
     all_data = download_stock_data(tickers_to_download, years=args.years)
 
