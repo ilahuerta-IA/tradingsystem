@@ -169,11 +169,13 @@ ALTAIR_STRATEGIES_CONFIG = {
         'CAT', 'CAT_1h_8Yea.csv',
         datetime.datetime(2017, 6, 1),
         universe='dj30',
+        max_sl_atr_mult=4.0, dtosc_os=20,
     ),
     'V_ALTAIR': _make_config(
         'V', 'V_1h_8Yea.csv',
         datetime.datetime(2017, 2, 1),
         universe='dj30',
+        max_sl_atr_mult=4.0, dtosc_os=20,
     ),
     'HD_ALTAIR': _make_config(
         'HD', 'HD_1h_8Yea.csv',
@@ -185,11 +187,13 @@ ALTAIR_STRATEGIES_CONFIG = {
         'JPM', 'JPM_1h_8Yea.csv',
         datetime.datetime(2017, 2, 1),
         universe='dj30',
+        max_sl_atr_mult=4.0, dtosc_os=20,
     ),
     'AXP_ALTAIR': _make_config(
         'AXP', 'AXP_1h_8Yea.csv',
         datetime.datetime(2017, 12, 1),
         universe='dj30',
+        max_sl_atr_mult=4.0, dtosc_os=20,
     ),
     'UNH_ALTAIR': _make_config(
         'UNH', 'UNH_1h_8Yea.csv',
@@ -201,5 +205,6 @@ ALTAIR_STRATEGIES_CONFIG = {
         'GS', 'GS_1h_8Yea.csv',
         datetime.datetime(2017, 2, 1),
         universe='dj30',
+        max_sl_atr_mult=4.0, dtosc_os=20,
     ),
 }
