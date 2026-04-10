@@ -1,7 +1,7 @@
 """
 ALTAIR Optimizer -- Multi-Asset Grid Search (Standard Params)
 
-Runs parameter combinations across ALL 7 NDX stocks simultaneously.
+Runs parameter combinations across a universe of stocks simultaneously.
 Each combo is tested on every asset, then aggregated to find the
 best UNIVERSAL parameters (not per-asset optimization).
 
@@ -9,10 +9,11 @@ Scores by: median PF across all assets (robust to outliers like NVDA).
 Secondary: count of profitable assets, mean WR, worst MaxDD.
 
 Usage:
-    python tools/altair_optimizer.py              # default: SL battery
+    python tools/altair_optimizer.py              # default: SL battery, all active
     python tools/altair_optimizer.py --phase sl   # SL parameters
     python tools/altair_optimizer.py --phase tp   # TP parameters
     python tools/altair_optimizer.py --phase entry # Entry parameters
+    python tools/altair_optimizer.py --universe dj30 --phase sl  # DJ30 only
 
 Output: logs/ALTAIR_optimizer_<phase>_<timestamp>.json
 """
@@ -45,17 +46,23 @@ from config.settings_altair import (
 
 
 # =============================================================================
-# ASSETS TO TEST (all 7 NDX stocks)
+# ASSETS TO TEST (filtered by --universe: ndx, dj30, or all)
 # =============================================================================
 
-ASSETS = {}
-for key, cfg in ALTAIR_STRATEGIES_CONFIG.items():
-    if cfg.get('active', True):
-        ASSETS[cfg['asset_name']] = {
+def _load_assets(universe='all'):
+    """Load active assets, optionally filtered by universe tag."""
+    assets = {}
+    for key, cfg in ALTAIR_STRATEGIES_CONFIG.items():
+        if not cfg.get('active', True):
+            continue
+        if universe != 'all' and cfg.get('universe', '') != universe:
+            continue
+        assets[cfg['asset_name']] = {
             'data_path': cfg['data_path'],
             'from_date': cfg['from_date'],
             'to_date': cfg['to_date'],
         }
+    return assets
 
 STARTING_CASH = 100_000.0
 
@@ -335,24 +342,53 @@ def fmt_pf(pf):
 def main():
     # Parse CLI
     phase_name = 'sl'
+    universe = 'all'
+    cli_fixed = {}
     for i, arg in enumerate(sys.argv[1:], 1):
         if arg == '--phase' and i < len(sys.argv) - 1:
             phase_name = sys.argv[i + 1]
+        if arg == '--universe' and i < len(sys.argv) - 1:
+            universe = sys.argv[i + 1]
+        if arg == '--fixed' and i < len(sys.argv) - 1:
+            # Parse key=value pairs: --fixed max_sl_atr_mult=4.0
+            for pair in sys.argv[i + 1].split(','):
+                k, v = pair.split('=')
+                cli_fixed[k.strip()] = float(v.strip())
 
     if phase_name not in PHASES:
         print("ERROR: Unknown phase '%s'. Available: %s"
               % (phase_name, ', '.join(sorted(PHASES.keys()))))
         sys.exit(1)
 
+    if universe not in ('all', 'ndx', 'dj30'):
+        print("ERROR: Unknown universe '%s'. Available: all, ndx, dj30"
+              % universe)
+        sys.exit(1)
+
+    ASSETS = _load_assets(universe)
+    if not ASSETS:
+        print("ERROR: No active assets for universe '%s'" % universe)
+        sys.exit(1)
+
     phase = PHASES[phase_name]
     grid, sweep_keys = build_param_grid(phase_name)
+
+    # Apply CLI --fixed overrides to every grid entry
+    if cli_fixed:
+        for entry in grid:
+            entry.update(cli_fixed)
+
     asset_names = sorted(ASSETS.keys())
     total_bt = len(grid) * len(asset_names)
 
     print('=' * 80)
     print('ALTAIR OPTIMIZER -- Multi-Asset Grid Search')
     print('=' * 80)
+    print('Universe: %s (%d assets)' % (universe.upper(), len(asset_names)))
     print('Phase: %s (%s)' % (phase_name.upper(), phase['description']))
+    if cli_fixed:
+        print('Fixed overrides: %s' % ', '.join(
+            '%s=%s' % (k, v) for k, v in cli_fixed.items()))
     print('Assets: %s' % ', '.join(asset_names))
     print('Sweep: %s' % ', '.join(sweep_keys))
     print('Combinations: %d x %d assets = %d backtests'
@@ -433,8 +469,8 @@ def main():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     out_dir = Path(PROJECT_ROOT) / 'logs'
     out_dir.mkdir(exist_ok=True)
-    out_path = out_dir / ('ALTAIR_optimizer_%s_%s.json'
-                          % (phase_name, timestamp))
+    out_path = out_dir / ('ALTAIR_optimizer_%s_%s_%s.json'
+                          % (universe, phase_name, timestamp))
 
     def _safe_val(v):
         if isinstance(v, float) and (math.isinf(v) or math.isnan(v)):
@@ -444,6 +480,7 @@ def main():
     json_data = {
         'optimizer': 'ALTAIR_grid',
         'phase': phase_name,
+        'universe': universe,
         'timestamp': datetime.now().isoformat(),
         'assets': asset_names,
         'sweep_keys': sweep_keys,

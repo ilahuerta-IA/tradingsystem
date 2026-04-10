@@ -107,12 +107,14 @@ _DEFAULT_PARAMS = {
 }
 
 
-def _make_config(ticker, csv_filename, from_date, active=True, **overrides):
+def _make_config(ticker, csv_filename, from_date, active=True,
+                 universe='ndx', **overrides):
     """Build a single ALTAIR config entry."""
     params = dict(_DEFAULT_PARAMS)
     params.update(overrides)
     return {
         'active': active,
+        'universe': universe,
         'strategy_name': 'ALTAIR',
         'asset_name': ticker,
         'data_path': f'data/{csv_filename}',
@@ -125,67 +127,79 @@ def _make_config(ticker, csv_filename, from_date, active=True, **overrides):
 
 
 ALTAIR_STRATEGIES_CONFIG = {
+    # --- NDX STOCKS (Phase 1-4 optimized, Option D) ---
     'NVDA_ALTAIR': _make_config(
         'NVDA', 'NVDA_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+        universe='ndx',
     ),
     'AMAT_ALTAIR': _make_config(
         'AMAT', 'AMAT_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+        universe='ndx',
     ),
     'AMD_ALTAIR': _make_config(
         'AMD', 'AMD_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+        universe='ndx',
     ),
     'AVGO_ALTAIR': _make_config(
         'AVGO', 'AVGO_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+        universe='ndx',
     ),
     'GOOGL_ALTAIR': _make_config(
         'GOOGL', 'GOOGL_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+        universe='ndx',
     ),
     'MSFT_ALTAIR': _make_config(
         'MSFT', 'MSFT_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+        universe='ndx',
     ),
     'NFLX_ALTAIR': _make_config(
         'NFLX', 'NFLX_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+        universe='ndx',
     ),
 
     # --- DJ30 STOCKS (diversification study, Section 31-32) ---
     'CAT_ALTAIR': _make_config(
         'CAT', 'CAT_1h_8Yea.csv',
         datetime.datetime(2017, 6, 1),
-        active=False,  # PF 1.31 marginal, inconsistent years
+        universe='dj30',
     ),
     'V_ALTAIR': _make_config(
         'V', 'V_1h_8Yea.csv',
         datetime.datetime(2017, 2, 1),
+        universe='dj30',
     ),
     'HD_ALTAIR': _make_config(
         'HD', 'HD_1h_8Yea.csv',
         datetime.datetime(2017, 2, 1),
-        active=False,  # PF 0.39, DD 22%, worst performer
+        universe='dj30',
+        active=False,  # PF 0.42-0.81 all SL/TP combos, DD>20%, structural loser
     ),
     'JPM_ALTAIR': _make_config(
         'JPM', 'JPM_1h_8Yea.csv',
         datetime.datetime(2017, 2, 1),
+        universe='dj30',
     ),
     'AXP_ALTAIR': _make_config(
         'AXP', 'AXP_1h_8Yea.csv',
         datetime.datetime(2017, 12, 1),
-        active=False,  # PF 1.01 breakeven
+        universe='dj30',
     ),
     'UNH_ALTAIR': _make_config(
         'UNH', 'UNH_1h_8Yea.csv',
         datetime.datetime(2017, 12, 1),
-        active=False,  # PF 0.70, PROT_STOP 83%
+        universe='dj30',
+        active=False,  # PF 0.65-0.76 all SL/TP combos, PROT_STOP>80%
     ),
     'GS_ALTAIR': _make_config(
         'GS', 'GS_1h_8Yea.csv',
         datetime.datetime(2017, 2, 1),
-        active=False,  # PF 1.15 marginal, only 13 trades
+        universe='dj30',
     ),
 }
