@@ -43,6 +43,7 @@ ALTAIR_BROKER_CONFIG = {
 STOCK_SYMBOLS = [
     'NVDA', 'AMAT', 'AMD', 'AVGO', 'GOOGL', 'MSFT', 'NFLX',
     'KLAC', 'LRCX', 'MU', 'ASML',
+    'CAT', 'V', 'HD', 'JPM', 'AXP', 'UNH', 'GS',
 ]
 
 
@@ -151,5 +152,40 @@ ALTAIR_STRATEGIES_CONFIG = {
     'NFLX_ALTAIR': _make_config(
         'NFLX', 'NFLX_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
+    ),
+
+    # --- DJ30 STOCKS (diversification study, Section 31-32) ---
+    'CAT_ALTAIR': _make_config(
+        'CAT', 'CAT_1h_8Yea.csv',
+        datetime.datetime(2017, 6, 1),
+        active=False,  # PF 1.31 marginal, inconsistent years
+    ),
+    'V_ALTAIR': _make_config(
+        'V', 'V_1h_8Yea.csv',
+        datetime.datetime(2017, 2, 1),
+    ),
+    'HD_ALTAIR': _make_config(
+        'HD', 'HD_1h_8Yea.csv',
+        datetime.datetime(2017, 2, 1),
+        active=False,  # PF 0.39, DD 22%, worst performer
+    ),
+    'JPM_ALTAIR': _make_config(
+        'JPM', 'JPM_1h_8Yea.csv',
+        datetime.datetime(2017, 2, 1),
+    ),
+    'AXP_ALTAIR': _make_config(
+        'AXP', 'AXP_1h_8Yea.csv',
+        datetime.datetime(2017, 12, 1),
+        active=False,  # PF 1.01 breakeven
+    ),
+    'UNH_ALTAIR': _make_config(
+        'UNH', 'UNH_1h_8Yea.csv',
+        datetime.datetime(2017, 12, 1),
+        active=False,  # PF 0.70, PROT_STOP 83%
+    ),
+    'GS_ALTAIR': _make_config(
+        'GS', 'GS_1h_8Yea.csv',
+        datetime.datetime(2017, 2, 1),
+        active=False,  # PF 1.15 marginal, only 13 trades
     ),
 }
