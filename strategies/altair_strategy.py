@@ -20,15 +20,24 @@ LAYER 2 -- H1 SIGNAL (Trader, automated):
     Entry: fast crosses above slow from below oversold (25%).
     One-bar binary signal. LONG only.
 
-LAYER 3 -- EXECUTION:
-    SL = entry - sl_atr_mult * ATR(H1, 14)
-    TP = entry + tp_atr_mult * ATR(H1, 14)
+LAYER 3 -- EXECUTION (v2: Miner improvements):
+    Entry: Trailing One-Bar High (Tr-1BH) buy stop confirmation.
+           After DTOSC cross-up, buy stop at high+tick each bar.
+           Cancel if DTOSC loses alignment or timeout.
+    SL = swing_low - tick (structural stop at pullback low).
+    TP = entry + tp_atr_mult * ATR(H1, 14).
+    Max SL filter: skip if SL > max_sl_atr_mult * ATR.
     Time exit after max_holding_bars.
     Risk-based sizing: size = risk_amount / sl_distance.
 
+STATE MACHINE:
+    SCANNING -> [DTOSC cross from OS] -> TRIGGERED
+    TRIGGERED -> [high > buy_stop] -> IN_POSITION
+    TRIGGERED -> [DTOSC alignment lost / timeout] -> SCANNING
+    IN_POSITION -> [SL/TP/TIME] -> SCANNING
+
 DATA FEEDS:
     datas[0] = Stock H1 bars (primary, traded)
-    datas[1] = Stock D1 bars (resampled by runner, for regime)
 """
 from __future__ import annotations
 import math
@@ -160,6 +169,14 @@ class ALTAIRStrategy(bt.Strategy):
         atr_period=14,
         sl_atr_mult=2.0,
         tp_atr_mult=3.0,
+
+        # === V2: MINER IMPROVEMENTS ===
+        use_tr1bh=True,               # Trailing One-Bar High entry
+        tr1bh_timeout=10,             # Max bars in TRIGGERED state
+        tr1bh_tick=0.01,              # Tick offset above bar high
+        use_swing_low_sl=True,        # SL at swing low (vs ATR)
+        max_sl_atr_mult=4.0,          # Max SL width in ATR mult (0=off)
+
         max_holding_bars=120,
         max_entries_per_day=1,
 
@@ -250,6 +267,16 @@ class ALTAIRStrategy(bt.Strategy):
         self.last_exit_reason = None
         self.trades_today = 0
         self.last_trade_date = None
+
+        # V2: Trailing One-Bar High state
+        self._triggered_bar_count = 0
+        self._triggered_buy_stop = 0.0
+        self._frozen_swing_low = None
+        self._triggered_cancels = 0
+
+        # V2: Swing low tracking
+        self._swing_low = float('inf')
+        self._tracking_oversold = False
 
         # Regime cache (updated per H1 bar from D1 data)
         self._regime_state = 'UNKNOWN'
@@ -380,6 +407,106 @@ class ALTAIRStrategy(bt.Strategy):
         from_oversold = (fast_prev < self.p.dtosc_os or
                          slow_prev < self.p.dtosc_os)
         return from_oversold
+
+    # =========================================================================
+    # V2: SWING LOW TRACKING
+    # =========================================================================
+
+    def _track_swing_low(self):
+        """Track lowest low while DTOSC is in oversold zone.
+
+        Called every bar. Records the swing low of each pullback
+        so it can be used as structural SL when signal fires.
+        """
+        try:
+            fast_val = float(self.dtosc.fast[0])
+        except (IndexError, ValueError):
+            return
+        if math.isnan(fast_val):
+            return
+
+        low_val = float(self.data_h1.low[0])
+
+        if fast_val < self.p.dtosc_os:
+            if not self._tracking_oversold:
+                # New oversold phase -- reset swing low
+                self._tracking_oversold = True
+                self._swing_low = low_val
+            else:
+                self._swing_low = min(self._swing_low, low_val)
+        else:
+            # Exited oversold -- keep swing_low value, stop tracking
+            self._tracking_oversold = False
+
+    # =========================================================================
+    # V2: TRIGGERED STATE HANDLER
+    # =========================================================================
+
+    def _handle_triggered(self, dt):
+        """Handle TRIGGERED state (Trailing One-Bar High confirmation).
+
+        Each bar: check if price confirms by breaking the buy stop.
+        Cancel if DTOSC loses alignment or timeout exceeded.
+        """
+        self._triggered_bar_count += 1
+
+        # Check DTOSC alignment (fast must stay above slow)
+        try:
+            fast_now = float(self.dtosc.fast[0])
+            slow_now = float(self.dtosc.slow[0])
+        except (IndexError, ValueError):
+            self.state = "SCANNING"
+            self._triggered_cancels += 1
+            return
+
+        if fast_now < slow_now:
+            if self.p.print_signals:
+                print(f'[ALTAIR] {dt} TRIGGERED->SCANNING: '
+                      f'DTOSC lost alignment')
+            self.state = "SCANNING"
+            self._triggered_cancels += 1
+            return
+
+        # Check timeout
+        if self._triggered_bar_count >= self.p.tr1bh_timeout:
+            if self.p.print_signals:
+                print(f'[ALTAIR] {dt} TRIGGERED->SCANNING: '
+                      f'Timeout ({self.p.tr1bh_timeout} bars)')
+            self.state = "SCANNING"
+            self._triggered_cancels += 1
+            return
+
+        # Check if price broke buy stop
+        bar_high = float(self.data_h1.high[0])
+        if bar_high >= self._triggered_buy_stop:
+            # Price confirmed! Check max SL distance
+            entry_price = float(self.data_h1.close[0])
+            atr_val = float(self.atr_h1[0])
+
+            if (self.p.use_swing_low_sl
+                    and self._frozen_swing_low is not None
+                    and self.p.max_sl_atr_mult > 0
+                    and not math.isnan(atr_val) and atr_val > 0):
+                sl_level = self._frozen_swing_low - self.p.tr1bh_tick
+                sl_dist = entry_price - sl_level
+                if sl_dist > self.p.max_sl_atr_mult * atr_val:
+                    if self.p.print_signals:
+                        print(
+                            f'[ALTAIR] {dt} TRIGGERED->SCANNING: '
+                            f'SL too wide '
+                            f'({sl_dist:.2f} > '
+                            f'{self.p.max_sl_atr_mult}x ATR)')
+                    self.state = "SCANNING"
+                    self._triggered_cancels += 1
+                    return
+
+            # Execute entry
+            self.trades_today += 1
+            self._execute_entry(dt)
+            self._triggered_bar_count = 0
+        else:
+            # Trail buy stop to current bar's high
+            self._triggered_buy_stop = bar_high + self.p.tr1bh_tick
 
     # =========================================================================
     # TRADE REPORTING
@@ -521,12 +648,27 @@ class ALTAIRStrategy(bt.Strategy):
         atr_val = float(self.atr_h1[0])
 
         if atr_val <= 0 or math.isnan(atr_val):
+            self.state = "SCANNING"
             return
 
-        # SL / TP levels
-        sl_dist = atr_val * self.p.sl_atr_mult
+        # SL level -- V2: swing low or V1: ATR-based
+        if (self.p.use_swing_low_sl
+                and self._frozen_swing_low is not None):
+            self.stop_loss_level = (
+                self._frozen_swing_low - self.p.tr1bh_tick)
+            sl_dist = entry_price - self.stop_loss_level
+            if sl_dist <= 0:
+                # Swing low above entry -- invalid trade
+                if self.p.print_signals:
+                    print(f'[ALTAIR] {dt} SKIP: swing_low above entry')
+                self.state = "SCANNING"
+                return
+        else:
+            sl_dist = atr_val * self.p.sl_atr_mult
+            self.stop_loss_level = entry_price - sl_dist
+
+        # TP level (always ATR-based)
         tp_dist = atr_val * self.p.tp_atr_mult
-        self.stop_loss_level = entry_price - sl_dist
         self.take_profit_level = entry_price + tp_dist
 
         # Risk-based sizing: size = risk_amount / sl_distance
@@ -628,7 +770,7 @@ class ALTAIRStrategy(bt.Strategy):
                     order.Rejected: 'Rejected',
                 }
                 print(f'[ALTAIR] Order {status_names.get(order.status, "?")}')
-            if self.state != "IN_POSITION":
+            if self.state not in ("IN_POSITION", "TRIGGERED"):
                 self.state = "SCANNING"
 
         if order.data == self.data_h1:
@@ -684,6 +826,10 @@ class ALTAIRStrategy(bt.Strategy):
         # Update D1 regime (reads latest D1 bar)
         self._update_regime()
 
+        # V2: Track swing low during DTOSC oversold phase
+        if self.p.use_swing_low_sl:
+            self._track_swing_low()
+
         # Skip if order pending
         if self.order:
             return
@@ -711,6 +857,10 @@ class ALTAIRStrategy(bt.Strategy):
             self._update_plot_lines(
                 self.entry_price, self.stop_loss_level,
                 self.take_profit_level)
+
+        elif self.state == "TRIGGERED":
+            # V2: Trailing One-Bar High confirmation
+            self._handle_triggered(dt)
 
         elif self.state == "SCANNING":
             # Time filter
@@ -743,9 +893,27 @@ class ALTAIRStrategy(bt.Strategy):
             if not self._check_dtosc_signal():
                 return
 
-            # All conditions met -> ENTER
-            self.trades_today += 1
-            self._execute_entry(dt)
+            # All conditions met
+            if self.p.use_tr1bh:
+                # V2: Go to TRIGGERED, wait for price confirmation
+                self.state = "TRIGGERED"
+                self._triggered_bar_count = 0
+                self._triggered_buy_stop = (
+                    float(self.data_h1.high[0]) + self.p.tr1bh_tick)
+                self._frozen_swing_low = (
+                    self._swing_low
+                    if self._swing_low != float('inf') else None)
+                if self.p.print_signals:
+                    sw = (f'{self._frozen_swing_low:.2f}'
+                          if self._frozen_swing_low else 'N/A')
+                    print(
+                        f'[ALTAIR] {dt} TRIGGERED: '
+                        f'buy_stop={self._triggered_buy_stop:.2f} '
+                        f'swing_low={sw}')
+            else:
+                # V1 fallback: direct entry
+                self.trades_today += 1
+                self._execute_entry(dt)
 
     # =========================================================================
     # STOP -- FINAL REPORT
@@ -924,11 +1092,21 @@ class ALTAIRStrategy(bt.Strategy):
               f'signal={self.p.dtosc_signal}')
         print(f'Oversold/Overbought: {self.p.dtosc_os}/{self.p.dtosc_ob}')
         print(f'Regime: {"ON" if self.p.regime_enabled else "OFF"}')
-        print(f'SL: {self.p.sl_atr_mult}x ATR | '
-              f'TP: {self.p.tp_atr_mult}x ATR | '
-              f'Max Hold: {self.p.max_holding_bars} bars')
+        if self.p.use_tr1bh:
+            print(f'Entry: Tr-1BH (timeout={self.p.tr1bh_timeout}, '
+                  f'tick={self.p.tr1bh_tick})')
+        if self.p.use_swing_low_sl:
+            print(f'SL: Swing Low (max={self.p.max_sl_atr_mult}x ATR) | '
+                  f'TP: {self.p.tp_atr_mult}x ATR | '
+                  f'Max Hold: {self.p.max_holding_bars} bars')
+        else:
+            print(f'SL: {self.p.sl_atr_mult}x ATR | '
+                  f'TP: {self.p.tp_atr_mult}x ATR | '
+                  f'Max Hold: {self.p.max_holding_bars} bars')
 
         print(f'\nTotal Trades: {total_trades}')
+        if self.p.use_tr1bh:
+            print(f'Triggered Cancels: {self._triggered_cancels}')
         print(f'Wins: {self.wins} | Losses: {self.losses}')
         print(f'Win Rate: {win_rate:.1f}%')
         print(f'Profit Factor: {profit_factor:.2f}')
