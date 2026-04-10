@@ -24,12 +24,15 @@ from strategies.ceres_strategy import CERESStrategy
 from strategies.luyten_strategy import LUYTENStrategy
 from strategies.vega_strategy import VEGAStrategy
 from strategies.connors_strategy import CONNORSStrategy
+from strategies.altair_strategy import ALTAIRStrategy
 from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
+from config.settings_altair import ALTAIR_STRATEGIES_CONFIG, ALTAIR_BROKER_CONFIG, STOCK_SYMBOLS
 
 
 # Non-forex symbol lists (both use ETFCSVData for datetime parsing)
 ETF_SYMBOLS = ['DIA', 'TLT', 'GLD', 'SPY', 'QQQ', 'IWM', 'XLE', 'EWZ', 'XLU', 'SLV']
 CFD_INDEX_SYMBOLS = ['SP500', 'AUS200', 'UK100', 'GDAXI', 'NI225', 'SPA35', 'NDX', 'EUR50']
+# STOCK_SYMBOLS imported from config.settings_altair
 
 # Strategy registry
 STRATEGY_REGISTRY = {
@@ -43,7 +46,12 @@ STRATEGY_REGISTRY = {
     'LUYTEN': LUYTENStrategy,
     'VEGA': VEGAStrategy,
     'CONNORS': CONNORSStrategy,
+    'ALTAIR': ALTAIRStrategy,
 }
+
+# Merge ALTAIR configs into global registries
+STRATEGIES_CONFIG.update(ALTAIR_STRATEGIES_CONFIG)
+BROKER_CONFIG.update(ALTAIR_BROKER_CONFIG)
 
 
 def run_backtest(config_name):
@@ -79,7 +87,8 @@ def run_backtest(config_name):
     asset_name = config['asset_name']
     is_etf = asset_name.upper() in ETF_SYMBOLS
     is_cfd_index = asset_name.upper() in CFD_INDEX_SYMBOLS
-    is_non_forex = is_etf or is_cfd_index
+    is_stock = asset_name.upper() in STOCK_SYMBOLS
+    is_non_forex = is_etf or is_cfd_index or is_stock
     
     # CSV format: Date,Time,Open,High,Low,Close,Volume (Darwinex format)
     feed_kwargs = dict(
@@ -139,10 +148,21 @@ def run_backtest(config_name):
     
     # Generic HTF data support: any strategy can request via htf_data_minutes
     # This allows strategies to access self.datas[1] for higher timeframe analysis
+    # NOTE: Must use a SEPARATE data instance for resampledata to avoid
+    # double-adding the same object (adddata + resampledata on same obj = error).
     htf_minutes = params.get('htf_data_minutes')
     if htf_minutes and htf_minutes > 0:
+        # Create a fresh data feed instance for the HTF resample
+        if is_non_forex:
+            data_htf_src = ETFCSVData(**feed_kwargs)
+        else:
+            htf_kwargs = dict(feed_kwargs)
+            htf_kwargs['timeframe'] = bt.TimeFrame.Minutes
+            htf_kwargs['compression'] = 5
+            data_htf_src = bt.feeds.GenericCSVData(**htf_kwargs)
+
         data_htf = cerebro.resampledata(
-            data,
+            data_htf_src,
             timeframe=bt.TimeFrame.Minutes,
             compression=htf_minutes
         )
