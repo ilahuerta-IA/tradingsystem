@@ -21,7 +21,8 @@ Usage:
   python tools/stock_momentum_prestudy.py                           # Top 20 NDX stocks
   python tools/stock_momentum_prestudy.py --universe dj30           # All 30 DJ30 stocks
   python tools/stock_momentum_prestudy.py --universe dj30 --top 15  # Top 15 DJ30 by mom
-  python tools/stock_momentum_prestudy.py --universe sp500 --top 50 --exclude-current  # SP500 pre-study
+  python tools/stock_momentum_prestudy.py --universe sp500 --top 50 --exclude-current  # SP500 legacy ~100
+  python tools/stock_momentum_prestudy.py --universe sp500full --exclude-analyzed --top 300  # Remaining ~293
   python tools/stock_momentum_prestudy.py --stocks NVDA AAPL        # Specific stocks
   python tools/stock_momentum_prestudy.py --top 30                  # Top 30 by momentum
 """
@@ -69,10 +70,8 @@ DJ30_TICKERS = [
     'WMT',
 ]
 
-# S&P 500 top ~100 by market cap (non-NDX, non-DJ30 overlap included;
-# filter with --exclude-current to remove ALTAIR active assets)
+# S&P 500 top ~100 by market cap (legacy subset, kept for reference)
 SP500_TICKERS = [
-    # Mega/Large cap non-tech
     'BRK-B', 'JPM', 'V', 'JNJ', 'UNH', 'XOM', 'PG', 'MA', 'HD', 'CVX',
     'MRK', 'ABBV', 'KO', 'PEP', 'BAC', 'PFE', 'WMT', 'MCD', 'CSCO', 'TMO',
     'ABT', 'DHR', 'ACN', 'NKE', 'NEE', 'LIN', 'PM', 'UPS', 'RTX', 'LOW',
@@ -87,6 +86,65 @@ SP500_TICKERS = [
     'GEV', 'CARR', 'OTIS', 'JCI', 'A', 'WAT', 'IQV', 'EW', 'BSX', 'ISRG',
     'DXCM', 'PODD', 'MDT', 'BDX', 'GEHC', 'HCA', 'ELV', 'CNC', 'MCK',
 ]
+
+# Full S&P 500 constituents (503 tickers, as of April 2026 from Wikipedia)
+SP500_FULL_TICKERS = [
+    'A', 'AAPL', 'ABBV', 'ABNB', 'ABT', 'ACGL', 'ACN', 'ADBE', 'ADI', 'ADM',
+    'ADP', 'ADSK', 'AEE', 'AEP', 'AES', 'AFL', 'AIG', 'AIZ', 'AJG', 'AKAM',
+    'ALB', 'ALGN', 'ALL', 'ALLE', 'AMAT', 'AMCR', 'AMD', 'AME', 'AMGN', 'AMP',
+    'AMT', 'AMZN', 'ANET', 'AON', 'AOS', 'APA', 'APD', 'APH', 'APO', 'APP',
+    'APTV', 'ARE', 'ARES', 'ATO', 'AVB', 'AVGO', 'AVY', 'AWK', 'AXON', 'AXP',
+    'AZO', 'BA', 'BAC', 'BALL', 'BAX', 'BBY', 'BDX', 'BEN', 'BF-B', 'BG',
+    'BIIB', 'BK', 'BKNG', 'BKR', 'BLDR', 'BLK', 'BMY', 'BR', 'BRK-B', 'BRO',
+    'BSX', 'BX', 'BXP', 'C', 'CAG', 'CAH', 'CARR', 'CASY', 'CAT', 'CB',
+    'CBOE', 'CBRE', 'CCI', 'CCL', 'CDNS', 'CDW', 'CEG', 'CF', 'CFG', 'CHD',
+    'CHRW', 'CHTR', 'CI', 'CIEN', 'CINF', 'CL', 'CLX', 'CMCSA', 'CME', 'CMG',
+    'CMI', 'CMS', 'CNC', 'CNP', 'COF', 'COHR', 'COIN', 'COO', 'COP', 'COR',
+    'COST', 'CPAY', 'CPB', 'CPRT', 'CPT', 'CRH', 'CRL', 'CRM', 'CRWD', 'CSCO',
+    'CSGP', 'CSX', 'CTAS', 'CTRA', 'CTSH', 'CTVA', 'CVNA', 'CVS', 'CVX', 'D',
+    'DAL', 'DASH', 'DD', 'DDOG', 'DE', 'DECK', 'DELL', 'DG', 'DGX', 'DHI',
+    'DHR', 'DIS', 'DLR', 'DLTR', 'DOC', 'DOV', 'DOW', 'DPZ', 'DRI', 'DTE',
+    'DUK', 'DVA', 'DVN', 'DXCM', 'EA', 'EBAY', 'ECL', 'ED', 'EFX', 'EG',
+    'EIX', 'EL', 'ELV', 'EME', 'EMR', 'EOG', 'EPAM', 'EQIX', 'EQR', 'EQT',
+    'ERIE', 'ES', 'ESS', 'ETN', 'ETR', 'EVRG', 'EW', 'EXC', 'EXE', 'EXPD',
+    'EXPE', 'EXR', 'F', 'FANG', 'FAST', 'FCX', 'FDS', 'FDX', 'FE', 'FFIV',
+    'FICO', 'FIS', 'FISV', 'FITB', 'FIX', 'FOX', 'FOXA', 'FRT', 'FSLR', 'FTNT',
+    'FTV', 'GD', 'GDDY', 'GE', 'GEHC', 'GEN', 'GEV', 'GILD', 'GIS', 'GL',
+    'GLW', 'GM', 'GNRC', 'GOOG', 'GOOGL', 'GPC', 'GPN', 'GRMN', 'GS', 'GWW',
+    'HAL', 'HAS', 'HBAN', 'HCA', 'HD', 'HIG', 'HII', 'HLT', 'HON', 'HOOD',
+    'HPE', 'HPQ', 'HRL', 'HSIC', 'HST', 'HSY', 'HUBB', 'HUM', 'HWM', 'IBKR',
+    'IBM', 'ICE', 'IDXX', 'IEX', 'IFF', 'INCY', 'INTC', 'INTU', 'INVH', 'IP',
+    'IQV', 'IR', 'IRM', 'ISRG', 'IT', 'ITW', 'IVZ', 'J', 'JBHT', 'JBL',
+    'JCI', 'JKHY', 'JNJ', 'JPM', 'KDP', 'KEY', 'KEYS', 'KHC', 'KIM', 'KKR',
+    'KLAC', 'KMB', 'KMI', 'KO', 'KR', 'KVUE', 'L', 'LDOS', 'LEN', 'LH',
+    'LHX', 'LII', 'LIN', 'LITE', 'LLY', 'LMT', 'LNT', 'LOW', 'LRCX', 'LULU',
+    'LUV', 'LVS', 'LYB', 'LYV', 'MA', 'MAA', 'MAR', 'MAS', 'MCD', 'MCHP',
+    'MCK', 'MCO', 'MDLZ', 'MDT', 'MET', 'META', 'MGM', 'MKC', 'MLM', 'MMM',
+    'MNST', 'MO', 'MOS', 'MPC', 'MPWR', 'MRK', 'MRNA', 'MRSH', 'MS', 'MSCI',
+    'MSFT', 'MSI', 'MTB', 'MTD', 'MU', 'NCLH', 'NDAQ', 'NDSN', 'NEE', 'NEM',
+    'NFLX', 'NI', 'NKE', 'NOC', 'NOW', 'NRG', 'NSC', 'NTAP', 'NTRS', 'NUE',
+    'NVDA', 'NVR', 'NWS', 'NWSA', 'NXPI', 'O', 'ODFL', 'OKE', 'OMC', 'ON',
+    'ORCL', 'ORLY', 'OTIS', 'OXY', 'PANW', 'PAYX', 'PCAR', 'PCG', 'PEG', 'PEP',
+    'PFE', 'PFG', 'PG', 'PGR', 'PH', 'PHM', 'PKG', 'PLD', 'PLTR', 'PM',
+    'PNC', 'PNR', 'PNW', 'PODD', 'POOL', 'PPG', 'PPL', 'PRU', 'PSA', 'PSKY',
+    'PSX', 'PTC', 'PWR', 'PYPL', 'Q', 'QCOM', 'RCL', 'REG', 'REGN', 'RF',
+    'RJF', 'RL', 'RMD', 'ROK', 'ROL', 'ROP', 'ROST', 'RSG', 'RTX', 'RVTY',
+    'SATS', 'SBAC', 'SBUX', 'SCHW', 'SHW', 'SJM', 'SLB', 'SMCI', 'SNA', 'SNDK',
+    'SNPS', 'SO', 'SOLV', 'SPG', 'SPGI', 'SRE', 'STE', 'STLD', 'STT', 'STX',
+    'STZ', 'SW', 'SWK', 'SWKS', 'SYF', 'SYK', 'SYY', 'T', 'TAP', 'TDG',
+    'TDY', 'TECH', 'TEL', 'TER', 'TFC', 'TGT', 'TJX', 'TKO', 'TMO', 'TMUS',
+    'TPL', 'TPR', 'TRGP', 'TRMB', 'TROW', 'TRV', 'TSCO', 'TSLA', 'TSN', 'TT',
+    'TTD', 'TTWO', 'TXN', 'TXT', 'TYL', 'UAL', 'UBER', 'UDR', 'UHS', 'ULTA',
+    'UNH', 'UNP', 'UPS', 'URI', 'USB', 'V', 'VICI', 'VLO', 'VLTO', 'VMC',
+    'VRSK', 'VRSN', 'VRT', 'VRTX', 'VST', 'VTR', 'VTRS', 'VZ', 'WAB', 'WAT',
+    'WBD', 'WDAY', 'WDC', 'WEC', 'WELL', 'WFC', 'WM', 'WMB', 'WMT', 'WRB',
+    'WSM', 'WST', 'WTW', 'WY', 'WYNN', 'XEL', 'XOM', 'XYL', 'XYZ', 'YUM',
+    'ZBH', 'ZBRA', 'ZTS',
+]
+
+# All tickers already analyzed in previous prestudy runs
+# (union of NDX100 + DJ30 + SP500 top-100 runs)
+ALREADY_ANALYZED = sorted(set(NDX100_TICKERS) | set(DJ30_TICKERS) | set(SP500_TICKERS))
 
 # Current ALTAIR active assets (NDX-7 + DJ30-5) to exclude from new studies
 ALTAIR_CURRENT = [
@@ -476,12 +534,15 @@ def print_summary(trend_res, vol_res, hold_res):
 def parse_args():
     p = argparse.ArgumentParser(description="Stock Momentum Pre-Study")
     p.add_argument('--stocks', nargs='+', help='Specific tickers to test')
-    p.add_argument('--universe', choices=['ndx', 'dj30', 'sp500'], default='ndx',
-                   help='Stock universe: ndx, dj30, or sp500')
+    p.add_argument('--universe', choices=['ndx', 'dj30', 'sp500', 'sp500full'],
+                   default='ndx',
+                   help='Stock universe: ndx, dj30, sp500 (legacy ~100), sp500full (~503)')
     p.add_argument('--top', type=int, default=20, help='Top N stocks by momentum (default: 20)')
     p.add_argument('--years', type=int, default=DOWNLOAD_YEARS, help='Years of data to download')
     p.add_argument('--exclude-current', action='store_true',
                    help='Exclude current ALTAIR assets (NDX-7 + DJ30-5)')
+    p.add_argument('--exclude-analyzed', action='store_true',
+                   help='Exclude all previously analyzed stocks (NDX100+DJ30+SP500 top-100)')
     return p.parse_args()
 
 
@@ -502,14 +563,17 @@ def main():
         tickers_to_download = args.stocks
     else:
         # Download from selected universe
-        if args.universe == 'sp500':
-            tickers_to_download = SP500_TICKERS
+        if args.universe == 'sp500full':
+            tickers_to_download = list(SP500_FULL_TICKERS)
+            print(f"Universe: S&P 500 FULL ({len(SP500_FULL_TICKERS)} stocks)")
+        elif args.universe == 'sp500':
+            tickers_to_download = list(SP500_TICKERS)
             print(f"Universe: S&P 500 top ({len(SP500_TICKERS)} stocks)")
         elif args.universe == 'dj30':
-            tickers_to_download = DJ30_TICKERS
+            tickers_to_download = list(DJ30_TICKERS)
             print(f"Universe: Dow Jones 30 ({len(DJ30_TICKERS)} stocks)")
         else:
-            tickers_to_download = NDX100_TICKERS
+            tickers_to_download = list(NDX100_TICKERS)
             print(f"Universe: Nasdaq 100 ({len(NDX100_TICKERS)} stocks)")
 
     # Exclude current ALTAIR assets if requested
@@ -521,6 +585,17 @@ def main():
         if excluded > 0:
             print(f"Excluded {excluded} current ALTAIR assets: "
                   f"{', '.join(t for t in ALTAIR_CURRENT if t not in tickers_to_download)}")
+            print(f"Remaining: {len(tickers_to_download)} stocks")
+
+    # Exclude all previously analyzed stocks if requested
+    if args.exclude_analyzed:
+        before = len(tickers_to_download)
+        tickers_to_download = [t for t in tickers_to_download
+                               if t not in ALREADY_ANALYZED]
+        excluded = before - len(tickers_to_download)
+        if excluded > 0:
+            print(f"Excluded {excluded} already-analyzed stocks "
+                  f"(NDX100 + DJ30 + SP500 top-100)")
             print(f"Remaining: {len(tickers_to_download)} stocks")
 
     all_data = download_stock_data(tickers_to_download, years=args.years)
