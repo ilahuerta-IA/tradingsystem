@@ -78,7 +78,9 @@ PHASES = {
         'grid': {
             'tp_atr_mult': [2.0, 2.5, 3.0, 3.5, 4.0, 5.0],
         },
-        'fixed': {},
+        'fixed': {
+            'max_sl_atr_mult': 2.0,
+        },
     },
     'entry': {
         'description': 'Entry confirmation parameters',
@@ -86,7 +88,9 @@ PHASES = {
             'tr1bh_timeout': [5, 8, 10, 15],
             'dtosc_os': [20, 25, 30],
         },
-        'fixed': {},
+        'fixed': {
+            'max_sl_atr_mult': 2.0,
+        },
     },
     'holding': {
         'description': 'Holding period parameters',
@@ -94,7 +98,9 @@ PHASES = {
             'max_holding_bars': [60, 90, 120, 180],
             'tp_atr_mult': [2.5, 3.0, 4.0],
         },
-        'fixed': {},
+        'fixed': {
+            'max_sl_atr_mult': 2.0,
+        },
     },
 }
 

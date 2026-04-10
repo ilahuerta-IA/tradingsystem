@@ -71,14 +71,14 @@ _DEFAULT_PARAMS = {
     # --- Risk / Exit ---
     'atr_period': 14,               # ATR for SL/TP (H1 bars)
     'sl_atr_mult': 2.0,             # Fallback SL if swing low not available
-    'tp_atr_mult': 3.0,             # Take profit = entry + X * ATR_H1
+    'tp_atr_mult': 4.0,             # Take profit = entry + X * ATR_H1 (Phase2+DeepCompare: D)
 
     # --- V2: Miner Improvements ---
     'use_tr1bh': True,              # Trailing One-Bar High entry
-    'tr1bh_timeout': 10,            # Max bars in TRIGGERED state
+    'tr1bh_timeout': 5,             # Max bars in TRIGGERED state (Phase3+DeepCompare: D)
     'tr1bh_tick': 0.01,             # Tick offset above bar high
     'use_swing_low_sl': True,       # SL at swing low (vs ATR)
-    'max_sl_atr_mult': 4.0,         # Max SL width in ATR mult (0=off)
+    'max_sl_atr_mult': 2.0,         # Max SL width in ATR mult (Phase1: 2.0 wins)
 
     'max_holding_bars': 120,        # Max hold ~5 trading days (H1)
     'max_entries_per_day': 1,

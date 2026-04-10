@@ -168,14 +168,14 @@ class ALTAIRStrategy(bt.Strategy):
         # === RISK / EXIT ===
         atr_period=14,
         sl_atr_mult=2.0,
-        tp_atr_mult=3.0,
+        tp_atr_mult=4.0,
 
         # === V2: MINER IMPROVEMENTS ===
         use_tr1bh=True,               # Trailing One-Bar High entry
-        tr1bh_timeout=10,             # Max bars in TRIGGERED state
+        tr1bh_timeout=5,              # Max bars in TRIGGERED state
         tr1bh_tick=0.01,              # Tick offset above bar high
         use_swing_low_sl=True,        # SL at swing low (vs ATR)
-        max_sl_atr_mult=4.0,          # Max SL width in ATR mult (0=off)
+        max_sl_atr_mult=2.0,          # Max SL width in ATR mult (Phase1)
 
         max_holding_bars=120,
         max_entries_per_day=1,
