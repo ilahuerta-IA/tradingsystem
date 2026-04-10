@@ -18,9 +18,11 @@ Tests:
   3. HOLDING:    Forward return curve 1-20 days
 
 Usage:
-  python tools/stock_momentum_prestudy.py                      # Top 20 NDX stocks
-  python tools/stock_momentum_prestudy.py --stocks NVDA AAPL   # Specific stocks
-  python tools/stock_momentum_prestudy.py --top 30             # Top 30 by momentum
+  python tools/stock_momentum_prestudy.py                           # Top 20 NDX stocks
+  python tools/stock_momentum_prestudy.py --universe dj30           # All 30 DJ30 stocks
+  python tools/stock_momentum_prestudy.py --universe dj30 --top 15  # Top 15 DJ30 by mom
+  python tools/stock_momentum_prestudy.py --stocks NVDA AAPL        # Specific stocks
+  python tools/stock_momentum_prestudy.py --top 30                  # Top 30 by momentum
 """
 
 import argparse
@@ -56,6 +58,14 @@ NDX100_TICKERS = [
     'MCHP', 'XEL', 'CDW', 'ANSS', 'DDOG', 'GFS', 'ZS', 'ILMN',
     'BIIB', 'MDB', 'WBD', 'SIRI', 'DLTR', 'LCID', 'RIVN', 'ARM',
     'SMCI', 'PLTR', 'APP', 'COIN',
+]
+
+# Dow Jones 30 components (as of 2025)
+DJ30_TICKERS = [
+    'AAPL', 'AMGN', 'AMZN', 'AXP', 'BA', 'CAT', 'CRM', 'CSCO', 'CVX',
+    'DIS', 'GS', 'HD', 'HON', 'IBM', 'JNJ', 'JPM', 'KO', 'MCD', 'MMM',
+    'MRK', 'MSFT', 'NKE', 'NVDA', 'PG', 'SHW', 'TRV', 'UNH', 'V', 'VZ',
+    'WMT',
 ]
 
 # Darwinex Zero CFD stock costs
@@ -440,6 +450,8 @@ def print_summary(trend_res, vol_res, hold_res):
 def parse_args():
     p = argparse.ArgumentParser(description="Stock Momentum Pre-Study")
     p.add_argument('--stocks', nargs='+', help='Specific tickers to test')
+    p.add_argument('--universe', choices=['ndx', 'dj30'], default='ndx',
+                   help='Stock universe: ndx (Nasdaq 100) or dj30 (Dow Jones 30)')
     p.add_argument('--top', type=int, default=20, help='Top N stocks by momentum (default: 20)')
     p.add_argument('--years', type=int, default=DOWNLOAD_YEARS, help='Years of data to download')
     return p.parse_args()
@@ -461,8 +473,13 @@ def main():
         # Download specified tickers
         tickers_to_download = args.stocks
     else:
-        # Download all NDX100, then select top N
-        tickers_to_download = NDX100_TICKERS
+        # Download from selected universe
+        if args.universe == 'dj30':
+            tickers_to_download = DJ30_TICKERS
+            print(f"Universe: Dow Jones 30 ({len(DJ30_TICKERS)} stocks)")
+        else:
+            tickers_to_download = NDX100_TICKERS
+            print(f"Universe: Nasdaq 100 ({len(NDX100_TICKERS)} stocks)")
 
     all_data = download_stock_data(tickers_to_download, years=args.years)
 
