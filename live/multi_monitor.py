@@ -789,6 +789,51 @@ class MultiStrategyMonitor:
         """Map BT symbol name to broker symbol name."""
         return SYMBOL_MAP.get(bt_symbol, bt_symbol)
 
+    def _resample_m5_to_h4_utc(self, m5_bars: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """
+        Resample M5 broker-time bars to H4 aligned to UTC boundaries.
+
+        Steps:
+          1. Convert "time" from broker time to UTC
+          2. Resample to 4H with origin='epoch' (00:00, 04:00, 08:00 ... UTC)
+          3. Drop the last (forming) bar — it may be incomplete
+          4. Return H4 DataFrame with "time" column in UTC
+
+        This matches BT where Dukascopy UTC data is resampled to H4 by
+        backtrader with default alignment (00:00 UTC origin).
+
+        FIX 2026-04-11: Audit #3 Hallazgo #1.
+        """
+        if m5_bars is None or m5_bars.empty:
+            return None
+
+        df = m5_bars.copy()
+
+        # Convert broker time to UTC
+        offset_hours = get_broker_utc_offset()
+        df["time"] = df["time"] - timedelta(hours=offset_hours)
+
+        # Set time as index for resample
+        df = df.set_index("time")
+
+        # Resample to 4H aligned to epoch (00:00, 04:00, 08:00 ... UTC)
+        h4 = df.resample("4h", origin="epoch").agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        }).dropna(subset=["open"])
+
+        # Exclude forming (incomplete) bar: last bar may still be building
+        if len(h4) > 1:
+            h4 = h4.iloc[:-1]
+
+        # Restore "time" as column, reset index to integer (checker expectation)
+        h4 = h4.reset_index()
+
+        return h4
+
     def _process_candle(self):
         """
         Process the closed candle for all active checkers.
@@ -806,10 +851,12 @@ class MultiStrategyMonitor:
             symbol = config.get("asset_name") or config.get("symbol")
             ref_symbol = config.get("reference_symbol")
             
-            if config_name in VEGA_CONFIGS:
-                tf = Timeframe.H4
-            else:
-                tf = Timeframe.M5
+            # VEGA: fetch M5 bars, resample to H4 aligned to UTC in-process.
+            # This matches BT (Dukascopy UTC -> backtrader resample H4).
+            # Fetching H4 directly from broker gives broker-aligned bars
+            # (UTC+3 summer) which causes 1-3h misalignment vs BT.
+            # FIX 2026-04-11: Audit #3 Hallazgo #1.
+            tf = Timeframe.M5
             
             if symbol:
                 symbol_timeframes.setdefault(symbol, set()).add(tf)
@@ -818,12 +865,11 @@ class MultiStrategyMonitor:
         
         for symbol in self.active_symbols:
             try:
-                # Use H4 if any checker needs it for this symbol, else M5
                 timeframes_needed = symbol_timeframes.get(symbol, {Timeframe.M5})
                 
                 for tf in timeframes_needed:
                     broker_symbol = self._map_symbol(symbol)
-                    count = 100 if tf == Timeframe.H4 else 500
+                    count = 500
                     
                     bars = self.data_provider.get_bars(
                         symbol=broker_symbol,
@@ -835,9 +881,8 @@ class MultiStrategyMonitor:
                         self.logger.warning(f"No data for {broker_symbol} ({tf.name})")
                         continue
                     
-                    # Store with key = (bt_symbol, timeframe_name)
-                    key = f"{symbol}_{tf.name}" if tf != Timeframe.M5 else symbol
-                    symbol_data[key] = bars
+                    # Store M5 bars keyed by symbol
+                    symbol_data[symbol] = bars
                 
             except Exception as e:
                 self.logger.error(f"Failed to fetch data for {symbol}: {e}")
@@ -893,19 +938,27 @@ class MultiStrategyMonitor:
             symbol = config.get("asset_name") or config.get("symbol")
             reference_symbol = config.get("reference_symbol")
             
-            # VEGA uses H4 data keys; others use M5 (plain symbol key)
-            if config_name in VEGA_CONFIGS:
-                data_key = f"{symbol}_H4"
-                ref_key = f"{reference_symbol}_H4" if reference_symbol else None
-            else:
-                data_key = symbol
-                ref_key = reference_symbol
+            data_key = symbol
+            ref_key = reference_symbol
             
             if data_key not in symbol_data:
                 continue
             
             bars = symbol_data[data_key]
             reference_bars = symbol_data.get(ref_key) if ref_key else None
+            
+            # VEGA: resample M5 broker bars to H4 aligned to UTC.
+            # Converts broker timestamps to UTC, then groups into 4h windows
+            # starting at 00:00 UTC (matching BT's Dukascopy resample).
+            # FIX 2026-04-11: Audit #3 Hallazgo #1.
+            if config_name in VEGA_CONFIGS:
+                bars = self._resample_m5_to_h4_utc(bars)
+                if bars is None or bars.empty:
+                    continue
+                if reference_bars is not None:
+                    reference_bars = self._resample_m5_to_h4_utc(reference_bars)
+                    if reference_bars is None or reference_bars.empty:
+                        continue
             
             # Guard: warn if dual-feed strategy has no reference data
             if reference_symbol and reference_bars is None:

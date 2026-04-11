@@ -31,7 +31,6 @@ import pandas as pd
 import numpy as np
 
 from .base_checker import BaseChecker, Signal, SignalDirection
-from live.timezone import broker_to_utc
 
 
 class VEGAChecker(BaseChecker):
@@ -324,19 +323,21 @@ class VEGAChecker(BaseChecker):
         # FIX 2026-04-05: removed redundant iloc[:-1] that caused 1-bar (4h) lag.
 
         # Get bar time from traded index (reference_df = Index B = traded)
+        # FIX 2026-04-11: bars arrive in UTC (resampled from M5 by multi_monitor).
+        # Previously arrived in broker time and needed broker_to_utc().
         if "time" in reference_df.columns:
-            bar_time_broker = reference_df["time"].iloc[-1]
-            if isinstance(bar_time_broker, pd.Timestamp):
-                bar_time_broker = bar_time_broker.to_pydatetime()
+            bar_time_utc = reference_df["time"].iloc[-1]
+            if isinstance(bar_time_utc, pd.Timestamp):
+                bar_time_utc = bar_time_utc.to_pydatetime()
         else:
             return self._create_no_signal("No 'time' column in traded data")
 
         # Skip if we already processed this bar
         if self._last_processed_bar_time is not None:
-            if bar_time_broker == self._last_processed_bar_time:
+            if bar_time_utc == self._last_processed_bar_time:
                 return self._create_no_signal("Same H4 bar already processed")
 
-        utc_time = broker_to_utc(bar_time_broker)
+        utc_time = bar_time_utc  # Already UTC after M5->H4 resample
 
         # Stale bar guard: reject bars older than 1 H4 period (4h + 30min buffer)
         # Prevents phantom signals on weekend/holiday restarts.
@@ -375,7 +376,7 @@ class VEGAChecker(BaseChecker):
         forecast = self._compute_forecast(spread)
 
         # Mark bar as processed BEFORE filters (avoid re-processing on rejection)
-        self._last_processed_bar_time = bar_time_broker
+        self._last_processed_bar_time = bar_time_utc
 
         # === FILTERS ===
 
@@ -463,7 +464,7 @@ class VEGAChecker(BaseChecker):
         # Log signal details
         self.logger.info(
             f"[{self.config_name}] VEGA SIGNAL: {direction.value} | "
-            f"Broker: {bar_time_broker:%H:%M}, UTC: {utc_time:%H:%M} | "
+            f"UTC: {utc_time:%H:%M} | "
             f"z_A={z_a:.3f}, z_B={z_b:.3f}, spread={spread:.3f}, "
             f"forecast={forecast:.1f} | "
             f"entry={entry_price:.1f}, SL={stop_loss:.1f}, TP={take_profit:.1f} | "
