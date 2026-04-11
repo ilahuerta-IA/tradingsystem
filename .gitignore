@@ -43,6 +43,9 @@ config/credentials/*.credentials
 # Jupyter
 .ipynb_checkpoints/
 
+# Generated images (heatmaps, equity curves, etc.)
+images/
+
 # Data Files (Large CSVs should not be in git)
 data/*.csv
 data/*.zip
