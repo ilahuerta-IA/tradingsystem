@@ -1091,6 +1091,15 @@ class MultiStrategyMonitor:
             except Exception as e:
                 self.logger.warning(f"[{config_name}] VEGA sizing failed: {e}, using SL-based")
         
+        # VEGA: skip trade if forecast too weak for 1 contract (matches BT).
+        # FIX 2026-04-11: Audit #3 Hallazgo #3.
+        if config_name in VEGA_CONFIGS and volume_override <= 0.0:
+            self.logger.info(
+                f"[{config_name}] VEGA sizing: forecast too weak, 0 contracts. "
+                f"Skipping trade (matches BT behavior)."
+            )
+            return
+        
         # Execute LONG or SHORT
         self.state = MonitorState.EXECUTING
         

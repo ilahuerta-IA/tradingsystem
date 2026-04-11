@@ -14,7 +14,7 @@ Usage:
     python tools/portfolio_backtest.py --exclude TLT_KOI DIA_KOI
     python tools/portfolio_backtest.py -p -q --from-date 2025-12-01 --to-date 2026-02-14  # Walk-forward
     python tools/portfolio_backtest.py --vega -p -q                  # VEGA portfolio (from settings_vega)
-    python tools/portfolio_backtest.py --vega -p -q --from-date 2024-01-01  # VEGA walk-forward
+    python tools/portfolio_backtest.py --vega -p -q --from-date 2024-01-01 --to-date 2026-04-11  # VEGA walk-forward
 """
 import sys
 import os

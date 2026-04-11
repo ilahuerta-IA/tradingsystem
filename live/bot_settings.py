@@ -45,7 +45,7 @@ ENABLED_CONFIGS = {
     # VEGA strategy (Cross-Index Z-Score Divergence, H4)
     # Deployed 2026-04-05: transitioning from M5 to H4 structural approach
     "NI225_VEGA": True,   # SP500→JPN225, London session, LONG only
-    "GDAXI_VEGA": True,   # SP500→GER40, London session, LONG+SHORT
+    "GDAXI_VEGA": False,  # DISABLED 2026-04-11: 73% overlap with NDAXI, worse PF(1.28 vs 1.31)/DD(15% vs 14%)
     "NDAXI_VEGA": True,   # NAS100→GER40, London session, LONG+SHORT
 }
 

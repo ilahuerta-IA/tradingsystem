@@ -254,14 +254,17 @@ class VEGAChecker(BaseChecker):
             margin_per_contract = margin_per_contract / self.jpy_rate
 
         if margin_per_contract <= 0:
-            return symbol_info.get("volume_min", 1.0)
+            return 0.0
 
         # Capital allocation proportional to forecast strength
         max_margin = equity * self.capital_alloc_pct * position_fraction
         contracts = int(max_margin / margin_per_contract)
 
+        # Match BT: if forecast too weak for even 1 contract, skip trade.
+        # FIX 2026-04-11: Audit #3 Hallazgo #3. Previously fell back to
+        # volume_min (0.1), creating tiny positions the BT would never take.
         if contracts < 1:
-            return symbol_info.get("volume_min", 1.0)
+            return 0.0
 
         # Cap at absolute max position
         abs_max = int((equity * self.max_position_pct) / margin_per_contract)
