@@ -44,6 +44,9 @@ STOCK_SYMBOLS = [
     'NVDA', 'AMAT', 'AMD', 'AVGO', 'GOOGL', 'MSFT', 'NFLX',
     'KLAC', 'LRCX', 'MU', 'ASML',
     'CAT', 'V', 'HD', 'JPM', 'AXP', 'UNH', 'GS',
+    # SP500 Tier 1-HIGH batch 1 (2026-04-11)
+    'LLY', 'LMT', 'PGR', 'STZ', 'DELL', 'AMP', 'CAH',
+    'FDX', 'NSC', 'PH', 'EFX', 'MPC', 'VLO',
 ]
 
 
@@ -206,5 +209,82 @@ ALTAIR_STRATEGIES_CONFIG = {
         datetime.datetime(2017, 2, 1),
         universe='dj30',
         max_sl_atr_mult=4.0, dtosc_os=20,
+    ),
+
+    # --- SP500 TIER 1-HIGH BATCH 1 (Section 39, 2026-04-11) ---
+    # A/B tested: Config A (NDX) vs Config B (DJ30). Best config per stock.
+    # Config B wins 5 vs 2 -- SP500 behaves like DJ30 blue-chips.
+    'NSC_ALTAIR': _make_config(
+        'NSC', 'NSC_1h_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B: PF 2.33, 6/6yr+
+    ),
+    'CAH_ALTAIR': _make_config(
+        'CAH', 'CAH_1h_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        # Config A (default): PF 1.53, 4/5yr+
+    ),
+    'FDX_ALTAIR': _make_config(
+        'FDX', 'FDX_1h_8Yea.csv',
+        datetime.datetime(2017, 12, 1),
+        universe='sp500',
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B: PF 1.46, 3/4yr+
+    ),
+    'VLO_ALTAIR': _make_config(
+        'VLO', 'VLO_1h_8Yea.csv',
+        datetime.datetime(2017, 12, 1),
+        universe='sp500',
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B: PF 1.40, 3/6yr+
+    ),
+    'EFX_ALTAIR': _make_config(
+        'EFX', 'EFX_1h_8Yea.csv',
+        datetime.datetime(2017, 12, 1),
+        universe='sp500',
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B: PF 1.17, 2/5yr+
+    ),
+    'MPC_ALTAIR': _make_config(
+        'MPC', 'MPC_1h_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B: PF 1.12, 4/6yr+
+    ),
+    'PGR_ALTAIR': _make_config(
+        'PGR', 'PGR_1h_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        # Config A (default): PF 1.01, borderline. DD 17% alto.
+    ),
+    # --- SP500 BATCH 1 LOSERS (structural: low H1 volatility, <2 trades/yr) ---
+    'LLY_ALTAIR': _make_config(
+        'LLY', 'LLY_1h_8Yea.csv',
+        datetime.datetime(2017, 12, 1),
+        universe='sp500',
+        active=False,  # PF 0.46/0.20 (A/B). 13 trades in 8yr. Same as HD/UNH: pharma too stable for DTOSC pullback
+    ),
+    'LMT_ALTAIR': _make_config(
+        'LMT', 'LMT_1h_8Yea.csv',
+        datetime.datetime(2017, 6, 1),
+        universe='sp500',
+        active=False,  # PF 0.56/0.77 (A/B). Defense sector: low vol, sparse entries
+    ),
+    'PH_ALTAIR': _make_config(
+        'PH', 'PH_1h_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        active=False,  # PF 0.71/0.65 (A/B). Industrial: pullbacks = regime changes, not dips
+    ),
+    'STZ_ALTAIR': _make_config(
+        'STZ', 'STZ_1h_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        active=False,  # PF 0.74/0.68 (A/B). Consumer staples: low momentum recurrence
+    ),
+    'AMP_ALTAIR': _make_config(
+        'AMP', 'AMP_1h_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        active=False,  # PF 0.90/0.96 (A/B). Financial services: close but never profitable
     ),
 }
