@@ -9,10 +9,12 @@ Metrics per stock:
   PF, WR%, MaxDD, Sharpe, Sortino, Calmar, CAGR, MC95/MC99, Trades/Year,
   Dominant Year %, Negative Years, Yearly PnL breakdown.
 
-Quality gates (from CONTEXT.md checklist):
-  PASS:    PF >= 1.5 AND Sharpe >= 1.0 AND DD < 15% AND MC95 < 20%
-           AND dominant < 40% AND neg_years <= 1 AND trades/yr >= 10
-  DISCARD: PF < 1.0 OR Sharpe < 0.5 OR DD > 20% OR neg_years >= 3
+Quality gates (from CONTEXT.md checklist + portfolio specs 2026-04-11):
+  PASS:    PF >= 1.30 AND Sharpe >= 0.30 AND DD < 15% AND MC95 < 20%
+           AND dominant < 50% AND neg_years <= 1
+           AND sector diversifies (not redundant with existing portfolio)
+  DISCARD: PF < 1.0 OR Sharpe < 0.30 OR DD > 25% OR neg_years >= 4
+  NOTE:    OOS = live demo only (too few trades for statistical OOS split)
 
 Optional: --exclude NVDA,NSC to test portfolio resilience without top performers.
 
@@ -58,7 +60,12 @@ RISK_FREE_RATE = 0.0
 # Post-OOS thresholds (PF>1.5, Sharpe>1.0) NOT applicable here.
 # IS minimum from CONTEXT.md: PF >= 1.30
 # Priority: yearly consistency (all years positive) > raw PF/Sharpe
+# Portfolio specs (2026-04-11):
+#   - Sharpe >= 0.30 minimum (below = unstable equity curve)
+#   - Must diversify: redundant sector concentration = reject
+#   - OOS = live demo only (too few IS trades for statistical split)
 CHECK_PF_MIN = 1.30
+CHECK_SHARPE_MIN = 0.30
 CHECK_DD_MAX = 15.0
 CHECK_MC95_MAX = 20.0
 CHECK_DOMINANT_YEAR_MAX = 50.0  # relaxed: fewer years = higher natural dominance
@@ -66,6 +73,7 @@ CHECK_NEGATIVE_YEARS_MAX = 1   # sweet spot: prefer ALL years positive
 
 # Immediate discard thresholds
 DISCARD_PF = 1.0
+DISCARD_SHARPE = 0.30  # hard floor: below this = noise, not edge
 DISCARD_DD = 25.0
 DISCARD_NEG_YEARS = 4  # with 6-8yr history, 3 neg is borderline
 
@@ -300,6 +308,8 @@ def check_quality(m):
     # Immediate discard
     if m['pf'] < DISCARD_PF:
         return 'DISCARD', ['PF < 1.0']
+    if m['sharpe'] < DISCARD_SHARPE:
+        return 'DISCARD', ['Sharpe < 0.30']
     if m['max_dd'] > DISCARD_DD:
         return 'DISCARD', ['DD > 25%']
     if m['neg_years'] >= DISCARD_NEG_YEARS:
@@ -308,6 +318,8 @@ def check_quality(m):
     # Quality checks (IS level)
     if m['pf'] < CHECK_PF_MIN:
         fails.append('PF < 1.30')
+    if m['sharpe'] < CHECK_SHARPE_MIN:
+        fails.append('Sharpe < 0.30')
     if m['max_dd'] > CHECK_DD_MAX:
         fails.append('DD > 15%')
     if m['mc95'] > CHECK_MC95_MAX:

@@ -140,6 +140,7 @@ ALTAIR_STRATEGIES_CONFIG = {
         'AMAT', 'AMAT_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
         universe='ndx',
+        active=False,  # Shrp 0.17 (min 0.30), 4th semiconductor (no diversification), zigzag equity
     ),
     'AMD_ALTAIR': _make_config(
         'AMD', 'AMD_1h_8Yea.csv',
@@ -165,6 +166,7 @@ ALTAIR_STRATEGIES_CONFIG = {
         'NFLX', 'NFLX_1h_8Yea.csv',
         datetime.datetime(2017, 1, 1),
         universe='ndx',
+        active=False,  # Shrp 0.23 (min 0.30), worstDD 12.9% (portfolio worst), -$12.7K 2021
     ),
 
     # --- DJ30 STOCKS (diversification study, Section 31-32) ---
