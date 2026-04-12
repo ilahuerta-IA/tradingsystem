@@ -25,8 +25,10 @@ from strategies.luyten_strategy import LUYTENStrategy
 from strategies.vega_strategy import VEGAStrategy
 from strategies.connors_strategy import CONNORSStrategy
 from strategies.altair_strategy import ALTAIRStrategy
+from strategies.lyra_strategy import LYRAStrategy
 from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
 from config.settings_altair import ALTAIR_STRATEGIES_CONFIG, ALTAIR_BROKER_CONFIG, STOCK_SYMBOLS
+from config.settings_lyra import LYRA_STRATEGIES_CONFIG, LYRA_BROKER_CONFIG
 
 
 # Non-forex symbol lists (both use ETFCSVData for datetime parsing)
@@ -47,11 +49,16 @@ STRATEGY_REGISTRY = {
     'VEGA': VEGAStrategy,
     'CONNORS': CONNORSStrategy,
     'ALTAIR': ALTAIRStrategy,
+    'LYRA': LYRAStrategy,
 }
 
 # Merge ALTAIR configs into global registries
 STRATEGIES_CONFIG.update(ALTAIR_STRATEGIES_CONFIG)
 BROKER_CONFIG.update(ALTAIR_BROKER_CONFIG)
+
+# Merge LYRA configs
+STRATEGIES_CONFIG.update(LYRA_STRATEGIES_CONFIG)
+BROKER_CONFIG.update(LYRA_BROKER_CONFIG)
 
 
 def run_backtest(config_name):
