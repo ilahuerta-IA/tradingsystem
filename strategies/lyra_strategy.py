@@ -470,8 +470,6 @@ class LYRAStrategy(bt.Strategy):
 
     def _record_trade_entry(self, dt, entry_price, size, atr_h1,
                             dtosc_fast, dtosc_slow):
-        if not self.trade_report_file:
-            return
         try:
             entry = {
                 'entry_time': dt,
@@ -490,6 +488,8 @@ class LYRAStrategy(bt.Strategy):
             }
             self.trade_reports.append(entry)
 
+            if not self.trade_report_file:
+                return
             f = self.trade_report_file
             n = len(self.trade_reports)
             f.write(f"ENTRY #{n}\n")
@@ -508,7 +508,7 @@ class LYRAStrategy(bt.Strategy):
             pass
 
     def _record_trade_exit(self, dt, pnl, reason, bars_held):
-        if not self.trade_report_file or not self.trade_reports:
+        if not self.trade_reports:
             return
         try:
             self.trade_reports[-1]['pnl'] = pnl
@@ -516,6 +516,8 @@ class LYRAStrategy(bt.Strategy):
             self.trade_reports[-1]['exit_time'] = dt
             self.trade_reports[-1]['bars_held'] = bars_held
 
+            if not self.trade_report_file:
+                return
             f = self.trade_report_file
             n = len(self.trade_reports)
             f.write(f"EXIT #{n}\n")
