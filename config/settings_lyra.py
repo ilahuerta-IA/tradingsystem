@@ -93,6 +93,7 @@ _DEFAULT_PARAMS = {
 
     # --- Session filters ---
     'use_time_filter': True,
+    'allowed_hours': [14, 15, 16, 17, 18, 19],  # US session default
     'use_day_filter': True,
     'allowed_days': [0, 1, 2, 3, 4],   # Mon-Fri
 
@@ -117,60 +118,73 @@ _DEFAULT_PARAMS = {
 # INDEX CONFIGS
 # =============================================================================
 
-def _make_lyra_config(index_name, csv_filename, from_date,
-                      broker_key, bars_per_day=7,
-                      allowed_hours=None, active=True, **overrides):
-    """Build a single LYRA config entry."""
-    params = dict(_DEFAULT_PARAMS)
-    params['bars_per_day'] = bars_per_day
-    if allowed_hours is not None:
-        params['allowed_hours'] = allowed_hours
-    params.update(overrides)
-    return {
-        'active': active,
+LYRA_STRATEGIES_CONFIG = {
+
+    # --- NDX: best prestudy candidate (PF 1.18, +22.94%) ---
+    'NDX_LYRA': {
+        'active': True,
         'strategy_name': 'LYRA',
-        'asset_name': index_name,
-        'data_path': f'data/{csv_filename}',
-        'from_date': from_date,
+        'asset_name': 'NDX',
+        'data_path': 'data/NDX_5m_15Yea.csv',
+        'from_date': datetime.datetime(2017, 1, 1),
         'to_date': datetime.datetime(2025, 12, 31),
         'starting_cash': 100_000.0,
-        'broker_config_key': broker_key,
-        'params': params,
-    }
+        'broker_config_key': 'darwinex_zero_cfd_ndx',
+        'params': {
+            **_DEFAULT_PARAMS,
+            'bars_per_day': 7,
+            'allowed_hours': [14, 15, 16, 17, 18, 19],
+        },
+    },
 
-
-LYRA_STRATEGIES_CONFIG = {
-    # --- NDX: best prestudy candidate (PF 1.18, +22.94%) ---
-    'NDX_LYRA': _make_lyra_config(
-        'NDX', 'NDX_5m_15Yea.csv',
-        datetime.datetime(2017, 1, 1),
-        broker_key='darwinex_zero_cfd_ndx',
-        bars_per_day=7,
-        allowed_hours=[14, 15, 16, 17, 18, 19],
-    ),
     # --- SP500: modest edge (PF 1.12, +10.60%) ---
-    'SP500_LYRA': _make_lyra_config(
-        'SP500', 'SP500_5m_15Yea.csv',
-        datetime.datetime(2017, 1, 1),
-        broker_key='darwinex_zero_cfd_sp500',
-        bars_per_day=7,
-        allowed_hours=[14, 15, 16, 17, 18, 19],
-    ),
+    'SP500_LYRA': {
+        'active': True,
+        'strategy_name': 'LYRA',
+        'asset_name': 'SP500',
+        'data_path': 'data/SP500_5m_15Yea.csv',
+        'from_date': datetime.datetime(2017, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+        'starting_cash': 100_000.0,
+        'broker_config_key': 'darwinex_zero_cfd_sp500',
+        'params': {
+            **_DEFAULT_PARAMS,
+            'bars_per_day': 7,
+            'allowed_hours': [14, 15, 16, 17, 18, 19],
+        },
+    },
+
     # --- UK100: surprise (PF 1.23, WR 46.4%, +12.65%) ---
-    'UK100_LYRA': _make_lyra_config(
-        'UK100', 'UK100_5m_15Yea.csv',
-        datetime.datetime(2017, 1, 1),
-        broker_key='darwinex_zero_cfd_uk100',
-        bars_per_day=9,
-        allowed_hours=[8, 9, 10, 11, 12, 13, 14, 15, 16],
-    ),
+    'UK100_LYRA': {
+        'active': True,
+        'strategy_name': 'LYRA',
+        'asset_name': 'UK100',
+        'data_path': 'data/UK100_5m_15Yea.csv',
+        'from_date': datetime.datetime(2017, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+        'starting_cash': 100_000.0,
+        'broker_config_key': 'darwinex_zero_cfd_uk100',
+        'params': {
+            **_DEFAULT_PARAMS,
+            'bars_per_day': 9,
+            'allowed_hours': [8, 9, 10, 11, 12, 13, 14, 15, 16],
+        },
+    },
+
     # --- NI225: marginal (PF 1.08, +9.77%) ---
-    'NI225_LYRA': _make_lyra_config(
-        'NI225', 'NI225_5m_15Yea.csv',
-        datetime.datetime(2017, 1, 1),
-        broker_key='darwinex_zero_cfd_ni225',
-        bars_per_day=7,
-        allowed_hours=[1, 2, 3, 4, 5, 6, 7],
-        active=False,   # Marginal edge, activate if optimized params improve it
-    ),
+    'NI225_LYRA': {
+        'active': False,
+        'strategy_name': 'LYRA',
+        'asset_name': 'NI225',
+        'data_path': 'data/NI225_5m_15Yea.csv',
+        'from_date': datetime.datetime(2017, 1, 1),
+        'to_date': datetime.datetime(2025, 12, 31),
+        'starting_cash': 100_000.0,
+        'broker_config_key': 'darwinex_zero_cfd_ni225',
+        'params': {
+            **_DEFAULT_PARAMS,
+            'bars_per_day': 7,
+            'allowed_hours': [1, 2, 3, 4, 5, 6, 7],
+        },
+    },
 }

@@ -813,6 +813,7 @@ class LYRAStrategy(bt.Strategy):
     # =========================================================================
 
     def stop(self):
+        """Strategy end -- print summary with advanced metrics."""
         total_trades = self.total_trades
         win_rate = (
             (self.wins / total_trades * 100) if total_trades > 0 else 0)
@@ -822,29 +823,7 @@ class LYRAStrategy(bt.Strategy):
         total_pnl = self.gross_profit - self.gross_loss
         final_value = self.broker.get_value()
 
-        if self._first_bar_dt and self._last_bar_dt:
-            data_days = (self._last_bar_dt - self._first_bar_dt).days
-            data_years = max(data_days / 365.25, 0.1)
-            periods_per_year = len(self._portfolio_values) / data_years
-        else:
-            periods_per_year = 252 * 7
-
-        sharpe_ratio = 0.0
-        if len(self._portfolio_values) > 10:
-            returns = []
-            for i in range(1, len(self._portfolio_values)):
-                prev = self._portfolio_values[i - 1]
-                if prev > 0:
-                    returns.append(
-                        (self._portfolio_values[i] - prev) / prev)
-            if returns:
-                arr = np.array(returns)
-                std = np.std(arr)
-                if std > 0:
-                    sharpe_ratio = (
-                        np.mean(arr) * periods_per_year
-                    ) / (std * np.sqrt(periods_per_year))
-
+        # Max Drawdown
         max_dd = 0.0
         if self._portfolio_values:
             peak = self._portfolio_values[0]
@@ -855,32 +834,198 @@ class LYRAStrategy(bt.Strategy):
                 if dd > max_dd:
                     max_dd = dd
 
+        # Data-driven periods_per_year
+        if self._first_bar_dt and self._last_bar_dt:
+            data_days = (self._last_bar_dt - self._first_bar_dt).days
+            data_years = max(data_days / 365.25, 0.1)
+            periods_per_year = len(self._portfolio_values) / data_years
+        else:
+            periods_per_year = 252 * 7
+
+        # Returns array (reused for Sharpe/Sortino)
+        returns = []
+        if len(self._portfolio_values) > 10:
+            for i in range(1, len(self._portfolio_values)):
+                prev = self._portfolio_values[i - 1]
+                if prev > 0:
+                    returns.append(
+                        (self._portfolio_values[i] - prev) / prev)
+
+        # Sharpe Ratio
+        sharpe_ratio = 0.0
+        if returns:
+            arr = np.array(returns)
+            std = np.std(arr)
+            if std > 0:
+                sharpe_ratio = (
+                    np.mean(arr) * periods_per_year
+                ) / (std * np.sqrt(periods_per_year))
+
+        # Sortino Ratio
+        sortino_ratio = 0.0
+        if returns:
+            arr = np.array(returns)
+            neg = arr[arr < 0]
+            if len(neg) > 0:
+                dd_dev = np.std(neg)
+                if dd_dev > 0:
+                    sortino_ratio = (
+                        (np.mean(arr) * periods_per_year)
+                        / (dd_dev * np.sqrt(periods_per_year))
+                    )
+
+        # CAGR
+        cagr = 0.0
+        if (self._portfolio_values and self._trade_pnls
+                and self._starting_cash > 0):
+            total_return = final_value / self._starting_cash
+            if total_return > 0:
+                first_d = self._trade_pnls[0]['date']
+                last_d = self._trade_pnls[-1]['date']
+                days = (last_d - first_d).days
+                years = max(days / 365.25, 0.1)
+                cagr = (pow(total_return, 1.0 / years) - 1.0) * 100.0
+
+        calmar_ratio = cagr / max_dd if max_dd > 0 else 0
+
+        # Monte Carlo Simulation
+        monte_carlo_dd_95 = 0.0
+        monte_carlo_dd_99 = 0.0
+        if len(self._trade_pnls) >= 20:
+            n_sims = 10000
+            pnl_list = [t['pnl'] for t in self._trade_pnls]
+            mc_dds = []
+            for _ in range(n_sims):
+                shuffled = np.random.permutation(pnl_list)
+                equity = self._starting_cash
+                mc_peak = equity
+                mc_dd = 0.0
+                for p in shuffled:
+                    equity += p
+                    if equity > mc_peak:
+                        mc_peak = equity
+                    dd = ((mc_peak - equity) / mc_peak * 100.0
+                          if mc_peak > 0 else 0.0)
+                    if dd > mc_dd:
+                        mc_dd = dd
+                mc_dds.append(mc_dd)
+            mc_arr = np.array(mc_dds)
+            monte_carlo_dd_95 = np.percentile(mc_arr, 95)
+            monte_carlo_dd_99 = np.percentile(mc_arr, 99)
+
+        # Yearly Statistics
+        yearly_stats = defaultdict(lambda: {
+            'trades': 0, 'wins': 0, 'pnl': 0.0,
+            'gross_profit': 0.0, 'gross_loss': 0.0,
+        })
+        for trade in self._trade_pnls:
+            y = trade['year']
+            yearly_stats[y]['trades'] += 1
+            yearly_stats[y]['pnl'] += trade['pnl']
+            if trade['is_winner']:
+                yearly_stats[y]['wins'] += 1
+                yearly_stats[y]['gross_profit'] += trade['pnl']
+            else:
+                yearly_stats[y]['gross_loss'] += abs(trade['pnl'])
+
+        # --- Print Summary ---
+        pf_str = f'{profit_factor:.2f}' if profit_factor < 100 else 'INF'
+
         print(f'\n{"="*70}')
-        print(f'LYRA STRATEGY RESULTS -- {self.data_h1._name}')
+        print(f'=== LYRA STRATEGY SUMMARY -- {self.data_h1._name} ===')
         print(f'{"="*70}')
         print(f'Direction:       SHORT ONLY')
         print(f'Total Trades:    {total_trades}')
+        print(f'Wins: {self.wins} | Losses: {self.losses}')
         print(f'Win Rate:        {win_rate:.1f}%')
-        pf_str = f'{profit_factor:.2f}' if profit_factor < 100 else 'INF'
         print(f'Profit Factor:   {pf_str}')
+        print(f'Gross Profit:    ${self.gross_profit:,.2f}')
+        print(f'Gross Loss:      ${self.gross_loss:,.2f}')
         print(f'Net P&L:         ${total_pnl:,.2f}')
         print(f'Final Value:     ${final_value:,.2f}')
-        print(f'Max Drawdown:    {max_dd:.2f}%')
-        print(f'Sharpe Ratio:    {sharpe_ratio:.4f}')
-        print(f'Triggered Cancels: {self._triggered_cancels}')
-        print(f'{"="*70}\n')
 
+        print(f'\n{"="*70}')
+        print(f'ADVANCED RISK METRICS')
+        print(f'{"="*70}')
+        print(f'Sharpe Ratio:        {sharpe_ratio:8.2f}')
+        print(f'Sortino Ratio:       {sortino_ratio:8.2f}')
+        print(f'CAGR:                {cagr:7.2f}%')
+        print(f'Max Drawdown:        {max_dd:7.2f}%')
+        print(f'Calmar Ratio:        {calmar_ratio:8.2f}')
+
+        if monte_carlo_dd_95 > 0:
+            mc_ratio = (monte_carlo_dd_95 / max_dd
+                        if max_dd > 0 else 0)
+            mc_status = (
+                'Good' if mc_ratio < 1.5
+                else 'Caution' if mc_ratio < 2.0
+                else 'Warning')
+            print(f'\nMonte Carlo Analysis (10,000 simulations):')
+            print(f'  95th Percentile DD: {monte_carlo_dd_95:6.2f}%  '
+                  f'[{mc_status}]')
+            print(f'  99th Percentile DD: {monte_carlo_dd_99:6.2f}%')
+            print(f'  Historical vs MC95: {mc_ratio:.2f}x')
+        print(f'{"="*70}')
+
+        # Yearly table
+        print(f'\n{"="*70}')
+        print(f'YEARLY STATISTICS')
+        print(f'{"="*70}')
+        print(f'{"Year":<6} {"Trades":>7} {"WR%":>7} {"PF":>7} {"PnL":>12}')
+        print('-' * 45)
+        for year in sorted(yearly_stats.keys()):
+            s = yearly_stats[year]
+            wr = (s['wins'] / s['trades'] * 100) if s['trades'] > 0 else 0
+            pf = ((s['gross_profit'] / s['gross_loss'])
+                  if s['gross_loss'] > 0 else float('inf'))
+            pf_y = f'{pf:.2f}' if pf < 100 else 'INF'
+            print(f'{year:<6} {s["trades"]:>7} {wr:>6.1f}% {pf_y:>7} '
+                  f'${s["pnl"]:>10,.0f}')
+        print(f'{"="*70}')
+
+        # Config summary
+        print(f'\n{"="*70}')
+        print(f'STRATEGY CONFIGURATION')
+        print(f'{"="*70}')
+        print(f'  Allowed Regimes: {self.p.allowed_regimes}')
+        print(f'  DTOSC OB: {self.p.dtosc_ob}')
+        print(f'  SL: {self.p.sl_atr_mult}x ATR '
+              f'(max {self.p.max_sl_atr_mult}x)')
+        print(f'  TP: {self.p.tp_atr_mult}x ATR')
+        print(f'  Max Holding: {self.p.max_holding_bars} bars')
+        print(f'  Tr-1BL: {"ON" if self.p.use_tr1bl else "OFF"} '
+              f'(timeout={self.p.tr1bl_timeout})')
+        print(f'  Swing High SL: {self.p.use_swing_high_sl}')
+        if self.p.use_time_filter:
+            print(f'  Time Filter: {list(self.p.allowed_hours)}')
+        if self.p.use_day_filter:
+            print(f'  Day Filter: {list(self.p.allowed_days)}')
+        if self.p.min_atr_entry > 0 or self.p.max_atr_entry > 0:
+            print(f'  ATR Filter: {self.p.min_atr_entry}-'
+                  f'{self.p.max_atr_entry}')
+        print(f'  Risk: {self.p.risk_percent * 100:.2f}%')
+        print(f'  Triggered Cancels: {self._triggered_cancels}')
+        print(f'{"="*70}')
+
+        # Write summary to trade report file
         if self.trade_report_file:
             try:
                 f = self.trade_report_file
                 f.write(f"\n{'='*70}\n")
                 f.write(f"SUMMARY\n")
                 f.write(f"Total Trades: {total_trades}\n")
+                f.write(f"Wins: {self.wins} | Losses: {self.losses}\n")
                 f.write(f"Win Rate: {win_rate:.1f}%\n")
                 f.write(f"Profit Factor: {pf_str}\n")
                 f.write(f"Net P&L: ${total_pnl:,.2f}\n")
                 f.write(f"Max Drawdown: {max_dd:.2f}%\n")
                 f.write(f"Sharpe: {sharpe_ratio:.4f}\n")
+                f.write(f"Sortino: {sortino_ratio:.4f}\n")
+                f.write(f"CAGR: {cagr:.2f}%\n")
+                f.write(f"Calmar: {calmar_ratio:.4f}\n")
+                if monte_carlo_dd_95 > 0:
+                    f.write(f"MC95 DD: {monte_carlo_dd_95:.2f}%\n")
+                    f.write(f"MC99 DD: {monte_carlo_dd_99:.2f}%\n")
                 f.close()
             except Exception:
                 pass
