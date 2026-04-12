@@ -211,6 +211,7 @@ def run_single_backtest(asset_name, asset_cfg, param_overrides):
 
 
 def _extract_metrics(strat, cerebro):
+    """Extract trades, PF, WR, DD, Sharpe, exit reasons from backtest result."""
     final_value = cerebro.broker.getvalue()
     total_pnl = final_value - STARTING_CASH
 
@@ -480,6 +481,8 @@ def main():
                           % (idx_tag, phase_name, timestamp))
 
     def _safe_val(v):
+        if isinstance(v, tuple):
+            return list(v)
         if isinstance(v, float) and (math.isinf(v) or math.isnan(v)):
             return None
         return v
