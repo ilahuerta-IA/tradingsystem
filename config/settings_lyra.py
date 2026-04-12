@@ -123,9 +123,9 @@ _DEFAULT_PARAMS = {
 
 LYRA_STRATEGIES_CONFIG = {
 
-    # --- NDX: best prestudy candidate (PF 1.18, +22.94%) ---
+    # --- NDX: DESCARTADO (PF 0.72, -$11.8K con params optimizados) ---
     'NDX_LYRA': {
-        'active': True,
+        'active': False,
         'strategy_name': 'LYRA',
         'asset_name': 'NDX',
         'data_path': 'data/NDX_5m_15Yea.csv',
