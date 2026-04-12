@@ -140,6 +140,10 @@ class LYRAStrategy(bt.Strategy):
         max_holding_bars=35,        # ~5 trading days at bpd=7
         max_entries_per_day=1,
 
+        # === ATR ENTRY FILTER ===
+        min_atr_entry=0.0,          # 0 = disabled
+        max_atr_entry=0.0,          # 0 = disabled
+
         # === REGIME EXIT ===
         exit_on_calm_up=True,       # Close short if regime returns to CALM_UP
 
@@ -457,13 +461,22 @@ class LYRAStrategy(bt.Strategy):
             f = self.trade_report_file
             f.write("=== LYRA STRATEGY TRADE REPORT ===\n")
             f.write(f"Generated: {datetime.now()}\n")
-            f.write(f"Asset: {asset}\n\n")
+            f.write(f"Asset: {asset}\n")
             f.write(f"Direction: SHORT ONLY\n")
-            f.write(f"Allowed regimes: {self.p.allowed_regimes}\n")
+            f.write(f"Allowed Regimes: {self.p.allowed_regimes}\n")
+            f.write(f"DTOSC OB: {self.p.dtosc_ob}\n")
             f.write(f"SL: {self.p.sl_atr_mult}x ATR (max {self.p.max_sl_atr_mult}x)\n")
             f.write(f"TP: {self.p.tp_atr_mult}x ATR\n")
             f.write(f"Max Holding: {self.p.max_holding_bars} bars\n")
-            f.write(f"Risk: {self.p.risk_percent * 100:.1f}%\n\n")
+            f.write(f"Tr-1BL: {'ON' if self.p.use_tr1bl else 'OFF'}"
+                    f" (timeout={self.p.tr1bl_timeout})\n")
+            f.write(f"Use Swing High SL: {self.p.use_swing_high_sl}\n")
+            f.write(f"Risk: {self.p.risk_percent * 100:.1f}%\n")
+            f.write(f"Time Filter: {list(self.p.allowed_hours)}\n")
+            f.write(f"Day Filter: {list(self.p.allowed_days)}\n")
+            f.write(f"Min ATR Entry: {self.p.min_atr_entry}\n")
+            f.write(f"Max ATR Entry: {self.p.max_atr_entry}\n")
+            f.write("\n")
             print(f"[LYRA] Trade report: {report_path}")
         except Exception as e:
             print(f"[LYRA] Trade reporting init failed: {e}")
@@ -758,6 +771,19 @@ class LYRAStrategy(bt.Strategy):
             if self.p.regime_enabled:
                 if self._regime_code not in self.p.allowed_regimes:
                     return
+
+            # ATR entry filter
+            try:
+                atr_now = float(self.atr_h1[0])
+                if not math.isnan(atr_now) and atr_now > 0:
+                    if (self.p.min_atr_entry > 0
+                            and atr_now < self.p.min_atr_entry):
+                        return
+                    if (self.p.max_atr_entry > 0
+                            and atr_now > self.p.max_atr_entry):
+                        return
+            except (IndexError, ValueError):
+                pass
 
             # DTOSC bearish signal
             if not self._check_dtosc_short_signal():

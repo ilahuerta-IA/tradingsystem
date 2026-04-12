@@ -69,11 +69,14 @@ _DEFAULT_PARAMS = {
     # --- Allowed regimes for entry ---
     'allowed_regimes': (1,),    # 1 = VOLATILE_UP only
 
+    # --- Resample (5m CSV -> H1 bars) ---
+    'base_timeframe_minutes': 60,
+
     # --- Risk / Exit ---
     'atr_period': 14,
     'sl_atr_mult': 2.0,
     'tp_atr_mult': 3.0,
-    'max_sl_atr_mult': 3.0,
+    'max_sl_atr_mult': 2.0,
 
     # --- Entry confirmation ---
     'use_tr1bl': True,
@@ -83,6 +86,15 @@ _DEFAULT_PARAMS = {
 
     'max_holding_bars': 35,     # ~5 trading days
     'max_entries_per_day': 1,
+
+    # --- ATR entry filter ---
+    'min_atr_entry': 0.0,       # 0 = disabled
+    'max_atr_entry': 0.0,       # 0 = disabled
+
+    # --- Session filters ---
+    'use_time_filter': True,
+    'use_day_filter': True,
+    'allowed_days': [0, 1, 2, 3, 4],   # Mon-Fri
 
     # --- Regime exit ---
     'exit_on_calm_up': True,
