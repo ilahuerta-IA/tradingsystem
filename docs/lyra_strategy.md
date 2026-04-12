@@ -16,7 +16,7 @@
 3. [Prestudy Results](#prestudy-results)
 4. [Backtest Results (Full Sample)](#backtest-results-full-sample)
 5. [Portfolio Complementarity Analysis](#portfolio-complementarity-analysis)
-6. [IS/OOS Plan](#isoos-plan)
+6. [IS/OOS Validation](#isoos-validation)
 7. [Configuration](#configuration)
 8. [Tools](#tools)
 9. [Changelog](#changelog)
@@ -165,25 +165,77 @@ NDX pierde dinero con los parámetros actuales. Descartado del portfolio.
 
 ---
 
-## IS/OOS Plan
+## IS/OOS Validation
 
-Validación In-Sample / Out-of-Sample pendiente (siguiente fase):
-
-### Propuesta de split
-- **IS (In-Sample):** 2017-01-01 a 2022-12-31 (6 años)
-- **OOS (Out-of-Sample):** 2023-01-01 a 2025-12-31 (3 años)
+### Split
+- **IS (In-Sample):** 2017-01-01 a 2023-12-31 (7 años)
+- **OOS (Out-of-Sample):** 2024-01-01 a 2026-12-31 (3 años)
 
 ### Criterios de aprobación OOS
-- PF > 1.20 en OOS
+- PF > 1.20
 - WR > 35%
 - Max DD < 15%
 - MC95 DD < 18%
-- Net PnL positivo cada año o 2/3 años positivos
+- Net PnL positivo o 2/3 años positivos
 
-### Assets para IS/OOS
-- SP500_LYRA ✅
-- UK100_LYRA ✅  
-- NDX_LYRA ❌ (descartado — PF 0.72)
+---
+
+### SP500_LYRA — ❌ FAILS IS/OOS
+
+**IS Optimization aplicada:** `min_atr_entry = 6.0` (mejora PF 1.62 → 1.95, reduce trades 46 → 35).
+
+**IS (2017-2023, min_atr_entry=6):**
+```
+Trades: 35 | WR: 45.7% | PF: 1.95
+Sharpe: 0.39 | Sortino: 0.09 | CAGR: 2.36%
+MaxDD: 9.40% | Calmar: 0.25
+MC95 DD: 7.77% | MC99: 10.40%
+Net P&L: $18,103 | Commission: $178
+
+Year    Trades  WR%     PF      PnL
+2017      6    50.0%   1.49   $1,133
+2018      7    42.9%   1.75   $3,273
+2019      2    50.0%   3.48   $2,014
+2020      5    40.0%   1.15     $568
+2021      7    57.1%   2.57   $5,556
+2022      1   100.0%    INF   $3,942
+2023      2    50.0%   2.21   $1,134
+→ 7/7 años positivos ✅
+```
+
+**Full Sample (2017-2026, min_atr_entry=6):**
+```
+Trades: 51 | WR: 41.2% | PF: 1.55
+Sharpe: 0.27 | Sortino: 0.05 | CAGR: 1.68%
+MaxDD: 9.40% | Calmar: 0.18
+MC95 DD: 8.50% | MC99: 10.48%
+Net P&L: $16,481 | Commission: $258
+```
+
+**OOS derivado (2024-2026):**
+```
+Trades: 16 | WR: 31.3% | PF: ~0.85
+Net P&L: -$1,623
+
+2024:  PF 0.59  -$1,987  ❌
+2025:  PF 1.35  +$1,604  ✅ (pero marginal)
+2026:  PF 0.00  -$1,240  ❌
+→ Solo 1/3 años positivo
+```
+
+**Veredicto SP500_LYRA:** FALLA en OOS. PF < 1.20, WR < 35%, net negativo, solo 1/3 años positivo. El edge IS no generaliza al periodo 2024-2026.
+
+---
+
+### UK100_LYRA — ⏳ PENDIENTE
+
+Pendiente IS/OOS validation. Full sample sin filtro ATR: 103 trades, PF 1.42, +$22.5K.
+Más trades que SP500 → mayor significancia estadística. Patrón "late bloomer" (2017-2020 negativo, 2021-2025 positivo).
+
+---
+
+### NDX_LYRA — ❌ DESCARTADO
+PF 0.72, -$11.8K full sample. No llega a IS/OOS.
 
 ---
 
@@ -227,3 +279,4 @@ Risk: 1% equity
 ## Changelog
 
 - **2026-04-12**: Strategy created. Full prestudy (6 indices), strategy implementation, optimizer, analyzer. SL optimization (max_sl=2.0 best). Entry/exit plot lines on backtrader chart. Complementarity analysis vs ALTAIR+VEGA. NDX descartado (PF 0.72). SP500 + UK100 confirmed for IS/OOS.
+- **2026-04-12**: IS/OOS validation SP500_LYRA. IS optimization: `min_atr_entry=6` (PF 1.62→1.95). **SP500_LYRA FAILS OOS** (PF ~0.85, WR 31.3%, -$1,623, 1/3 años positivo). UK100_LYRA pendiente.
