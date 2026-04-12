@@ -42,7 +42,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from strategies.lyra_strategy import LYRAStrategy
 from lib.commission import CFDIndexCommission, ETFCSVData
 from config.settings_lyra import (
-    LYRA_STRATEGIES_CONFIG, LYRA_BROKER_CONFIG, _DEFAULT_PARAMS,
+    LYRA_STRATEGIES_CONFIG, LYRA_BROKER_CONFIG,
 )
 
 
@@ -192,7 +192,7 @@ def run_single_backtest(asset_name, asset_cfg, param_overrides):
         cerebro.broker.addcommissioninfo(commission)
 
         # Build strategy params: asset defaults + overrides
-        strat_params = dict(asset_cfg.get('params', _DEFAULT_PARAMS))
+        strat_params = dict(asset_cfg.get('params', {}))
         strat_params.update(param_overrides)
         strat_params['export_reports'] = False
         strat_params['print_signals'] = False
