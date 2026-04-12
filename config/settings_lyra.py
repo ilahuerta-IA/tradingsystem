@@ -111,6 +111,9 @@ _DEFAULT_PARAMS = {
     # --- Debug ---
     'print_signals': False,
     'export_reports': True,
+
+    # --- Plot ---
+    'plot_entry_exit_lines': False,
 }
 
 
@@ -146,11 +149,13 @@ LYRA_STRATEGIES_CONFIG = {
         'from_date': datetime.datetime(2017, 1, 1),
         'to_date': datetime.datetime(2025, 12, 31),
         'starting_cash': 100_000.0,
+        'run_plot': True,
         'broker_config_key': 'darwinex_zero_cfd_sp500',
         'params': {
             **_DEFAULT_PARAMS,
             'bars_per_day': 7,
             'allowed_hours': [14, 15, 16, 17, 18, 19],
+            'plot_entry_exit_lines': True,
         },
     },
 

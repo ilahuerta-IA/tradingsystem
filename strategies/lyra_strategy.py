@@ -87,6 +87,27 @@ class DTOscillator(bt.Indicator):
 
 
 # =============================================================================
+# ENTRY/EXIT PLOT LINES
+# =============================================================================
+
+class LYRAEntryExitLines(bt.Indicator):
+    lines = ('entry', 'stop_loss', 'take_profit')
+
+    plotinfo = dict(subplot=False, plotlinelabels=True)
+    plotlines = dict(
+        entry=dict(color='orange', linestyle='--', linewidth=1.0),
+        stop_loss=dict(color='red', linestyle='--', linewidth=1.0),
+        take_profit=dict(color='green', linestyle='--', linewidth=1.0),
+    )
+
+    def __init__(self):
+        pass
+
+    def next(self):
+        pass
+
+
+# =============================================================================
 # LYRA STRATEGY
 # =============================================================================
 
@@ -207,6 +228,12 @@ class LYRAStrategy(bt.Strategy):
         self.regime_sma.plotinfo.plot = False
         self.regime_atr.plotinfo.plot = False
         self.regime_sma_atr.plotinfo.plot = False
+
+        # Entry/exit lines on price chart
+        if self.p.plot_entry_exit_lines:
+            self.entry_exit_lines = LYRAEntryExitLines(self.data_h1)
+        else:
+            self.entry_exit_lines = None
 
         # Orders
         self.order = None
@@ -608,6 +635,9 @@ class LYRAStrategy(bt.Strategy):
         self._record_trade_entry(
             dt, entry_price, size, atr_val, dtosc_fast, dtosc_slow)
 
+        self._update_plot_lines(
+            entry_price, self.stop_loss_level, self.take_profit_level)
+
         if self.p.print_signals:
             print(f"[LYRA] {dt} ENTRY SHORT {size}x "
                   f"@ {entry_price:.2f} | "
@@ -637,9 +667,18 @@ class LYRAStrategy(bt.Strategy):
             return False
         return self._regime_code == 0  # CALM_UP
 
+    def _update_plot_lines(self, entry=None, sl=None, tp=None):
+        if not self.entry_exit_lines:
+            return
+        nan = float('nan')
+        self.entry_exit_lines.lines.entry[0] = entry if entry is not None else nan
+        self.entry_exit_lines.lines.stop_loss[0] = sl if sl is not None else nan
+        self.entry_exit_lines.lines.take_profit[0] = tp if tp is not None else nan
+
     def _execute_exit(self, dt, reason):
         self.last_exit_reason = reason
         self.close(data=self.data_h1)
+        self._update_plot_lines()
         self.state = "SCANNING"
         self.entry_bar = None
         self.entry_datetime = None
@@ -723,6 +762,11 @@ class LYRAStrategy(bt.Strategy):
         # === STATE MACHINE ===
 
         if self.state == "IN_POSITION":
+            # Keep plot lines visible while in position
+            self._update_plot_lines(
+                self.entry_price, self.stop_loss_level,
+                self.take_profit_level)
+
             # 1. Regime exit (highest priority for shorts)
             if self._check_regime_exit():
                 self._execute_exit(dt, 'REGIME_EXIT')
