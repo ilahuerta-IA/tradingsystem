@@ -8,13 +8,16 @@ Runs all SP500 stocks from settings_altair.py with:
 Compares per-stock PF, WR%, MaxDD%, net PnL and recommends best config.
 
 Usage:
-    python tools/altair_sp500_ab_test.py
+    python tools/altair_sp500_ab_test.py              # existing SP500 configs only
+    python tools/altair_sp500_ab_test.py --pending     # pending tickers from file
+    python tools/altair_sp500_ab_test.py --pending --ticker CVNA AXON  # specific tickers
 """
 import sys
 import os
 import io
 import contextlib
 import warnings
+import argparse
 from datetime import datetime
 from collections import defaultdict
 
@@ -31,7 +34,7 @@ from pathlib import Path
 from strategies.altair_strategy import ALTAIRStrategy
 from lib.commission import ETFCommission, ETFCSVData
 from config.settings_altair import (
-    ALTAIR_STRATEGIES_CONFIG, ALTAIR_BROKER_CONFIG,
+    ALTAIR_STRATEGIES_CONFIG, ALTAIR_BROKER_CONFIG, _make_config,
 )
 
 STARTING_CASH = 100_000.0
@@ -140,21 +143,66 @@ def fmt_pf(pf):
     return '%.2f' % pf if pf < 100 else 'INF'
 
 
-def main():
-    # Load only SP500 stocks
-    sp500_configs = {}
-    for key, cfg in ALTAIR_STRATEGIES_CONFIG.items():
-        if cfg.get('universe') == 'sp500' and cfg.get('active', True):
-            name = cfg['asset_name']
-            sp500_configs[name] = cfg
+def _detect_from_date(csv_path):
+    """Read first data line of CSV to get earliest date."""
+    with open(csv_path, 'r') as f:
+        f.readline()  # skip header
+        first = f.readline().strip()
+    if first:
+        date_str = first.split(',')[0]  # e.g. '20170103'
+        return datetime(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+    return datetime(2017, 1, 1)
 
-    if not sp500_configs:
-        print('No active SP500 stocks found in settings_altair.py')
+
+def _load_pending_tickers(only_tickers=None):
+    """Load tickers from pending_tickers.txt and create temp configs via _make_config."""
+    pending_path = os.path.join(SCRIPT_DIR, 'pending_tickers.txt')
+    tickers = []
+    with open(pending_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            tickers.append(line)
+
+    # Also add HWM (noted in file as already downloaded separately)
+    if 'HWM' not in tickers:
+        tickers.append('HWM')
+
+    if only_tickers:
+        only_upper = {t.upper() for t in only_tickers}
+        tickers = [t for t in tickers if t in only_upper]
+
+    configs = {}
+    skipped = []
+    for ticker in sorted(tickers):
+        csv_name = '%s_1h_8Yea.csv' % ticker
+        csv_path = os.path.join(PROJECT_ROOT, 'data', csv_name)
+        if not os.path.exists(csv_path):
+            skipped.append(ticker)
+            continue
+        from_date = _detect_from_date(csv_path)
+        cfg = _make_config(ticker, csv_name, from_date,
+                           active=True, universe='sp500_pending')
+        # Override to_date to use all available data
+        cfg['to_date'] = datetime(2026, 12, 31)
+        configs[ticker] = cfg
+
+    if skipped:
+        print('  Skipped (no CSV): %s' % ', '.join(skipped))
+
+    return configs
+
+
+def _run_ab_comparison(stock_configs, title):
+    """Run Config A vs B for a dict of {name: cfg}. Shared logic."""
+    names = sorted(stock_configs.keys())
+    if not names:
+        print('No stocks to test.')
         return
 
-    names = sorted(sp500_configs.keys())
     print('=' * 90)
-    print('ALTAIR SP500 TIER 1-HIGH -- CONFIG A vs CONFIG B')
+    print(title)
     print('=' * 90)
     print('Config A (NDX):  max_sl_atr_mult=2.0, dtosc_os=25')
     print('Config B (DJ30): max_sl_atr_mult=4.0, dtosc_os=20')
@@ -166,29 +214,29 @@ def main():
 
     # Run Config A
     print('\n--- Running Config A (NDX defaults) ---')
-    for name in names:
-        cfg = sp500_configs[name]
+    for i, name in enumerate(names, 1):
+        cfg = stock_configs[name]
         m = run_bt(name, cfg, CONFIG_A)
         results_a[name] = m
         if 'error' in m:
-            print('  %-6s -> ERROR: %s' % (name, m['error']))
+            print('  [%2d/%d] %-6s -> ERROR: %s' % (i, len(names), name, m['error']))
         else:
-            print('  %-6s T=%2d PF=%5s WR=%4.1f%% DD=%5.2f%% PnL=$%+8.0f  Y+=%d/%d'
-                  % (name, m['trades'], fmt_pf(m['pf']), m['wr'],
+            print('  [%2d/%d] %-6s T=%2d PF=%5s WR=%4.1f%% DD=%5.2f%% PnL=$%+8.0f  Y+=%d/%d'
+                  % (i, len(names), name, m['trades'], fmt_pf(m['pf']), m['wr'],
                      m['max_dd'], m['net_pnl'],
                      m['pos_years'], m['total_years']))
 
     # Run Config B
     print('\n--- Running Config B (DJ30 override) ---')
-    for name in names:
-        cfg = sp500_configs[name]
+    for i, name in enumerate(names, 1):
+        cfg = stock_configs[name]
         m = run_bt(name, cfg, CONFIG_B)
         results_b[name] = m
         if 'error' in m:
-            print('  %-6s -> ERROR: %s' % (name, m['error']))
+            print('  [%2d/%d] %-6s -> ERROR: %s' % (i, len(names), name, m['error']))
         else:
-            print('  %-6s T=%2d PF=%5s WR=%4.1f%% DD=%5.2f%% PnL=$%+8.0f  Y+=%d/%d'
-                  % (name, m['trades'], fmt_pf(m['pf']), m['wr'],
+            print('  [%2d/%d] %-6s T=%2d PF=%5s WR=%4.1f%% DD=%5.2f%% PnL=$%+8.0f  Y+=%d/%d'
+                  % (i, len(names), name, m['trades'], fmt_pf(m['pf']), m['wr'],
                      m['max_dd'], m['net_pnl'],
                      m['pos_years'], m['total_years']))
 
@@ -208,15 +256,20 @@ def main():
     b_wins = 0
     both_profitable = 0
     neither = 0
+    tier1 = []  # PF >= 1.30 best config
+    tier2 = []  # 1.0 < PF < 1.30
+    tier3 = []  # PF <= 1.0
 
     for name in names:
         ma = results_a.get(name, {})
         mb = results_b.get(name, {})
         if 'error' in ma or 'error' in mb:
-            print('%-6s | ERROR' % name)
+            err_a = ma.get('error', '')
+            err_b = mb.get('error', '')
+            print('%-6s | ERROR: A=%s B=%s' % (name, err_a, err_b))
+            tier3.append((name, '-', 0, 0))
             continue
 
-        # Decide best: primary = PF, secondary = net_pnl
         pf_a = ma['pf']
         pf_b = mb['pf']
         profitable_a = pf_a > 1.0
@@ -239,6 +292,8 @@ def main():
             b_wins += 1
 
         best_mark = '<-- %s' % best if best != '-' else 'NEITHER'
+        best_m = ma if best == 'A' else (mb if best == 'B' else ma)
+        best_pf = best_m['pf']
 
         ya = '%d/%d' % (ma['pos_years'], ma['total_years'])
         yb = '%d/%d' % (mb['pos_years'], mb['total_years'])
@@ -249,54 +304,99 @@ def main():
                  fmt_pf(pf_b), mb['wr'], mb['max_dd'], mb['net_pnl'], yb,
                  best_mark))
 
+        if best_pf >= 1.30:
+            tier1.append((name, best, best_pf, best_m['net_pnl']))
+        elif best_pf > 1.0:
+            tier2.append((name, best, best_pf, best_m['net_pnl']))
+        else:
+            tier3.append((name, best, best_pf, best_m['net_pnl']))
+
     print('-' * len(hdr))
     print('Config A wins: %d | Config B wins: %d | Neither: %d | Both profitable: %d'
           % (a_wins, b_wins, neither, both_profitable))
 
-    # Yearly heatmap for best config per stock
+    # Classification summary
     print('\n' + '=' * 90)
-    print('YEARLY PnL HEATMAP (best config per stock)')
+    print('CLASSIFICATION')
     print('=' * 90)
+    print('\nTIER 1 -- PF >= 1.30 (%d stocks):' % len(tier1))
+    for name, cfg, pf, pnl in sorted(tier1, key=lambda x: -x[2]):
+        print('  %-6s Config %s  PF=%5s  PnL=$%+8.0f' % (name, cfg, fmt_pf(pf), pnl))
+    print('\nTIER 2 -- 1.0 < PF < 1.30 (%d stocks):' % len(tier2))
+    for name, cfg, pf, pnl in sorted(tier2, key=lambda x: -x[2]):
+        print('  %-6s Config %s  PF=%5s  PnL=$%+8.0f' % (name, cfg, fmt_pf(pf), pnl))
+    print('\nTIER 3 -- PF <= 1.0 / ERROR (%d stocks) -> DISCARD:' % len(tier3))
+    for name, cfg, pf, pnl in sorted(tier3, key=lambda x: -x[2]):
+        print('  %-6s Config %s  PF=%5s  PnL=$%+8.0f' % (name, cfg, fmt_pf(pf), pnl))
 
-    all_years = set()
-    for name in names:
-        for r in [results_a, results_b]:
-            m = r.get(name, {})
-            if 'error' not in m:
-                all_years.update(m['yearly'].keys())
-    years = sorted(all_years)
+    # Yearly heatmap for best config per stock (Tier 1+2 only)
+    show_names = [t[0] for t in sorted(tier1 + tier2, key=lambda x: -x[2])]
+    if show_names:
+        print('\n' + '=' * 90)
+        print('YEARLY PnL HEATMAP (Tier 1+2, best config)')
+        print('=' * 90)
 
-    hdr2 = '%-6s Cfg' + ''.join(' %7d' % y for y in years) + ' %+9s %5s' % ('TOTAL', 'PF')
-    print(hdr2)
-    print('-' * len(hdr2))
+        all_years = set()
+        for name in show_names:
+            for r in [results_a, results_b]:
+                m = r.get(name, {})
+                if 'error' not in m:
+                    all_years.update(m['yearly'].keys())
+        years = sorted(all_years)
 
-    for name in names:
-        ma = results_a.get(name, {})
-        mb = results_b.get(name, {})
-        if 'error' in ma and 'error' in mb:
-            continue
+        hdr2 = '%-6s Cfg' + ''.join(' %7d' % y for y in years) + ' %+9s %5s' % ('TOTAL', 'PF')
+        print(hdr2)
+        print('-' * len(hdr2))
 
-        # Pick best
-        pf_a = ma.get('pf', 0) if 'error' not in ma else 0
-        pf_b = mb.get('pf', 0) if 'error' not in mb else 0
-        if pf_a >= 1.0 and pf_a >= pf_b:
-            best_m, cfg_label = ma, 'A'
-        elif pf_b >= 1.0:
-            best_m, cfg_label = mb, 'B'
-        else:
-            best_m = ma if pf_a >= pf_b else mb
-            cfg_label = 'A' if pf_a >= pf_b else 'B'
+        for name in show_names:
+            ma = results_a.get(name, {})
+            mb = results_b.get(name, {})
+            if 'error' in ma and 'error' in mb:
+                continue
 
-        row = '%-6s  %s ' % (name, cfg_label)
-        for y in years:
-            yd = best_m['yearly'].get(y, {})
-            if yd.get('trades', 0) == 0:
-                row += '     -- '
+            pf_a = ma.get('pf', 0) if 'error' not in ma else 0
+            pf_b = mb.get('pf', 0) if 'error' not in mb else 0
+            if pf_a >= 1.0 and pf_a >= pf_b:
+                best_m, cfg_label = ma, 'A'
+            elif pf_b >= 1.0:
+                best_m, cfg_label = mb, 'B'
             else:
-                row += ' %+6.0f ' % yd.get('pnl', 0)
-        row += ' %+8.0f' % best_m['net_pnl']
-        row += ' %5s' % fmt_pf(best_m['pf'])
-        print(row)
+                best_m = ma if pf_a >= pf_b else mb
+                cfg_label = 'A' if pf_a >= pf_b else 'B'
+
+            row = '%-6s  %s ' % (name, cfg_label)
+            for y in years:
+                yd = best_m['yearly'].get(y, {})
+                if yd.get('trades', 0) == 0:
+                    row += '     -- '
+                else:
+                    row += ' %+6.0f ' % yd.get('pnl', 0)
+            row += ' %+8.0f' % best_m['net_pnl']
+            row += ' %5s' % fmt_pf(best_m['pf'])
+            print(row)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='ALTAIR A/B Config Test')
+    parser.add_argument('--pending', action='store_true',
+                        help='Test pending tickers from pending_tickers.txt')
+    parser.add_argument('--ticker', nargs='+',
+                        help='Only test specific tickers (with --pending)')
+    args = parser.parse_args()
+
+    if args.pending:
+        print('Loading pending tickers...')
+        configs = _load_pending_tickers(args.ticker)
+        _run_ab_comparison(configs, 'ALTAIR PENDING TICKERS -- CONFIG A vs CONFIG B')
+    else:
+        # Original mode: existing SP500 configs
+        sp500_configs = {}
+        for key, cfg in ALTAIR_STRATEGIES_CONFIG.items():
+            if cfg.get('universe') == 'sp500' and cfg.get('active', True):
+                name = cfg['asset_name']
+                sp500_configs[name] = cfg
+        _run_ab_comparison(sp500_configs,
+                           'ALTAIR SP500 TIER 1-HIGH -- CONFIG A vs CONFIG B')
 
 
 if __name__ == '__main__':

@@ -141,13 +141,13 @@ LYRA_STRATEGIES_CONFIG = {
     # SP500 — SHORT VOLATILE_UP (PF 1.44, 61 trades, +$15K)
     # =========================================================================
     'SP500_LYRA': {
-        'active': True,
+        'active': False,
         'strategy_name': 'LYRA',
         'asset_name': 'SP500',
         'data_path': 'data/SP500_5m_15Yea.csv',
 
         'from_date': datetime.datetime(2017, 1, 1),
-        'to_date': datetime.datetime(2023, 12, 31),
+        'to_date': datetime.datetime(2026, 12, 31),
 
         'starting_cash': 100_000.0,
 
@@ -193,13 +193,13 @@ LYRA_STRATEGIES_CONFIG = {
             'max_entries_per_day': 1,
 
             # ATR entry filter
-            'min_atr_entry': 0.0,
+            'min_atr_entry': 6.0,
             'max_atr_entry': 0.0,
 
             # Session filters
             'use_time_filter': True,
             'allowed_hours': [14, 15, 16, 17, 18, 19],
-            'use_day_filter': True,
+            'use_day_filter': False,
             'allowed_days': [0, 1, 2, 3, 4],
 
             # Regime exit
