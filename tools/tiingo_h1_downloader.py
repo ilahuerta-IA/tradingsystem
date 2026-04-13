@@ -78,14 +78,25 @@ MIN_YEARS_DEFAULT = 8
 # ── Helpers ────────────────────────────────────────────────────────────
 
 def get_api_key() -> str:
+    # 1. Try environment variable first
     key = os.environ.get("TIINGO_API_KEY", "").strip()
-    if not key:
-        sys.exit(
-            "ERROR: TIINGO_API_KEY not set.\n"
-            "   PowerShell:  $env:TIINGO_API_KEY = 'your_token'\n"
-            "   Bash:        export TIINGO_API_KEY='your_token'"
-        )
-    return key
+    if key:
+        return key
+    # 2. Try credentials JSON file
+    cred_path = os.path.join(os.path.dirname(__file__), "..", "config", "credentials", "tiingo.json")
+    cred_path = os.path.normpath(cred_path)
+    if os.path.exists(cred_path):
+        import json
+        with open(cred_path, "r") as f:
+            data = json.load(f)
+        key = data.get("api_key", "").strip()
+        if key:
+            return key
+    sys.exit(
+        "ERROR: TIINGO_API_KEY not found.\n"
+        "   Option 1: config/credentials/tiingo.json  {\"api_key\": \"...\"}\n"
+        "   Option 2: $env:TIINGO_API_KEY = 'your_token'"
+    )
 
 
 def _api_get(url: str, headers: dict, params: dict,
