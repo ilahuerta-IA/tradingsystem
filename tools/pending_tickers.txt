@@ -1,8 +1,16 @@
-# SP500 Tier 1-HIGH — 68 tickers pending H1 download
-# Excluded: 12 already have Dukascopy data (LLY PGR LMT STZ CAH AMP FDX PH NSC MPC VLO EFX)
-# Excluded: 3 confirmed <8yr in Tiingo IEX (VRT HOOD TKO)
-# Excluded: 1 already downloaded from Tiingo (HWM)
-# Generated: 2026-04-12
+# SP500 Tier 1-HIGH — ALTAIR candidate tickers
+# Updated: 2026-04-13
+#
+# ALREADY IN ALTAIR (17 active configs):
+#   NDX:  NVDA AMD AVGO GOOGL MSFT
+#   DJ30: CAT V JPM AXP GS
+#   SP500: NSC CAH FDX VLO EFX MPC PGR
+#
+# DISABLED IN ALTAIR (8 — failed BT):
+#   AMAT NFLX HD UNH LLY LMT PH STZ AMP
+#
+# H1 DATA DOWNLOADED — PENDING BACKTEST (65):
+#   Downloaded from Tiingo 2026-04-12/13
 CVNA
 TRGP
 GRMN
@@ -32,7 +40,6 @@ TDG
 EME
 WDC
 GPN
-DELL
 LHX
 STX
 MCO
@@ -47,7 +54,6 @@ EXR
 HCA
 MSCI
 PKG
-MRNA
 NOW
 ARES
 COHR
@@ -68,6 +74,14 @@ TER
 HLT
 MSI
 STLD
-CTVA
 AWK
 AVY
+#
+# ALSO DOWNLOADED (from earlier batch): HWM
+#
+# DISCARDED — <8yr data in Tiingo:
+#   DELL (7.3yr, since 2018-12-31)
+#   MRNA (6.9yr, since 2019-05-20)
+#   CTVA (6.9yr, since 2019-06-03)
+#
+# NOT AVAILABLE in Tiingo IEX: VRT HOOD TKO
