@@ -31,7 +31,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
 
-TICKERS = ['JPM', 'V', 'NVDA', 'MSFT', 'GOOGL']
+TICKERS = ['JPM', 'V', 'NVDA', 'MSFT', 'GOOGL', 'ALB', 'WDC']
 
 # DTOSC params (Miner: 8,5,3,3 for intraday)
 DTOSC_PERIOD = 8
@@ -49,6 +49,8 @@ BEST_CONFIG = {
     'NVDA':  {'os': DTOSC_OS_A},
     'MSFT':  {'os': DTOSC_OS_A},
     'GOOGL': {'os': DTOSC_OS_A},
+    'ALB':   {'os': DTOSC_OS_B},
+    'WDC':   {'os': DTOSC_OS_B},
 }
 
 # Typical bid-ask spread per ticker (USD, conservative estimates for US stocks)
@@ -59,6 +61,8 @@ SPREADS = {
     'NVDA':  0.02,
     'MSFT':  0.01,
     'GOOGL': 0.02,
+    'ALB':   0.02,
+    'WDC':   0.02,
 }
 
 # Timeframes to analyze: label -> resample_rule (pandas offset alias)
