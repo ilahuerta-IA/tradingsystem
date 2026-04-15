@@ -1139,6 +1139,7 @@ class MultiStrategyMonitor:
         
         # Determine M5 count per symbol: VEGA needs 2000 (SMA24 warmup),
         # others need 500 (sufficient for DTOSC + ATR after resample).
+        # Both the leader (asset_name) AND reference symbol need 2000 for VEGA.
         symbol_m5_count: Dict[str, int] = {}
         for sym, cfg_list in self.active_symbols.items():
             max_count = 500
@@ -1146,6 +1147,13 @@ class MultiStrategyMonitor:
                 if cfg in VEGA_CONFIGS:
                     max_count = max(max_count, 2000)
             symbol_m5_count[sym] = max_count
+        # VEGA reference symbols (NI225, GDAXI) are in active_symbols with
+        # empty cfg_list. Mark them 2000 via their parent config.
+        for cfg_name in self.checkers:
+            if cfg_name in VEGA_CONFIGS:
+                ref = STRATEGIES_CONFIG.get(cfg_name, {}).get("reference_symbol")
+                if ref and ref in symbol_m5_count:
+                    symbol_m5_count[ref] = max(symbol_m5_count[ref], 2000)
         
         # Also fetch D1 bars for ALTAIR stocks (regime filter needs SMA252d).
         # D1 bars don't have the H4 offset problem (midnight is universal).
