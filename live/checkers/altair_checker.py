@@ -316,6 +316,68 @@ class ALTAIRChecker(BaseChecker):
 
         return self._regime_state
 
+    def _update_regime_from_d1(self, d1_df: pd.DataFrame) -> str:
+        """Compute D1 regime directly from D1 bars (no bpd scaling).
+
+        For live mode: multi_monitor fetches D1 bars from MT5 (400 bars ~1.5yr)
+        and passes them here. This avoids needing 20,000+ M5 bars for regime.
+
+        Same logic as _update_regime() but periods are in trading days directly:
+          Mom12M: close > SMA(252)
+          ATR ratio: ATR(14) / SMA(ATR, 252) < 1.0
+          Mom63d: close > close[-63]
+        """
+        if not self.regime_enabled:
+            self._regime_state = "DISABLED"
+            return self._regime_state
+
+        sma_period = self.regime_sma_period  # 252 (days, no bpd scaling)
+        if len(d1_df) < sma_period + 10:
+            self._regime_state = "WARMING"
+            return self._regime_state
+
+        close_val = float(d1_df["close"].iloc[-1])
+
+        sma_val = float(self._sma(d1_df["close"], sma_period).iloc[-1])
+        if math.isnan(sma_val) or sma_val <= 0:
+            self._regime_state = "WARMING"
+            return self._regime_state
+
+        mom12m_ok = close_val > sma_val
+
+        # ATR ratio (D1 periods, no bpd scaling)
+        atr_current = self._atr_wilder(d1_df, self.regime_atr_current_period)
+        sma_atr = self._sma(atr_current, self.regime_atr_period)
+
+        atr_val = float(atr_current.iloc[-1])
+        sma_atr_val = float(sma_atr.iloc[-1])
+
+        if math.isnan(atr_val) or math.isnan(sma_atr_val) or sma_atr_val <= 0:
+            self._regime_state = "WARMING"
+            return self._regime_state
+
+        atr_ratio = atr_val / sma_atr_val
+        calm_ok = atr_ratio < self.regime_atr_threshold
+
+        # Mom63d (D1 periods)
+        lookback = self.momentum_63d_period
+        mom63d_ok = False
+        if len(d1_df) > lookback:
+            close_ago = float(d1_df["close"].iloc[-lookback - 1])
+            if not math.isnan(close_ago) and close_ago > 0:
+                mom63d_ok = close_val > close_ago
+
+        if mom12m_ok and calm_ok and mom63d_ok:
+            self._regime_state = "CALM_UP"
+        elif mom12m_ok and not calm_ok:
+            self._regime_state = "VOLATILE_UP"
+        elif not mom12m_ok and calm_ok:
+            self._regime_state = "CALM_DOWN"
+        else:
+            self._regime_state = "VOLATILE_DOWN"
+
+        return self._regime_state
+
     # =========================================================================
     # DTOSC SIGNAL CHECK
     # =========================================================================
@@ -433,6 +495,7 @@ class ALTAIRChecker(BaseChecker):
         self,
         df: pd.DataFrame,
         reference_df: Optional[pd.DataFrame] = None,
+        d1_df: Optional[pd.DataFrame] = None,
     ) -> Signal:
         """Check for ALTAIR trading signal.
 
@@ -440,6 +503,9 @@ class ALTAIRChecker(BaseChecker):
             df: Ticker bars at live TF (15m/30m/H1), timestamps in UTC.
                 Resampled from M5 by multi_monitor. Last bar is CLOSED.
             reference_df: Not used (single-feed strategy). Ignored.
+            d1_df: D1 bars from MT5 for regime computation (live mode).
+                If provided, regime uses D1 directly (no bpd scaling).
+                If None, falls back to computing regime from df (BT mode).
 
         Returns:
             Signal with direction LONG, entry/SL/TP, and metadata.
@@ -449,12 +515,20 @@ class ALTAIRChecker(BaseChecker):
         if df is None or df.empty:
             return self._create_no_signal("No data")
 
-        # Minimum data for indicator warmup
-        min_bars = max(
-            self.regime_sma_period * self.bars_per_day + 50,
-            self.dtosc_period + self.dtosc_smooth_k + self.dtosc_smooth_d + self.dtosc_signal + 10,
-            self.atr_period + 5,
-        )
+        # Minimum data for indicator warmup.
+        # If D1 data provided for regime, only need DTOSC + ATR warmup.
+        # Otherwise need full regime warmup from intraday bars.
+        if d1_df is not None:
+            min_bars = max(
+                self.dtosc_period + self.dtosc_smooth_k + self.dtosc_smooth_d + self.dtosc_signal + 10,
+                self.atr_period + 5,
+            )
+        else:
+            min_bars = max(
+                self.regime_sma_period * self.bars_per_day + 50,
+                self.dtosc_period + self.dtosc_smooth_k + self.dtosc_smooth_d + self.dtosc_signal + 10,
+                self.atr_period + 5,
+            )
         if len(df) < min_bars:
             return self._create_no_signal(
                 "Insufficient data: %d bars < %d required" % (len(df), min_bars)
@@ -507,8 +581,11 @@ class ALTAIRChecker(BaseChecker):
         # Track swing low continuously (matches BT)
         self._track_swing_low(fast_now, low_val)
 
-        # Update regime
-        self._update_regime(df)
+        # Update regime (D1 if available, else from intraday bars)
+        if d1_df is not None:
+            self._update_regime_from_d1(d1_df)
+        else:
+            self._update_regime(df)
 
         # --- If IN_POSITION: count bars held, no new signals ---
         if self._in_position:

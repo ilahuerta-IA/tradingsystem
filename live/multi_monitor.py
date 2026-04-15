@@ -1137,13 +1137,50 @@ class MultiStrategyMonitor:
             if ref_symbol:
                 symbol_timeframes.setdefault(ref_symbol, set()).add(tf)
         
+        # Determine M5 count per symbol: VEGA needs 2000 (SMA24 warmup),
+        # others need 500 (sufficient for DTOSC + ATR after resample).
+        symbol_m5_count: Dict[str, int] = {}
+        for sym, cfg_list in self.active_symbols.items():
+            max_count = 500
+            for cfg in cfg_list:
+                if cfg in VEGA_CONFIGS:
+                    max_count = max(max_count, 2000)
+            symbol_m5_count[sym] = max_count
+        
+        # Also fetch D1 bars for ALTAIR stocks (regime filter needs SMA252d).
+        # D1 bars don't have the H4 offset problem (midnight is universal).
+        altair_d1_data: Dict[str, pd.DataFrame] = {}
+        for config_name in self.checkers:
+            if config_name not in ALTAIR_CONFIGS:
+                continue
+            config = STRATEGIES_CONFIG.get(config_name, {})
+            bt_symbol = config.get("asset_name")
+            if not bt_symbol or bt_symbol in altair_d1_data:
+                continue
+            try:
+                broker_sym = self._map_symbol(bt_symbol)
+                d1_bars = self.data_provider.get_bars(
+                    symbol=broker_sym,
+                    timeframe=Timeframe.D1,
+                    count=400,
+                )
+                if d1_bars is not None and not d1_bars.empty:
+                    altair_d1_data[bt_symbol] = d1_bars
+                    self.logger.debug(
+                        f"D1 regime data for {bt_symbol}: {len(d1_bars)} bars"
+                    )
+                else:
+                    self.logger.warning(f"No D1 data for {bt_symbol} (regime)")
+            except Exception as e:
+                self.logger.error(f"Failed to fetch D1 for {bt_symbol}: {e}")
+        
         for symbol in self.active_symbols:
             try:
                 timeframes_needed = symbol_timeframes.get(symbol, {Timeframe.M5})
                 
                 for tf in timeframes_needed:
                     broker_symbol = self._map_symbol(symbol)
-                    count = 500
+                    count = symbol_m5_count.get(symbol, 500)
                     
                     bars = self.data_provider.get_bars(
                         symbol=broker_symbol,
@@ -1273,7 +1310,9 @@ class MultiStrategyMonitor:
                 else:
                     traded_bt_symbol = symbol
                 
-                self._check_and_execute(config_name, checker, traded_bt_symbol, bars, reference_bars)
+                # Pass D1 data to ALTAIR for regime computation
+                d1_df = altair_d1_data.get(symbol) if config_name in ALTAIR_CONFIGS else None
+                self._check_and_execute(config_name, checker, traded_bt_symbol, bars, reference_bars, d1_df=d1_df)
             except Exception as e:
                 self.stats.errors_count += 1
                 self.logger.error(
@@ -1293,7 +1332,8 @@ class MultiStrategyMonitor:
         checker: BaseChecker,
         symbol: str,
         bars: Any,
-        reference_bars: Any = None
+        reference_bars: Any = None,
+        d1_df: Any = None,
     ):
         """
         Check signal and execute if valid.
@@ -1304,10 +1344,13 @@ class MultiStrategyMonitor:
             symbol: Trading symbol
             bars: OHLCV DataFrame
             reference_bars: Reference symbol DataFrame (for GEMINI dual-feed)
+            d1_df: D1 bars for ALTAIR regime computation (optional)
         """
         # Check for signal (pass reference_bars for dual-feed strategies)
         if reference_bars is not None:
             signal = checker.check_signal(bars, reference_bars)
+        elif d1_df is not None:
+            signal = checker.check_signal(bars, d1_df=d1_df)
         else:
             signal = checker.check_signal(bars)
         
