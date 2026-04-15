@@ -523,6 +523,9 @@ class MultiStrategyMonitor:
 
             with open(self._altair_state_file, "w") as f:
                 json.dump(altair_state, f, indent=2)
+            self.logger.debug(
+                f"ALTAIR state saved: {len(altair_state)} position(s)"
+            )
 
         except Exception as e:
             self.logger.error(f"Error saving ALTAIR state: {e}")
@@ -656,13 +659,25 @@ class MultiStrategyMonitor:
             
             if result.success:
                 self.logger.info(f"[{config_name}] VEGA TIME-EXIT executed @ {result.executed_price:.5f}")
+                # Compute PnL estimate for structured event
+                entry_px = pos_info.get("entry", 0)
+                close_px = result.executed_price
+                vol = pos_info.get("volume", 0)
+                direction = pos_info.get("direction", "LONG")
+                if direction == "LONG":
+                    pnl_est = (close_px - entry_px) * vol
+                else:
+                    pnl_est = (entry_px - close_px) * vol
+
                 self._log_event("VEGA_TIME_EXIT", {
                     "config": config_name,
                     "symbol": pos_info.get("symbol"),
                     "ticket": ticket,
-                    "direction": pos_info.get("direction"),
-                    "entry": pos_info.get("entry"),
-                    "close_price": result.executed_price,
+                    "direction": direction,
+                    "entry": entry_px,
+                    "close_price": close_px,
+                    "volume": vol,
+                    "pnl_estimate": round(pnl_est, 2),
                     "hold_bars": pos_info.get("vega_holding_bars"),
                 })
             else:
@@ -737,13 +752,25 @@ class MultiStrategyMonitor:
                     f"[{config_name}] ALTAIR TIME-EXIT executed "
                     f"@ {result.executed_price:.5f}"
                 )
+                # Compute PnL for structured event
+                entry_px = pos_info.get("entry", 0)
+                close_px = result.executed_price
+                vol = pos_info.get("volume", 0)
+                direction = pos_info.get("direction", "LONG")
+                if direction == "LONG":
+                    pnl_est = (close_px - entry_px) * vol
+                else:
+                    pnl_est = (entry_px - close_px) * vol
+
                 self._log_event("ALTAIR_TIME_EXIT", {
                     "config": config_name,
                     "symbol": pos_info.get("symbol"),
                     "ticket": ticket,
-                    "direction": pos_info.get("direction"),
-                    "entry": pos_info.get("entry"),
-                    "close_price": result.executed_price,
+                    "direction": direction,
+                    "entry": entry_px,
+                    "close_price": close_px,
+                    "volume": vol,
+                    "pnl_estimate": round(pnl_est, 2),
                     "max_hold_bars": pos_info.get("altair_max_holding_bars"),
                     "tf_minutes": tf_minutes,
                 })
@@ -1299,6 +1326,9 @@ class MultiStrategyMonitor:
             f"[{config_name}] SIGNAL: {signal.direction.value} @ {entry_str}"
         )
         
+        # TODO(future): Add structured indicator fields (dtosc_fast, dtosc_slow,
+        # regime_state) to SIGNAL event for ALTAIR post-hoc analysis.
+        # Currently embedded in signal.reason text (parseable but not ideal).
         self._log_event("SIGNAL", {
             "version": __version__,
             "config": config_name,
@@ -1407,10 +1437,11 @@ class MultiStrategyMonitor:
                     f"sl_dist={sl_dist:.2f}, shares={shares}"
                 )
             except Exception as e:
-                self.logger.warning(
-                    f"[{config_name}] ALTAIR sizing failed: {e}, using 1 share"
+                self.logger.error(
+                    f"[{config_name}] ALTAIR sizing FAILED: {e}. "
+                    f"Aborting trade (will NOT default to 1 share)."
                 )
-                volume_override = 1.0
+                return
         
         # Execute LONG or SHORT
         self.state = MonitorState.EXECUTING
