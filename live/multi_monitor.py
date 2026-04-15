@@ -1367,15 +1367,32 @@ class MultiStrategyMonitor:
 
         # ALTAIR-specific sizing: risk-based shares via calculate_shares()
         # 1% equity risk / SL distance -> shares, then validate vs broker limits
+        # FIX 2026-04-15: Audit found wrong keyword (stop_loss -> sl_distance)
+        # and missing symbol_info parameter.
         if config_name in ALTAIR_CONFIGS and hasattr(checker, 'calculate_shares'):
             try:
                 import MetaTrader5 as mt5_mod
                 account = mt5_mod.account_info()
                 equity = account.equity if account else 50000.0
+
+                # Get broker symbol limits for lot clamping
+                symbol_info_raw = mt5_mod.symbol_info(broker_symbol)
+                sym_info = {
+                    'volume_min': symbol_info_raw.volume_min,
+                    'volume_max': symbol_info_raw.volume_max,
+                    'volume_step': symbol_info_raw.volume_step,
+                } if symbol_info_raw else {
+                    'volume_min': 1.0,
+                    'volume_max': 10000.0,
+                    'volume_step': 1.0,
+                }
+
+                sl_dist = abs(signal.entry_price - signal.stop_loss)
                 shares = checker.calculate_shares(
                     equity=equity,
                     entry_price=signal.entry_price,
-                    stop_loss=signal.stop_loss,
+                    sl_distance=sl_dist,
+                    symbol_info=sym_info,
                 )
                 if shares <= 0:
                     self.logger.info(
@@ -1387,7 +1404,7 @@ class MultiStrategyMonitor:
                 self.logger.info(
                     f"[{config_name}] ALTAIR sizing: equity=${equity:,.0f}, "
                     f"entry={signal.entry_price:.2f}, sl={signal.stop_loss:.2f}, "
-                    f"shares={shares}"
+                    f"sl_dist={sl_dist:.2f}, shares={shares}"
                 )
             except Exception as e:
                 self.logger.warning(
