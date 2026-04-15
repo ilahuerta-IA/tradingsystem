@@ -100,12 +100,21 @@ STRATEGY_TYPES = {
 # =============================================================================
 # CFD index symbol names differ between BT data (Dukascopy) and broker (FOREX.comGLOBAL).
 # Forex pairs (EURUSD, etc.) are identical and don't need mapping.
+# CFD stocks use full company names on FOREX.comGLOBAL.
 
 SYMBOL_MAP = {
+    # CFD Indices
     "SP500": "SPX500",
     "GDAXI": "GER40",
     "NI225": "JPN225",
     "NDX": "NAS100",
+    # CFD Stocks (ALTAIR)
+    "JPM": "J.P. Morgan",
+    "NVDA": "Nvidia",
+    "GOOGL": "Alphabet Inc A",
+    "V": "Visa",
+    "ALB": "Albermarle",
+    "WDC": "Western Digital",
 }
 
 # VEGA configs trade the reference_symbol, not asset_name.
