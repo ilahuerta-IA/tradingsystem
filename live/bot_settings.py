@@ -48,14 +48,14 @@ ENABLED_CONFIGS = {
     "GDAXI_VEGA": False,  # DISABLED 2026-04-11: 73% overlap with NDAXI, worse PF(1.28 vs 1.31)/DD(15% vs 14%)
     "NDAXI_VEGA": True,   # NAS100→GER40, London session, LONG+SHORT
     # ALTAIR strategy (Trend-Following Momentum, Miner DTOSC, CFD stocks)
-    # Deployed 2026-04-15: live demo, ENABLED=False until integration tested
+    # Deployed 2026-04-15: live demo on FOREX.comGLOBAL DEMO
     # TF Live per ticker: 15m (NVDA, GOOGL), 30m (JPM), H1 (V, ALB, WDC)
-    "JPM_ALTAIR":   False,  # 30m, Config B (os=20, max_sl=4.0), PF 1.57
-    "NVDA_ALTAIR":  False,  # 15m, Config A (os=25, max_sl=2.0), PF 1.97
-    "GOOGL_ALTAIR": False,  # 15m, Config A (os=25, max_sl=2.0), PF 1.58
-    "V_ALTAIR":     False,  # H1,  Config B (os=20, max_sl=4.0), PF 1.84
-    "ALB_ALTAIR":   False,  # H1,  Config B (os=20, max_sl=4.0), PF 2.15
-    "WDC_ALTAIR":   False,  # H1,  Config B (os=20, max_sl=4.0), PF 1.17
+    "JPM_ALTAIR":   True,  # 30m, Config B (os=20, max_sl=4.0), PF 1.57
+    "NVDA_ALTAIR":  True,  # 15m, Config A (os=25, max_sl=2.0), PF 1.97
+    "GOOGL_ALTAIR": True,  # 15m, Config A (os=25, max_sl=2.0), PF 1.58
+    "V_ALTAIR":     True,  # H1,  Config B (os=20, max_sl=4.0), PF 1.84
+    "ALB_ALTAIR":   True,  # H1,  Config B (os=20, max_sl=4.0), PF 2.15
+    "WDC_ALTAIR":   True,  # H1,  Config B (os=20, max_sl=4.0), PF 1.17
 }
 
 # Strategy type mapping (which checker class to use)
