@@ -55,7 +55,7 @@ ENABLED_CONFIGS = {
     "GOOGL_ALTAIR": True,  # 15m, Config A (os=25, max_sl=2.0), PF 1.58
     "V_ALTAIR":     True,  # H1,  Config B (os=20, max_sl=4.0), PF 1.84
     "ALB_ALTAIR":   True,  # H1,  Config B (os=20, max_sl=4.0), PF 2.15
-    "WDC_ALTAIR":   True,  # H1,  Config B (os=20, max_sl=4.0), PF 1.17
+    "WDC_ALTAIR":   True,  # H1,  Config A (default), PF 1.88
 }
 
 # Strategy type mapping (which checker class to use)

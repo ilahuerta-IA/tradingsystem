@@ -219,6 +219,22 @@ ALTAIR_STRATEGIES_CONFIG = {
         max_sl_atr_mult=4.0, dtosc_os=20,
     ),
 
+    # --- SP500 SCREENING (Section 39, 2026-04-11) ---
+    # ALB: rank #4, Config B: PF 2.15, WR 54.5%, +$7,609, 4/5yr+
+    'ALB_ALTAIR': _make_config(
+        'ALB', 'ALB_1h_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B
+    ),
+    # WDC: rank #11, Config A: PF 1.88, WR 44.0%, +$12,058, 5/7yr+
+    'WDC_ALTAIR': _make_config(
+        'WDC', 'WDC_1h_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        # Config A (default): PF 1.88, best for WDC
+    ),
+
     # --- SP500 TIER 1-HIGH BATCH 1 (Section 39, 2026-04-11) ---
     # A/B tested: Config A (NDX) vs Config B (DJ30). Best config per stock.
     # Config B wins 5 vs 2 -- SP500 behaves like DJ30 blue-chips.
