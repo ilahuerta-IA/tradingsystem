@@ -47,6 +47,15 @@ ENABLED_CONFIGS = {
     "NI225_VEGA": True,   # SP500→JPN225, London session, LONG only
     "GDAXI_VEGA": False,  # DISABLED 2026-04-11: 73% overlap with NDAXI, worse PF(1.28 vs 1.31)/DD(15% vs 14%)
     "NDAXI_VEGA": True,   # NAS100→GER40, London session, LONG+SHORT
+    # ALTAIR strategy (Trend-Following Momentum, Miner DTOSC, CFD stocks)
+    # Deployed 2026-04-15: live demo, ENABLED=False until integration tested
+    # TF Live per ticker: 15m (NVDA, GOOGL), 30m (JPM), H1 (V, ALB, WDC)
+    "JPM_ALTAIR":   False,  # 30m, Config B (os=20, max_sl=4.0), PF 1.57
+    "NVDA_ALTAIR":  False,  # 15m, Config A (os=25, max_sl=2.0), PF 1.97
+    "GOOGL_ALTAIR": False,  # 15m, Config A (os=25, max_sl=2.0), PF 1.58
+    "V_ALTAIR":     False,  # H1,  Config B (os=20, max_sl=4.0), PF 1.84
+    "ALB_ALTAIR":   False,  # H1,  Config B (os=20, max_sl=4.0), PF 2.15
+    "WDC_ALTAIR":   False,  # H1,  Config B (os=20, max_sl=4.0), PF 1.17
 }
 
 # Strategy type mapping (which checker class to use)
@@ -76,6 +85,13 @@ STRATEGY_TYPES = {
     "NI225_VEGA": "VEGA",
     "GDAXI_VEGA": "VEGA",
     "NDAXI_VEGA": "VEGA",
+    # ALTAIR (CFD stocks, single-feed, LONG only)
+    "JPM_ALTAIR":   "ALTAIR",
+    "NVDA_ALTAIR":  "ALTAIR",
+    "GOOGL_ALTAIR": "ALTAIR",
+    "V_ALTAIR":     "ALTAIR",
+    "ALB_ALTAIR":   "ALTAIR",
+    "WDC_ALTAIR":   "ALTAIR",
 }
 
 
@@ -95,6 +111,22 @@ SYMBOL_MAP = {
 # VEGA configs trade the reference_symbol, not asset_name.
 # This set identifies configs where the executor uses reference_symbol for orders.
 VEGA_CONFIGS = {"NI225_VEGA", "GDAXI_VEGA", "NDAXI_VEGA"}
+
+# ALTAIR configs: single-feed CFD stocks with per-ticker TF.
+# The checker reads params from config/settings_altair.py (ALTAIR_STRATEGIES_CONFIG).
+ALTAIR_CONFIGS = {"JPM_ALTAIR", "NVDA_ALTAIR", "GOOGL_ALTAIR", "V_ALTAIR", "ALB_ALTAIR", "WDC_ALTAIR"}
+
+# ALTAIR per-ticker live timeframe (minutes) and bars_per_day scaling.
+# M5 base loop resamples to these TFs. bars_per_day scales D1 regime periods.
+# H1=7 bpd (6.5h session / 1h), 30m=13 bpd, 15m=26 bpd.
+ALTAIR_LIVE_TF = {
+    "JPM_ALTAIR":   {"timeframe_minutes": 30, "bars_per_day": 13},   # 30m
+    "NVDA_ALTAIR":  {"timeframe_minutes": 15, "bars_per_day": 26},   # 15m
+    "GOOGL_ALTAIR": {"timeframe_minutes": 15, "bars_per_day": 26},   # 15m
+    "V_ALTAIR":     {"timeframe_minutes": 60, "bars_per_day": 7},    # H1
+    "ALB_ALTAIR":   {"timeframe_minutes": 60, "bars_per_day": 7},    # H1
+    "WDC_ALTAIR":   {"timeframe_minutes": 60, "bars_per_day": 7},    # H1
+}
 
 
 # =============================================================================

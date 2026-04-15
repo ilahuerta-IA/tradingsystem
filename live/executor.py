@@ -42,7 +42,11 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from lib.position_sizing import calculate_position_size
-from config.settings import STRATEGIES_CONFIG
+from config.settings import STRATEGIES_CONFIG as _BASE_STRATEGIES_CONFIG
+from config.settings_altair import ALTAIR_STRATEGIES_CONFIG
+
+# Merge: ALTAIR reads from its own settings (separate from legacy settings.py)
+STRATEGIES_CONFIG = {**_BASE_STRATEGIES_CONFIG, **ALTAIR_STRATEGIES_CONFIG}
 from .connector import MT5Connector
 from .bot_settings import RISK_OVERRIDES
 

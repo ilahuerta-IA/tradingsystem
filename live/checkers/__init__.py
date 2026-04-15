@@ -12,6 +12,7 @@ from .sedna_checker import SEDNAChecker
 from .gliese_checker import GLIESEChecker
 from .gemini_checker import GEMINIChecker
 from .vega_checker import VEGAChecker
+from .altair_checker import ALTAIRChecker
 
 # Registry for dynamic instantiation
 CHECKER_REGISTRY = {
@@ -21,7 +22,7 @@ CHECKER_REGISTRY = {
     "GLIESE": GLIESEChecker,
     "GEMINI": GEMINIChecker,
     "VEGA": VEGAChecker,
-    # "HELIX": HELIXChecker,  # In development - not ready for live
+    "ALTAIR": ALTAIRChecker,
 }
 
 
@@ -63,6 +64,7 @@ __all__ = [
     "KOIChecker",
     "SEDNAChecker",
     "GLIESEChecker",
+    "ALTAIRChecker",
     "CHECKER_REGISTRY",
     "get_checker",
 ]

@@ -22,7 +22,12 @@ from enum import Enum
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import STRATEGIES_CONFIG
+from config.settings import STRATEGIES_CONFIG as _BASE_STRATEGIES_CONFIG
+from config.settings_altair import ALTAIR_STRATEGIES_CONFIG
+
+# Merge: ALTAIR reads from its own settings (separate from legacy settings.py)
+STRATEGIES_CONFIG = {**_BASE_STRATEGIES_CONFIG, **ALTAIR_STRATEGIES_CONFIG}
+
 from . import __version__
 from .bot_settings import (
     ENABLED_CONFIGS,
@@ -32,6 +37,8 @@ from .bot_settings import (
     CANDLE_CLOSE_BUFFER_SECONDS,
     SYMBOL_MAP,
     VEGA_CONFIGS,
+    ALTAIR_CONFIGS,
+    ALTAIR_LIVE_TF,
 )
 from .connector import MT5Connector
 from .data_provider import DataProvider, Timeframe
@@ -168,6 +175,18 @@ class MultiStrategyMonitor:
         # VEGA position state persistence (survives bot restarts)
         self._vega_state_file = self.log_dir / "vega_positions_state.json"
         
+        # ALTAIR state machine persistence (survives bot restarts)
+        self._altair_state_file = self.log_dir / "altair_state.json"
+        
+        # ALTAIR: last known bar time per config (for bar-counting time-exit)
+        self._last_altair_bar_times: Dict[str, datetime] = {}
+        
+        # ALTAIR state machine persistence (survives bot restarts)
+        self._altair_state_file = self.log_dir / "altair_state.json"
+        
+        # ALTAIR: last known bar time per config (for bar-counting time-exit)
+        self._last_altair_bar_times: Dict[str, datetime] = {}
+        
         # Heartbeat tracking for dead-bot detection
         self._heartbeat_counter: int = 0
         self._last_heartbeat_time: Optional[datetime] = None
@@ -275,6 +294,11 @@ class MultiStrategyMonitor:
                     "ema_period_4": params.get("ema_4_period", 80),
                     "ema_period_5": params.get("ema_5_period", 120),
                 }
+            elif strategy_type == "ALTAIR":
+                # Override bars_per_day from ALTAIR_LIVE_TF (per-ticker TF)
+                tf_info = ALTAIR_LIVE_TF.get(config_name, {})
+                if tf_info.get("bars_per_day"):
+                    params = {**params, "bars_per_day": tf_info["bars_per_day"]}
             
             try:
                 # Create checker
@@ -408,6 +432,9 @@ class MultiStrategyMonitor:
             
             # Merge persisted VEGA metadata (time-exit info) into recovered positions
             self._load_vega_state()
+
+            # Merge persisted ALTAIR metadata (time-exit info) into recovered positions
+            self._load_altair_state()
                 
         except Exception as e:
             self.logger.error(f"Error recovering positions: {e}")
@@ -473,6 +500,83 @@ class MultiStrategyMonitor:
                 
         except Exception as e:
             self.logger.error(f"Error loading VEGA state: {e}")
+
+    def _save_altair_state(self):
+        """Persist ALTAIR position metadata to disk for restart recovery."""
+        try:
+            altair_state = {}
+            for ticket, pos_info in self.open_positions.items():
+                if pos_info.get("altair_time_exit"):
+                    entry_bar = pos_info.get("altair_entry_bar_time")
+                    altair_state[str(ticket)] = {
+                        "config": pos_info.get("config"),
+                        "altair_entry_bar_time": (
+                            entry_bar.isoformat() if entry_bar else None
+                        ),
+                        "altair_max_holding_bars": pos_info.get(
+                            "altair_max_holding_bars", 120
+                        ),
+                        "altair_tf_minutes": pos_info.get(
+                            "altair_tf_minutes", 60
+                        ),
+                    }
+
+            with open(self._altair_state_file, "w") as f:
+                json.dump(altair_state, f, indent=2)
+
+        except Exception as e:
+            self.logger.error(f"Error saving ALTAIR state: {e}")
+
+    def _load_altair_state(self):
+        """Load persisted ALTAIR metadata and merge into recovered positions."""
+        if not self._altair_state_file.exists():
+            return
+
+        try:
+            with open(self._altair_state_file, "r") as f:
+                altair_state = json.load(f)
+
+            merged = 0
+            for ticket_str, meta in altair_state.items():
+                ticket = int(ticket_str)
+                if ticket in self.open_positions:
+                    self.open_positions[ticket]["altair_time_exit"] = True
+                    bar_time_str = meta.get("altair_entry_bar_time")
+                    if bar_time_str:
+                        self.open_positions[ticket]["altair_entry_bar_time"] = (
+                            datetime.fromisoformat(bar_time_str)
+                        )
+                    self.open_positions[ticket]["altair_max_holding_bars"] = meta.get(
+                        "altair_max_holding_bars", 120
+                    )
+                    self.open_positions[ticket]["altair_tf_minutes"] = meta.get(
+                        "altair_tf_minutes", 60
+                    )
+                    merged += 1
+                    self.logger.info(
+                        f"[{meta.get('config')}] Restored ALTAIR time-exit state "
+                        f"for #{ticket}"
+                    )
+
+            if merged > 0:
+                self.logger.info(
+                    f"Merged ALTAIR metadata for {merged} position(s)"
+                )
+
+            # Clean stale entries (positions no longer open)
+            open_tickets = {str(t) for t in self.open_positions}
+            stale = [k for k in altair_state if k not in open_tickets]
+            if stale:
+                for k in stale:
+                    del altair_state[k]
+                with open(self._altair_state_file, "w") as f:
+                    json.dump(altair_state, f, indent=2)
+                self.logger.info(
+                    f"Cleaned {len(stale)} stale ALTAIR state entries"
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error loading ALTAIR state: {e}")
     
     def _check_connection(self) -> bool:
         """Check and repair MT5 connection if needed."""
@@ -572,6 +676,93 @@ class MultiStrategyMonitor:
                 if ticket in self.open_positions:
                     del self.open_positions[ticket]
             self._save_vega_state()
+
+    def _check_altair_time_exits(self):
+        """Close ALTAIR positions that have exceeded max_holding_bars.
+
+        Uses bar-counting at the ticker's TF (same logic as VEGA H4 time-exit).
+        Each ALTAIR config can have a different TF (15m/30m/H1).
+        """
+        if not self.open_positions:
+            return
+
+        tickets_to_close = []
+
+        for ticket, pos_info in self.open_positions.items():
+            if not pos_info.get("altair_time_exit"):
+                continue
+
+            entry_bar_time = pos_info.get("altair_entry_bar_time")
+            max_holding = pos_info.get("altair_max_holding_bars", 120)
+            tf_minutes = pos_info.get("altair_tf_minutes", 60)
+            config_name = pos_info.get("config", "UNKNOWN")
+
+            if not entry_bar_time:
+                continue
+
+            # Get the latest bar time for this config
+            current_bar_time = self._last_altair_bar_times.get(config_name)
+            if not current_bar_time:
+                continue
+
+            # Count elapsed bars at the ticker's TF
+            elapsed = current_bar_time - entry_bar_time
+            bars_elapsed = int(elapsed.total_seconds() / (tf_minutes * 60))
+
+            if bars_elapsed >= max_holding:
+                tickets_to_close.append(ticket)
+
+        for ticket in tickets_to_close:
+            pos_info = self.open_positions[ticket]
+            config_name = pos_info.get("config", "UNKNOWN")
+            tf_minutes = pos_info.get("altair_tf_minutes", 60)
+
+            self.logger.info(
+                f"[{config_name}] ALTAIR TIME-EXIT: closing ticket {ticket} "
+                f"after {pos_info.get('altair_max_holding_bars', 120)} "
+                f"x {tf_minutes}m bars hold"
+            )
+
+            executor = self.executors.get(config_name)
+            if not executor:
+                self.logger.error(
+                    f"[{config_name}] No executor for time-exit of ticket {ticket}"
+                )
+                continue
+
+            result = executor.close_position(ticket)
+
+            if result.success:
+                self.logger.info(
+                    f"[{config_name}] ALTAIR TIME-EXIT executed "
+                    f"@ {result.executed_price:.5f}"
+                )
+                self._log_event("ALTAIR_TIME_EXIT", {
+                    "config": config_name,
+                    "symbol": pos_info.get("symbol"),
+                    "ticket": ticket,
+                    "direction": pos_info.get("direction"),
+                    "entry": pos_info.get("entry"),
+                    "close_price": result.executed_price,
+                    "max_hold_bars": pos_info.get("altair_max_holding_bars"),
+                    "tf_minutes": tf_minutes,
+                })
+            else:
+                self.logger.error(
+                    f"[{config_name}] ALTAIR TIME-EXIT failed for ticket "
+                    f"{ticket}: {result.message}"
+                )
+
+        # Remove closed positions, notify checkers, and persist updated state
+        if tickets_to_close:
+            for ticket in tickets_to_close:
+                if ticket in self.open_positions:
+                    cfg = self.open_positions[ticket].get("config", "")
+                    checker = self.checkers.get(cfg)
+                    if checker and hasattr(checker, "notify_position_closed"):
+                        checker.notify_position_closed()
+                    del self.open_positions[ticket]
+            self._save_altair_state()
 
     def _check_closed_positions(self):
         """
@@ -718,6 +909,18 @@ class MultiStrategyMonitor:
                 
                 # Remove from tracking
                 del self.open_positions[ticket]
+
+                # Notify ALTAIR checker to reset state machine
+                config_name = pos_info.get("config", "")
+                if config_name in ALTAIR_CONFIGS:
+                    checker = self.checkers.get(config_name)
+                    if checker and hasattr(checker, "notify_position_closed"):
+                        checker.notify_position_closed()
+                        self.logger.debug(
+                            f"[{config_name}] ALTAIR checker reset "
+                            f"after position close"
+                        )
+                    self._save_altair_state()
                 
         except Exception as e:
             self.logger.error(f"Error checking closed positions: {e}\n{traceback.format_exc()}")
@@ -833,6 +1036,50 @@ class MultiStrategyMonitor:
         h4 = h4.reset_index()
 
         return h4
+
+    def _resample_m5_to_tf(
+        self, m5_bars: pd.DataFrame, target_minutes: int
+    ) -> Optional[pd.DataFrame]:
+        """Resample M5 broker-time bars to target timeframe aligned to UTC.
+
+        Same logic as _resample_m5_to_h4_utc but generalized to any TF.
+        Used by ALTAIR for 15m / 30m / 60m per-ticker resampling.
+
+        Args:
+            m5_bars: M5 DataFrame with broker-time "time" column.
+            target_minutes: Target timeframe in minutes (15, 30, 60, 240).
+
+        Returns:
+            Resampled DataFrame with "time" column in UTC, or None.
+        """
+        if m5_bars is None or m5_bars.empty:
+            return None
+
+        df = m5_bars.copy()
+
+        # Convert broker time to UTC
+        offset_hours = get_broker_utc_offset()
+        df["time"] = df["time"] - timedelta(hours=offset_hours)
+
+        # Set time as index for resample
+        df = df.set_index("time")
+
+        # Resample to target TF aligned to epoch
+        rule = f"{target_minutes}min"
+        resampled = df.resample(rule, origin="epoch").agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        }).dropna(subset=["open"])
+
+        # Exclude forming (incomplete) bar
+        if len(resampled) > 1:
+            resampled = resampled.iloc[:-1]
+
+        resampled = resampled.reset_index()
+        return resampled
 
     def _process_candle(self):
         """
@@ -959,6 +1206,15 @@ class MultiStrategyMonitor:
                     reference_bars = self._resample_m5_to_h4_utc(reference_bars)
                     if reference_bars is None or reference_bars.empty:
                         continue
+
+            # ALTAIR: resample M5 broker bars to per-ticker TF (15m/30m/H1).
+            # Each ticker has its own timeframe defined in ALTAIR_LIVE_TF.
+            elif config_name in ALTAIR_CONFIGS:
+                tf_info = ALTAIR_LIVE_TF.get(config_name, {})
+                target_minutes = tf_info.get("timeframe_minutes", 60)
+                bars = self._resample_m5_to_tf(bars, target_minutes)
+                if bars is None or bars.empty:
+                    continue
             
             # Guard: warn if dual-feed strategy has no reference data
             if reference_symbol and reference_bars is None:
@@ -978,6 +1234,15 @@ class MultiStrategyMonitor:
                         if isinstance(last_bar, pd.Timestamp):
                             last_bar = last_bar.to_pydatetime()
                         self._last_h4_bar_times[config_name] = last_bar
+                elif config_name in ALTAIR_CONFIGS:
+                    # ALTAIR: single-feed, symbol = asset_name directly
+                    traded_bt_symbol = symbol
+                    # Track latest bar time for bar-counting time-exit
+                    if "time" in bars.columns and len(bars) > 0:
+                        last_bar = bars["time"].iloc[-1]
+                        if isinstance(last_bar, pd.Timestamp):
+                            last_bar = last_bar.to_pydatetime()
+                        self._last_altair_bar_times[config_name] = last_bar
                 else:
                     traded_bt_symbol = symbol
                 
@@ -1099,6 +1364,36 @@ class MultiStrategyMonitor:
                 f"Skipping trade (matches BT behavior)."
             )
             return
+
+        # ALTAIR-specific sizing: risk-based shares via calculate_shares()
+        # 1% equity risk / SL distance -> shares, then validate vs broker limits
+        if config_name in ALTAIR_CONFIGS and hasattr(checker, 'calculate_shares'):
+            try:
+                import MetaTrader5 as mt5_mod
+                account = mt5_mod.account_info()
+                equity = account.equity if account else 50000.0
+                shares = checker.calculate_shares(
+                    equity=equity,
+                    entry_price=signal.entry_price,
+                    stop_loss=signal.stop_loss,
+                )
+                if shares <= 0:
+                    self.logger.info(
+                        f"[{config_name}] ALTAIR sizing: 0 shares (SL too close "
+                        f"or equity too low). Skipping trade."
+                    )
+                    return
+                volume_override = float(shares)
+                self.logger.info(
+                    f"[{config_name}] ALTAIR sizing: equity=${equity:,.0f}, "
+                    f"entry={signal.entry_price:.2f}, sl={signal.stop_loss:.2f}, "
+                    f"shares={shares}"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"[{config_name}] ALTAIR sizing failed: {e}, using 1 share"
+                )
+                volume_override = 1.0
         
         # Execute LONG or SHORT
         self.state = MonitorState.EXECUTING
@@ -1176,12 +1471,31 @@ class MultiStrategyMonitor:
                     pos_data["vega_time_exit"] = True
                     pos_data["vega_entry_bar_time"] = self._last_h4_bar_times.get(config_name)
                     pos_data["vega_holding_bars"] = holding_bars
+
+                # ALTAIR time-exit tracking (bar-counting at ticker's TF)
+                if config_name in ALTAIR_CONFIGS:
+                    max_holding = STRATEGIES_CONFIG.get(
+                        config_name, {}
+                    ).get("params", {}).get("max_holding_bars", 120)
+                    tf_info = ALTAIR_LIVE_TF.get(config_name, {})
+                    pos_data["altair_time_exit"] = True
+                    pos_data["altair_entry_bar_time"] = (
+                        self._last_altair_bar_times.get(config_name)
+                    )
+                    pos_data["altair_max_holding_bars"] = max_holding
+                    pos_data["altair_tf_minutes"] = tf_info.get(
+                        "timeframe_minutes", 60
+                    )
                 
                 self.open_positions[result.order_ticket] = pos_data
                 
                 # Persist VEGA state for restart recovery
                 if config_name in VEGA_CONFIGS:
                     self._save_vega_state()
+
+                # Persist ALTAIR state for restart recovery
+                if config_name in ALTAIR_CONFIGS:
+                    self._save_altair_state()
         else:
             self.logger.warning(f"[{config_name}] Execution failed: {result.message}")
             self._log_event("EXECUTION_FAILED", {
@@ -1311,6 +1625,9 @@ class MultiStrategyMonitor:
                     
                     # VEGA time-based exits
                     self._check_vega_time_exits()
+
+                    # ALTAIR time-based exits
+                    self._check_altair_time_exits()
                     
                     # Reset error counter on success
                     consecutive_errors = 0
