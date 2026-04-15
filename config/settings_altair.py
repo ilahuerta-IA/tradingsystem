@@ -102,7 +102,13 @@ _DEFAULT_PARAMS = {
     'margin_pct': 20.0,
 
     # --- Regime scaling ---
-    'bars_per_day': 7,              # H1 bars per trading day (US stocks)
+    # bars_per_day controls how D1 regime periods are scaled to the feed TF.
+    # H1 = 7 bars/day (US stocks 14:30-21:00)
+    # 30m = 13 bars/day
+    # 15m = 26 bars/day
+    # 5m  = 78 bars/day
+    # Override per-ticker via _make_config(..., bars_per_day=13)
+    'bars_per_day': 7,              # Default: H1 feed
 
     # --- Debug ---
     'print_signals': False,
