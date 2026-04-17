@@ -1,19 +1,23 @@
 """
-tiingo_5m_downloader.py  --  Download 5m OHLCV data from Tiingo IEX
-=====================================================================
-Adapts tiingo_h1_downloader.py for 5-minute bars.  No aggregation needed
-(Tiingo delivers native 5m candles).  Saves in the same CSV format used
-by the ALTAIR pipeline (Date,Time,Open,High,Low,Close,Volume).
+tiingo_5m_downloader.py  --  Download intraday OHLCV data from Tiingo IEX
+=========================================================================
+Downloads 5m, 15m or 30m bars from Tiingo IEX.  Saves in the CSV format
+used by the ALTAIR pipeline (Date,Time,Open,High,Low,Close,Volume).
 
-Only US regular-hours bars are kept: 14:30-20:55 UTC (78 bars/day).
+Only US regular-hours bars are kept: 14:30-20:55 UTC.
 
-Pagination: IEX endpoint caps ~10 000 rows per request.  At 5-min that is
-~128 trading days.  We paginate in 120-day chunks.
+Pagination: IEX endpoint caps ~10 000 rows per request.  Chunk size auto-
+adjusts to the chosen timeframe:
+  5m  -> ~78 bars/day -> 120-day chunks  (~29 chunks for 9yr)
+  15m -> ~26 bars/day -> 360-day chunks  (~10 chunks for 9yr)
+  30m -> ~13 bars/day -> 720-day chunks  (~5  chunks for 9yr)
 
 Usage
 -----
-    python tools/tiingo_5m_downloader.py ALB WDC
-    python tools/tiingo_5m_downloader.py ALB WDC --fast   # skip rate-limit waits
+    python tools/tiingo_5m_downloader.py ALB WDC              # default 5m
+    python tools/tiingo_5m_downloader.py ALB WDC --tf 15min   # 15m bars
+    python tools/tiingo_5m_downloader.py ALB WDC --tf 30min   # 30m bars
+    python tools/tiingo_5m_downloader.py ALB WDC --fast       # skip rate-limit waits
     python tools/tiingo_5m_downloader.py ALB --min-years 0
 """
 import argparse
@@ -32,20 +36,26 @@ except ImportError:
 # ── Constants ──────────────────────────────────────────────────────────
 TIINGO_IEX_URL = "https://api.tiingo.com/iex/{ticker}/prices"
 DEFAULT_START  = "2017-01-02"
-FETCH_FREQ     = "5min"
 DATA_DIR       = Path(__file__).resolve().parent.parent / "data"
 CSV_HEADER     = ["Date", "Time", "Open", "High", "Low", "Close", "Volume"]
 
-# US regular hours in UTC: 14:30 to 20:55  (78 5-min bars/day)
-# IEX 5m bars: timestamps at 14:30, 14:35, ... 20:50, 20:55
+# US regular hours in UTC: 14:30 to 20:55
 MARKET_OPEN_H  = 14
 MARKET_OPEN_M  = 30
 MARKET_CLOSE_H = 20
 MARKET_CLOSE_M = 55
 
 FREE_TIER_DELAY = 75   # seconds between API requests
-CHUNK_DAYS      = 120  # ~128 trading days of 5m data per chunk
 MIN_YEARS_DEFAULT = 8
+
+# Timeframe presets  {tf_arg: (tiingo_freq, chunk_days, csv_tag, bars_per_day)}
+# chunk_days sized so bars_per_day * chunk_days < 10 000 (Tiingo row cap)
+TF_PRESETS = {
+    "5min":  ("5min",  120, "5m",  78),
+    "15min": ("15min", 360, "15m", 26),
+    "30min": ("30min", 720, "30m", 13),
+}
+DEFAULT_TF = "5min"
 
 
 # ── Helpers (shared logic from tiingo_h1_downloader) ───────────────────
@@ -90,7 +100,7 @@ def _api_get(url, headers, params, max_retries=5):
     return []
 
 
-def fetch_5m_paginated(ticker, api_key, start, fast):
+def fetch_paginated(ticker, api_key, start, fast, freq, chunk_days):
     headers = {"Content-Type": "application/json",
                "Authorization": "Token %s" % api_key}
     url = TIINGO_IEX_URL.format(ticker=ticker.upper())
@@ -101,11 +111,11 @@ def fetch_5m_paginated(ticker, api_key, start, fast):
     chunk_n  = 0
 
     while start_dt < end_dt:
-        chunk_end = min(start_dt + timedelta(days=CHUNK_DAYS), end_dt)
+        chunk_end = min(start_dt + timedelta(days=chunk_days), end_dt)
         params = {
             "startDate": start_dt.isoformat(),
             "endDate": chunk_end.isoformat(),
-            "resampleFreq": FETCH_FREQ,
+            "resampleFreq": freq,
             "columns": "open,high,low,close,volume",
         }
         chunk_n += 1
@@ -155,9 +165,9 @@ def filter_and_format(raw_bars):
     return rows
 
 
-def save_csv(ticker, rows, out_dir):
+def save_csv(ticker, rows, out_dir, csv_tag):
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / ("%s_5m_8Yea.csv" % ticker.upper())
+    path = out_dir / ("%s_%s_8Yea.csv" % (ticker.upper(), csv_tag))
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(CSV_HEADER)
@@ -165,13 +175,14 @@ def save_csv(ticker, rows, out_dir):
     return path
 
 
-def download_one(ticker, api_key, start, out_dir, min_years, fast):
+def download_one(ticker, api_key, start, out_dir, min_years, fast,
+                 freq="5min", chunk_days=120, csv_tag="5m"):
     print()
     print("=" * 55)
-    print("  %s  (5m)" % ticker.upper())
+    print("  %s  (%s)" % (ticker.upper(), csv_tag))
     print("=" * 55)
 
-    raw = fetch_5m_paginated(ticker, api_key, start, fast)
+    raw = fetch_paginated(ticker, api_key, start, fast, freq, chunk_days)
     if not raw:
         return ("no_data", "No data returned by Tiingo")
 
@@ -196,7 +207,7 @@ def download_one(ticker, api_key, start, out_dir, min_years, fast):
               (span_years, min_years))
         return ("short", detail)
 
-    path = save_csv(ticker, rows, out_dir)
+    path = save_csv(ticker, rows, out_dir, csv_tag)
     print("    Saved: %s" % path)
     return ("ok", detail)
 
@@ -205,8 +216,11 @@ def download_one(ticker, api_key, start, out_dir, min_years, fast):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download 5m OHLCV from Tiingo IEX")
+        description="Download intraday OHLCV from Tiingo IEX")
     parser.add_argument("tickers", nargs="+", help="Ticker symbols")
+    parser.add_argument("--tf", choices=list(TF_PRESETS.keys()),
+                        default=DEFAULT_TF,
+                        help="Timeframe (default: %s)" % DEFAULT_TF)
     parser.add_argument("--start", default=DEFAULT_START,
                         help="Start date YYYY-MM-DD (default: %s)" %
                         DEFAULT_START)
@@ -218,12 +232,14 @@ def main():
                         help="Skip rate-limit delays (paid tier)")
     args = parser.parse_args()
 
+    freq, chunk_days, csv_tag, _ = TF_PRESETS[args.tf]
     api_key = get_api_key()
     tickers = [t.upper() for t in args.tickers]
 
     print()
-    print("Tiingo 5m Downloader")
+    print("Tiingo %s Downloader" % csv_tag)
     print("  Tickers: %s" % ", ".join(tickers))
+    print("  TF:      %s  (chunks=%d days)" % (args.tf, chunk_days))
     print("  Start:   %s" % args.start)
     print("  Min yrs: %.0f" % args.min_years)
     print("  Output:  %s" % DATA_DIR)
@@ -232,7 +248,8 @@ def main():
     for i, ticker in enumerate(tickers):
         status, detail = download_one(
             ticker, api_key, args.start, DATA_DIR,
-            args.min_years, args.fast)
+            args.min_years, args.fast,
+            freq=freq, chunk_days=chunk_days, csv_tag=csv_tag)
         results[ticker] = (status, detail)
 
         # Rate limit between tickers
