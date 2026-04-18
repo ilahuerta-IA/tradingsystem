@@ -31,7 +31,13 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
 
-TICKERS = ['JPM', 'V', 'NVDA', 'MSFT', 'GOOGL', 'ALB', 'WDC']
+TICKERS = [
+    # Original 7
+    'JPM', 'V', 'NVDA', 'MSFT', 'GOOGL', 'ALB', 'WDC',
+    # Top-20 expansion (13 new)
+    'TYL', 'SBAC', 'AWK', 'TTWO', 'PWR', 'KEYS', 'HCA',
+    'MCO', 'NSC', 'RMD', 'LHX', 'AXON', 'WST', 'TDY', 'MPWR',
+]
 
 # DTOSC params (Miner: 8,5,3,3 for intraday)
 DTOSC_PERIOD = 8
@@ -42,8 +48,9 @@ DTOSC_OB = 75
 DTOSC_OS_A = 25   # Config A
 DTOSC_OS_B = 20   # Config B
 
-# Config per ticker (same as timeframe_compare)
+# Config per ticker: best OS from A/B screening results
 BEST_CONFIG = {
+    # Original 7
     'JPM':   {'os': DTOSC_OS_B},
     'V':     {'os': DTOSC_OS_B},
     'NVDA':  {'os': DTOSC_OS_A},
@@ -51,11 +58,29 @@ BEST_CONFIG = {
     'GOOGL': {'os': DTOSC_OS_A},
     'ALB':   {'os': DTOSC_OS_B},
     'WDC':   {'os': DTOSC_OS_B},
+    # Top-20 expansion (from altair_sp500_screening_results.txt)
+    'TYL':   {'os': DTOSC_OS_B},   # B: PF 2.23 vs A: 1.17
+    'SBAC':  {'os': DTOSC_OS_B},   # B: PF 1.75 vs A: 1.14
+    'AWK':   {'os': DTOSC_OS_B},   # B: PF 1.65 vs A: 1.39
+    'TTWO':  {'os': DTOSC_OS_A},   # A: PF 2.10 vs B: 1.26
+    'PWR':   {'os': DTOSC_OS_B},   # B: PF 1.85 vs A: 1.53
+    'KEYS':  {'os': DTOSC_OS_B},   # B: PF 1.73 vs A: 0.99
+    'HCA':   {'os': DTOSC_OS_B},   # B: PF 1.74 vs A: 1.52
+    'MCO':   {'os': DTOSC_OS_A},   # A: PF 1.90 vs B: 1.52
+    'NSC':   {'os': DTOSC_OS_B},   # B (in settings_altair.py)
+    'RMD':   {'os': DTOSC_OS_A},   # A: PF 1.71 vs B: 1.19
+    'LHX':   {'os': DTOSC_OS_A},   # A: PF 1.54 vs B: 1.32
+    'AXON':  {'os': DTOSC_OS_A},   # A: PF 2.42 vs B: 1.35
+    'WST':   {'os': DTOSC_OS_A},   # A: PF 1.94 vs B: 1.75
+    'TDY':   {'os': DTOSC_OS_A},   # A: PF 1.79 vs B: 1.60
+    'MPWR':  {'os': DTOSC_OS_A},   # A: PF 1.54 vs B: 0.81
 }
 
-# Typical bid-ask spread per ticker (USD, conservative estimates for US stocks)
-# Source: average quoted spreads for liquid SPX/NDX components
+# Typical bid-ask spread per ticker (USD, conservative estimates)
+# Large-cap SP500: ~$0.01-0.03 for <$100, ~$0.02-0.05 for $100-300,
+# ~$0.05-0.15 for $300-600, ~$0.10-0.25 for >$600
 SPREADS = {
+    # Original 7
     'JPM':   0.01,
     'V':     0.01,
     'NVDA':  0.02,
@@ -63,6 +88,22 @@ SPREADS = {
     'GOOGL': 0.02,
     'ALB':   0.02,
     'WDC':   0.02,
+    # Top-20 expansion
+    'TYL':   0.10,   # ~$500-580
+    'SBAC':  0.05,   # ~$220-270
+    'AWK':   0.03,   # ~$130-160
+    'TTWO':  0.05,   # ~$180-220
+    'PWR':   0.08,   # ~$300-380
+    'KEYS':  0.03,   # ~$150-180
+    'HCA':   0.08,   # ~$320-380
+    'MCO':   0.10,   # ~$450-520
+    'NSC':   0.05,   # ~$220-260
+    'RMD':   0.05,   # ~$220-260
+    'LHX':   0.05,   # ~$220-260
+    'AXON':  0.15,   # ~$500-650
+    'WST':   0.08,   # ~$300-380
+    'TDY':   0.10,   # ~$450-520
+    'MPWR':  0.15,   # ~$600-750
 }
 
 # Timeframes to analyze: label -> resample_rule (pandas offset alias)
