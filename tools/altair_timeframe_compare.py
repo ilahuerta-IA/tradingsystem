@@ -48,7 +48,13 @@ from config.settings_altair import (
 STARTING_CASH = 100_000.0
 
 # Tickers with 5m data available for comparison
-TICKERS_5M = ['JPM', 'V', 'NVDA', 'MSFT', 'GOOGL', 'ALB', 'WDC']
+TICKERS_5M = [
+    # Original 7
+    'JPM', 'V', 'NVDA', 'MSFT', 'GOOGL', 'ALB', 'WDC',
+    # Top-20 expansion (13 new)
+    'TYL', 'SBAC', 'AWK', 'TTWO', 'PWR', 'KEYS', 'HCA',
+    'MCO', 'NSC', 'RMD', 'LHX', 'AXON', 'WST', 'TDY', 'MPWR',
+]
 
 # Timeframe definitions: label -> (csv_suffix, bars_per_day, resample_minutes)
 # resample_minutes=0 means native (no resampling needed).
@@ -60,6 +66,7 @@ TIMEFRAMES = {
 
 # Best config per ticker (from Phase 1 screening / settings_altair.py)
 BEST_CONFIG = {
+    # Original 7
     'JPM':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B
     'V':     {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B
     'NVDA':  {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A
@@ -67,6 +74,22 @@ BEST_CONFIG = {
     'GOOGL': {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A
     'ALB':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B
     'WDC':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B
+    # Top-20 expansion (from altair_sp500_screening_results.txt)
+    'TYL':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B: PF 2.23
+    'SBAC':  {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B: PF 1.75
+    'AWK':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B: PF 1.65
+    'TTWO':  {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 2.10
+    'PWR':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B: PF 1.85
+    'KEYS':  {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B: PF 1.73
+    'HCA':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B: PF 1.74
+    'MCO':   {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.90
+    'NSC':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B
+    'RMD':   {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.71
+    'LHX':   {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.54
+    'AXON':  {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 2.42
+    'WST':   {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.94
+    'TDY':   {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.79
+    'MPWR':  {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.54
 }
 
 
@@ -161,13 +184,14 @@ def extract(strat, cerebro):
         if std_r > 0:
             sharpe = (avg_r / std_r) * math.sqrt(tpy)
 
-    # Yearly PnL
+    # Yearly PnL + PF + Sharpe
     yearly_raw = defaultdict(lambda: {'trades': 0, 'pnl': 0.0,
-                                       'gp': 0.0, 'gl': 0.0})
+                                       'gp': 0.0, 'gl': 0.0, 'rets': []})
     for tp in strat._trade_pnls:
         y = tp['year']
         yearly_raw[y]['trades'] += 1
         yearly_raw[y]['pnl'] += tp['pnl']
+        yearly_raw[y]['rets'].append(tp['pnl'] / STARTING_CASH)
         if tp['is_winner']:
             yearly_raw[y]['gp'] += tp['pnl']
         else:
@@ -177,7 +201,16 @@ def extract(strat, cerebro):
     pos_years = 0
     for y in sorted(yearly_raw.keys()):
         s = yearly_raw[y]
-        yearly[y] = {'trades': s['trades'], 'pnl': s['pnl']}
+        ypf = (s['gp'] / s['gl']) if s['gl'] > 0 else (
+            float('inf') if s['gp'] > 0 else 0)
+        yshrp = 0.0
+        if len(s['rets']) > 1:
+            avg_r = np.mean(s['rets'])
+            std_r = np.std(s['rets'], ddof=1)
+            if std_r > 0:
+                yshrp = (avg_r / std_r) * math.sqrt(len(s['rets']))
+        yearly[y] = {'trades': s['trades'], 'pnl': s['pnl'],
+                      'pf': ypf, 'sharpe': yshrp}
         if s['pnl'] > 0:
             pos_years += 1
 
@@ -314,6 +347,78 @@ def display_comparison(all_results, tf_labels):
         print()
 
 
+def display_yearly_detail(all_results, tf_labels):
+    """Print year-by-year PF / Sharpe / PnL per ticker, side by side."""
+    tickers = sorted(set(tk for tk, _ in all_results.keys()))
+    all_years = set()
+    for r in all_results.values():
+        if 'error' not in r:
+            all_years.update(r['yearly'].keys())
+    years = sorted(all_years)
+
+    print()
+    print('=' * 100)
+    print('YEARLY DETAIL: %s' % ' vs '.join(tf_labels))
+    print('=' * 100)
+
+    for ticker in tickers:
+        res = {}
+        for tf in tf_labels:
+            key = (ticker, tf)
+            if key in all_results and 'error' not in all_results[key]:
+                res[tf] = all_results[key]
+        if not res:
+            continue
+
+        # Ticker header with overall stats
+        parts = []
+        for tf in tf_labels:
+            if tf in res:
+                r = res[tf]
+                pf = min(r['pf'], 99)
+                parts.append('%s: T=%d PF=%.2f Shrp=%.2f PnL=%+.0f' % (
+                    tf, r['trades'], pf, r['sharpe'], r['net_pnl']))
+        print()
+        print('%-6s  (%s)' % (ticker, '  |  '.join(parts)))
+
+        # Column headers per TF
+        col = '      '
+        for tf in tf_labels:
+            col += '| %3s:  T    PF   Shrp      PnL  ' % tf
+        print(col)
+        print('-' * len(col))
+
+        for y in years:
+            row = '%4d  ' % y
+            for tf in tf_labels:
+                if tf in res:
+                    yd = res[tf]['yearly'].get(y)
+                    if yd and yd['trades'] > 0:
+                        pf_s = '%5.2f' % min(yd['pf'], 99)
+                        row += '|      %3d %s %+5.2f %+9.0f  ' % (
+                            yd['trades'], pf_s, yd['sharpe'], yd['pnl'])
+                    else:
+                        row += '|       --    --    --       --  '
+                else:
+                    row += '|       --    --    --       --  '
+            print(row)
+
+        # Total row
+        row = ' ALL  '
+        for tf in tf_labels:
+            if tf in res:
+                r = res[tf]
+                pf_s = '%5.2f' % min(r['pf'], 99)
+                row += '|      %3d %s %+5.2f %+9.0f  ' % (
+                    r['trades'], pf_s, r['sharpe'], r['net_pnl'])
+            else:
+                row += '|       --    --    --       --  '
+        print('-' * len(col))
+        print(row)
+
+    print()
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -323,6 +428,8 @@ def main():
                         help='Specific tickers (default: %s)' % ', '.join(TICKERS_5M))
     parser.add_argument('--tf', nargs='+', choices=list(TIMEFRAMES.keys()),
                         help='Timeframes to compare (default: all)')
+    parser.add_argument('--yearly', action='store_true',
+                        help='Show year-by-year detail per ticker')
     args = parser.parse_args()
 
     tickers = [t.upper() for t in args.ticker] if args.ticker else TICKERS_5M
@@ -358,6 +465,9 @@ def main():
                     min(r['pf'], 99), r['sharpe'], r['max_dd']))
 
     display_comparison(all_results, tf_labels)
+
+    if args.yearly:
+        display_yearly_detail(all_results, tf_labels)
 
 
 if __name__ == '__main__':
