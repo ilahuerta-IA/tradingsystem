@@ -219,6 +219,16 @@ ALTAIR_STRATEGIES_CONFIG = {
         max_sl_atr_mult=4.0, dtosc_os=20,
     ),
 
+    # --- FASE D: 15m EXPANSION (2026-04-19) ---
+    # GS 15m: PF 1.51, Shrp 0.62, DD 10.6%, +$23,394, T=128, Y+ 5/8
+    'GS_15m_ALTAIR': _make_config(
+        'GS', 'GS_15m_8Yea.csv',
+        datetime.datetime(2017, 2, 1),
+        universe='dj30',
+        max_sl_atr_mult=4.0, dtosc_os=20,
+        resample_minutes=0,  # native 15m, no resample needed
+    ),
+
     # --- SP500 SCREENING (Section 39, 2026-04-11) ---
     # ALB: rank #4, Config B: PF 2.15, WR 54.5%, +$7,609, 4/5yr+
     'ALB_ALTAIR': _make_config(

@@ -56,6 +56,8 @@ ENABLED_CONFIGS = {
     "V_ALTAIR":     True,  # H1,  Config B (os=20, max_sl=4.0), PF 1.84
     "ALB_ALTAIR":   True,  # H1,  Config B (os=20, max_sl=4.0), PF 2.15
     "WDC_ALTAIR":   True,  # H1,  Config A (default), PF 1.88
+    # Fase D expansion (15m picks, live demo 2026-04-19)
+    "GS_15m_ALTAIR": True,  # 15m, Config B (os=20, max_sl=4.0), PF 1.51 Shrp 0.62
 }
 
 # Strategy type mapping (which checker class to use)
@@ -92,6 +94,8 @@ STRATEGY_TYPES = {
     "V_ALTAIR":     "ALTAIR",
     "ALB_ALTAIR":   "ALTAIR",
     "WDC_ALTAIR":   "ALTAIR",
+    # Fase D expansion
+    "GS_15m_ALTAIR": "ALTAIR",
 }
 
 
@@ -115,6 +119,8 @@ SYMBOL_MAP = {
     "V": "Visa",
     "ALB": "Albermarle",
     "WDC": "Western Digital",
+    # Fase D expansion (15m)
+    "GS": "Goldman Sachs",
 }
 
 # VEGA configs trade the reference_symbol, not asset_name.
@@ -123,7 +129,7 @@ VEGA_CONFIGS = {"NI225_VEGA", "GDAXI_VEGA", "NDAXI_VEGA"}
 
 # ALTAIR configs: single-feed CFD stocks with per-ticker TF.
 # The checker reads params from config/settings_altair.py (ALTAIR_STRATEGIES_CONFIG).
-ALTAIR_CONFIGS = {"JPM_ALTAIR", "NVDA_ALTAIR", "GOOGL_ALTAIR", "V_ALTAIR", "ALB_ALTAIR", "WDC_ALTAIR"}
+ALTAIR_CONFIGS = {"JPM_ALTAIR", "NVDA_ALTAIR", "GOOGL_ALTAIR", "V_ALTAIR", "ALB_ALTAIR", "WDC_ALTAIR", "GS_15m_ALTAIR"}
 
 # ALTAIR per-ticker live timeframe (minutes) and bars_per_day scaling.
 # M5 base loop resamples to these TFs. bars_per_day scales D1 regime periods.
@@ -135,6 +141,8 @@ ALTAIR_LIVE_TF = {
     "V_ALTAIR":     {"timeframe_minutes": 60, "bars_per_day": 7},    # H1
     "ALB_ALTAIR":   {"timeframe_minutes": 60, "bars_per_day": 7},    # H1
     "WDC_ALTAIR":   {"timeframe_minutes": 60, "bars_per_day": 7},    # H1
+    # Fase D expansion
+    "GS_15m_ALTAIR": {"timeframe_minutes": 15, "bars_per_day": 26},   # 15m
 }
 
 
