@@ -56,6 +56,16 @@ TICKERS_5M = [
     'MCO', 'NSC', 'RMD', 'LHX', 'AXON', 'WST', 'TDY', 'MPWR',
 ]
 
+# Fase D expansion: tickers with native _15m_8Yea.csv (59 tickers)
+TICKERS_EXPANSION = [
+    'AJG', 'ALGN', 'AMD', 'APO', 'ARES', 'ATO', 'AVGO', 'AVY', 'AXP', 'BR',
+    'CASY', 'CAT', 'COHR', 'COR', 'CVNA', 'DPZ', 'EFX', 'EME', 'EPAM', 'ETN',
+    'EXR', 'FDX', 'FICO', 'FIX', 'FOXA', 'GE', 'GNRC', 'GPN', 'GRMN', 'GS',
+    'HII', 'HLT', 'HSY', 'HWM', 'IT', 'LII', 'LITE', 'LYV', 'MPC', 'MSCI',
+    'MSI', 'NOC', 'NOW', 'PGR', 'PKG', 'POOL', 'RCL', 'STLD', 'STX', 'TDG',
+    'TER', 'TPL', 'TRGP', 'TT', 'URI', 'VLO', 'WAB', 'XYZ', 'ZBRA',
+]
+
 # Timeframe definitions: label -> (csv_suffix, bars_per_day, resample_minutes)
 # resample_minutes=0 means native (no resampling needed).
 TIMEFRAMES = {
@@ -90,6 +100,15 @@ BEST_CONFIG = {
     'WST':   {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.94
     'TDY':   {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.79
     'MPWR':  {'max_sl_atr_mult': 2.0, 'dtosc_os': 25},    # Config A: PF 1.54
+    # Expansion -- existing configs from settings_altair.py
+    'AXP':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B (DJ30)
+    'CAT':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B (DJ30)
+    'EFX':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B (SP500)
+    'FDX':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B (SP500)
+    'GS':    {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B (DJ30)
+    'MPC':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B (SP500)
+    'VLO':   {'max_sl_atr_mult': 4.0, 'dtosc_os': 20},    # Config B (SP500)
+    # Remaining 49 expansion tickers: Config A (default) via .get(tk, {})
 }
 
 
@@ -197,6 +216,19 @@ def extract(strat, cerebro):
         else:
             yearly_raw[y]['gl'] += abs(tp['pnl'])
 
+    # Per-year max drawdown from trade sequence
+    yearly_dd = defaultdict(float)
+    _yr_cum = defaultdict(float)
+    _yr_peak = defaultdict(float)
+    for tp in strat._trade_pnls:
+        y = tp['year']
+        _yr_cum[y] += tp['pnl']
+        if _yr_cum[y] > _yr_peak[y]:
+            _yr_peak[y] = _yr_cum[y]
+        dd_val = _yr_peak[y] - _yr_cum[y]
+        if dd_val > yearly_dd[y]:
+            yearly_dd[y] = dd_val
+
     yearly = {}
     pos_years = 0
     for y in sorted(yearly_raw.keys()):
@@ -210,7 +242,8 @@ def extract(strat, cerebro):
             if std_r > 0:
                 yshrp = (avg_r / std_r) * math.sqrt(len(s['rets']))
         yearly[y] = {'trades': s['trades'], 'pnl': s['pnl'],
-                      'pf': ypf, 'sharpe': yshrp}
+                      'pf': ypf, 'sharpe': yshrp,
+                      'dd_pct': (yearly_dd.get(y, 0) / STARTING_CASH) * 100}
         if s['pnl'] > 0:
             pos_years += 1
 
@@ -245,10 +278,24 @@ def build_config(ticker, tf_label):
     Only bars_per_day changes (for D1 regime scaling).
     """
     csv_suffix, bpd, resample_min = TIMEFRAMES[tf_label]
-    csv_name = '%s%s' % (ticker, csv_suffix)
-    csv_path = os.path.join(PROJECT_ROOT, 'data', csv_name)
-    if not os.path.exists(csv_path):
-        return None
+    # Smart 15m: try native _15m_8Yea.csv first, fall back to _5m_ + resample
+    if tf_label == '15m':
+        native_csv = '%s_15m_8Yea.csv' % ticker
+        native_path = os.path.join(PROJECT_ROOT, 'data', native_csv)
+        if os.path.exists(native_path):
+            csv_name = native_csv
+            csv_path = native_path
+            resample_min = 0  # native, no resampling needed
+        else:
+            csv_name = '%s%s' % (ticker, csv_suffix)
+            csv_path = os.path.join(PROJECT_ROOT, 'data', csv_name)
+            if not os.path.exists(csv_path):
+                return None
+    else:
+        csv_name = '%s%s' % (ticker, csv_suffix)
+        csv_path = os.path.join(PROJECT_ROOT, 'data', csv_name)
+        if not os.path.exists(csv_path):
+            return None
     from_date = _detect_from_date(csv_path)
     overrides = dict(BEST_CONFIG.get(ticker, {}))
     overrides['bars_per_day'] = bpd
@@ -384,7 +431,7 @@ def display_yearly_detail(all_results, tf_labels):
         # Column headers per TF
         col = '      '
         for tf in tf_labels:
-            col += '| %3s:  T    PF   Shrp      PnL  ' % tf
+            col += '| %3s:  T    PF   Shrp  DD%%      PnL  ' % tf
         print(col)
         print('-' * len(col))
 
@@ -395,12 +442,14 @@ def display_yearly_detail(all_results, tf_labels):
                     yd = res[tf]['yearly'].get(y)
                     if yd and yd['trades'] > 0:
                         pf_s = '%5.2f' % min(yd['pf'], 99)
-                        row += '|      %3d %s %+5.2f %+9.0f  ' % (
-                            yd['trades'], pf_s, yd['sharpe'], yd['pnl'])
+                        dd_s = '%4.1f' % yd.get('dd_pct', 0)
+                        row += '|      %3d %s %+5.2f %s%% %+8.0f  ' % (
+                            yd['trades'], pf_s, yd['sharpe'],
+                            dd_s, yd['pnl'])
                     else:
-                        row += '|       --    --    --       --  '
+                        row += '|       --    --    --   --       --  '
                 else:
-                    row += '|       --    --    --       --  '
+                    row += '|       --    --    --   --       --  '
             print(row)
 
         # Total row
@@ -409,10 +458,12 @@ def display_yearly_detail(all_results, tf_labels):
             if tf in res:
                 r = res[tf]
                 pf_s = '%5.2f' % min(r['pf'], 99)
-                row += '|      %3d %s %+5.2f %+9.0f  ' % (
-                    r['trades'], pf_s, r['sharpe'], r['net_pnl'])
+                dd_s = '%4.1f' % r['max_dd']
+                row += '|      %3d %s %+5.2f %s%% %+8.0f  ' % (
+                    r['trades'], pf_s, r['sharpe'],
+                    dd_s, r['net_pnl'])
             else:
-                row += '|       --    --    --       --  '
+                row += '|       --    --    --   --       --  '
         print('-' * len(col))
         print(row)
 
@@ -430,9 +481,16 @@ def main():
                         help='Timeframes to compare (default: all)')
     parser.add_argument('--yearly', action='store_true',
                         help='Show year-by-year detail per ticker')
+    parser.add_argument('--expansion', action='store_true',
+                        help='Use Fase D expansion tickers (59 native 15m)')
     args = parser.parse_args()
 
-    tickers = [t.upper() for t in args.ticker] if args.ticker else TICKERS_5M
+    if args.ticker:
+        tickers = [t.upper() for t in args.ticker]
+    elif args.expansion:
+        tickers = TICKERS_EXPANSION
+    else:
+        tickers = TICKERS_5M
     tf_labels = args.tf if args.tf else list(TIMEFRAMES.keys())
 
     print()
