@@ -75,3 +75,5 @@ context/
 
 # Private VEGA settings (live demo configs with risk allocation)
 config/settings_vega.py
+# ORION GEX runtime artifacts (per-day CSV snapshots)
+analysis/gex_*.csv
