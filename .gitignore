@@ -77,3 +77,5 @@ context/
 config/settings_vega.py
 # ORION GEX runtime artifacts (per-day CSV snapshots)
 analysis/gex_*.csv
+# ORION history + snapshots + patterns log
+logs/orion/
