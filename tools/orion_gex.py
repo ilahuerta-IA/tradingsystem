@@ -97,6 +97,32 @@ def bs_gamma(S, K, T, r, sigma):
 # GEX calculation
 # ---------------------------------------------------------------------------
 
+def _safe_int(val):
+    """Coerce yfinance numeric (may be NaN/None) to int, default 0."""
+    try:
+        if val is None:
+            return 0
+        f = float(val)
+        if f != f:  # NaN check
+            return 0
+        return int(f)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _safe_float(val):
+    """Coerce yfinance numeric (may be NaN/None) to float, default 0.0."""
+    try:
+        if val is None:
+            return 0.0
+        f = float(val)
+        if f != f:  # NaN check
+            return 0.0
+        return f
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def calc_gex_per_strike(calls_df, puts_df, spot, T, r=DEFAULT_RISK_FREE):
     """Calculate net Gamma Exposure per strike.
 
@@ -114,11 +140,11 @@ def calc_gex_per_strike(calls_df, puts_df, spot, T, r=DEFAULT_RISK_FREE):
         c_row = calls_df[calls_df["strike"] == K]
         p_row = puts_df[puts_df["strike"] == K]
 
-        c_oi = int(c_row["openInterest"].iloc[0]) if len(c_row) else 0
-        p_oi = int(p_row["openInterest"].iloc[0]) if len(p_row) else 0
+        c_oi = _safe_int(c_row["openInterest"].iloc[0]) if len(c_row) else 0
+        p_oi = _safe_int(p_row["openInterest"].iloc[0]) if len(p_row) else 0
 
-        c_iv = float(c_row["impliedVolatility"].iloc[0]) if len(c_row) else 0.0
-        p_iv = float(p_row["impliedVolatility"].iloc[0]) if len(p_row) else 0.0
+        c_iv = _safe_float(c_row["impliedVolatility"].iloc[0]) if len(c_row) else 0.0
+        p_iv = _safe_float(p_row["impliedVolatility"].iloc[0]) if len(p_row) else 0.0
 
         c_gamma = bs_gamma(spot, K, T, r, c_iv) if c_iv > 0 else 0.0
         p_gamma = bs_gamma(spot, K, T, r, p_iv) if p_iv > 0 else 0.0
@@ -822,7 +848,7 @@ def process_ticker(ticker, expiry=None, do_plot=False, persist=True):
 
     # Data quality guard: yfinance serves OI=0 outside US market hours
     # (pre-market and weekends). Skip persist to avoid contaminating history.
-    total_oi = int(calls["openInterest"].sum() + puts["openInterest"].sum())
+    total_oi = _safe_int(calls["openInterest"].sum()) + _safe_int(puts["openInterest"].sum())
     data_ok = total_oi > 0
     if not data_ok:
         print(f"\n  WARNING [{ticker}]: yfinance returned empty open interest "
