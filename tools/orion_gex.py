@@ -20,11 +20,9 @@ Usage (history / patterns):
     python tools/orion_gex.py --patterns             # detected events last 5d
 
 Outputs:
-    analysis/gex_levels_{TICKER}_{YYYYMMDD}.csv     -- per-run levels CSV
-    analysis/gex_profile_{TICKER}_{YYYYMMDD}.csv    -- full GEX profile
-    logs/orion/history.jsonl                        -- append-only daily history
-    logs/orion/snapshots/{TICKER}_{YYYYMMDD}.json   -- raw GEX snapshot
-    logs/orion/patterns.log                         -- detected events log
+    logs/orion/history.jsonl                            -- daily history (1 line/ticker/day, last-write-wins)
+    logs/orion/snapshots/{TICKER}_{YYYYMMDD_HHMM}.json  -- raw GEX snapshot per run (intraday)
+    logs/orion/patterns.log                             -- detected events log
 
 Dependencies: yfinance, scipy, numpy, matplotlib, pandas
 """
@@ -61,12 +59,6 @@ def _project_root():
 def _logs_dir():
     path = os.path.join(_project_root(), "logs", "orion")
     os.makedirs(os.path.join(path, "snapshots"), exist_ok=True)
-    return path
-
-
-def _analysis_dir():
-    path = os.path.join(_project_root(), "analysis")
-    os.makedirs(path, exist_ok=True)
     return path
 
 
@@ -411,29 +403,6 @@ def print_levels(ticker, spot, levels, expiry, gex_df, analysis=None):
         )
 
 
-def save_levels_csv(ticker, spot, levels, expiry, gex_df):
-    """Persist per-run levels CSV (analysis/) -- legacy artifact."""
-    import pandas as pd
-
-    out_dir = _analysis_dir()
-    today = dt.date.today().strftime("%Y%m%d")
-    path = os.path.join(out_dir, f"gex_levels_{ticker}_{today}.csv")
-
-    rows = []
-    for name, price in levels.items():
-        rows.append({
-            "ticker": ticker, "level": name, "price": price,
-            "spot": spot, "expiry": expiry,
-            "date": dt.date.today().isoformat(),
-        })
-    pd.DataFrame(rows).to_csv(path, index=False)
-    print(f"  Levels saved: {path}")
-
-    gex_path = os.path.join(out_dir, f"gex_profile_{ticker}_{today}.csv")
-    gex_df.to_csv(gex_path, index=False)
-    return path
-
-
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
@@ -534,8 +503,9 @@ def _history_path():
     return os.path.join(_logs_dir(), "history.jsonl")
 
 
-def _snapshot_path(ticker, date_str):
-    return os.path.join(_logs_dir(), "snapshots", f"{ticker}_{date_str}.json")
+def _snapshot_path(ticker, stamp):
+    """stamp is YYYYMMDD_HHMM so multiple runs/day are preserved (for --compare)."""
+    return os.path.join(_logs_dir(), "snapshots", f"{ticker}_{stamp}.json")
 
 
 def _patterns_log_path():
@@ -591,10 +561,12 @@ def append_history(ticker, spot, levels, analysis, expiry, gex_df):
         for obj in existing:
             f.write(json.dumps(obj) + "\n")
 
-    # Raw snapshot per ticker/day
-    snap_path = _snapshot_path(ticker, dt.date.today().strftime("%Y%m%d"))
+    # Raw snapshot per ticker/run (timestamped HHMM so we keep all intraday runs).
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M")
+    snap_path = _snapshot_path(ticker, stamp)
     snapshot = {
         "meta": record,
+        "timestamp": dt.datetime.now().isoformat(timespec="seconds"),
         "gex_profile": gex_df.to_dict(orient="records"),
     }
     with open(snap_path, "w", encoding="ascii") as f:
@@ -828,6 +800,172 @@ def cmd_patterns(days=5):
 
 
 # ---------------------------------------------------------------------------
+# Phase 4 -- Intraday compare (--compare TICKER)
+# ---------------------------------------------------------------------------
+
+def _list_snapshots(ticker):
+    """Return list of (filepath, mtime) for all snapshots of ticker, newest first."""
+    import glob
+    pattern = os.path.join(_logs_dir(), "snapshots", f"{ticker}_*.json")
+    files = glob.glob(pattern)
+    files_with_mtime = [(f, os.path.getmtime(f)) for f in files]
+    files_with_mtime.sort(key=lambda x: x[1], reverse=True)
+    return files_with_mtime
+
+
+def _load_snapshot(path):
+    with open(path, "r", encoding="ascii") as f:
+        return json.load(f)
+
+
+def _fmt_strike(val):
+    if val is None:
+        return "  --  "
+    return f"{val:.2f}"
+
+
+def _arrow(prev, curr):
+    if prev is None or curr is None:
+        return "?"
+    if curr > prev:
+        return "UP"
+    if curr < prev:
+        return "DN"
+    return "=="
+
+
+def cmd_compare(ticker):
+    """Compare the 2 most recent snapshots for ticker. Shows GEX/level migration."""
+    snaps = _list_snapshots(ticker)
+    if len(snaps) < 2:
+        print(f"  Need at least 2 snapshots for {ticker}, found {len(snaps)}.")
+        print(f"  Run: python tools/orion_gex.py --ticker {ticker}  (twice)")
+        return
+
+    new_path, _ = snaps[0]
+    old_path, _ = snaps[1]
+    new_snap = _load_snapshot(new_path)
+    old_snap = _load_snapshot(old_path)
+
+    new_meta = new_snap["meta"]
+    old_meta = old_snap["meta"]
+    new_ts = new_snap.get("timestamp", os.path.basename(new_path))
+    old_ts = old_snap.get("timestamp", os.path.basename(old_path))
+
+    # Time delta
+    try:
+        t_new = dt.datetime.fromisoformat(new_ts)
+        t_old = dt.datetime.fromisoformat(old_ts)
+        delta_min = int((t_new - t_old).total_seconds() / 60)
+        delta_str = f"{delta_min} min"
+    except (ValueError, TypeError):
+        delta_str = "?"
+
+    print(f"\n{'='*64}")
+    print(f"  ORION DIFF -- {ticker}  |  {old_ts} -> {new_ts}  ({delta_str})")
+    print(f"{'='*64}")
+
+    # Spot
+    s0 = old_meta["spot"]
+    s1 = new_meta["spot"]
+    spot_pct = (s1 / s0 - 1) * 100 if s0 else 0
+    print(f"  Spot:        {s0:>8.2f} -> {s1:>8.2f}   ({spot_pct:+.2f}%)")
+
+    # Walls + flip
+    for label, key in (("CALL_WALL", "call_wall"),
+                       ("PUT_WALL ", "put_wall"),
+                       ("GAMMA_FLIP", "gamma_flip"),
+                       ("MAX_GEX  ", "max_gex_strike")):
+        v0 = old_meta.get(key)
+        v1 = new_meta.get(key)
+        arrow = _arrow(v0, v1)
+        delta = ""
+        if v0 is not None and v1 is not None and v0 != v1:
+            delta = f"  {v1 - v0:+.2f}"
+        print(f"  {label}:  {_fmt_strike(v0):>8s} -> {_fmt_strike(v1):>8s}  [{arrow}]{delta}")
+
+    # Asymmetry
+    a0 = old_meta.get("asym")
+    a1 = new_meta.get("asym")
+    if a0 is not None and a1 is not None:
+        delta_a = a1 - a0
+        print(f"  Asimetria:   {a0:>8.2f} -> {a1:>8.2f}   ({delta_a:+.2f})")
+
+    # Per-strike NetGEX changes (top movers)
+    new_profile = {row["strike"]: row["net_gex"] for row in new_snap["gex_profile"]}
+    old_profile = {row["strike"]: row["net_gex"] for row in old_snap["gex_profile"]}
+    common = set(new_profile) & set(old_profile)
+    diffs = []
+    for strike in common:
+        change = new_profile[strike] - old_profile[strike]
+        if abs(change) > 0:
+            diffs.append((strike, old_profile[strike], new_profile[strike], change))
+    diffs.sort(key=lambda x: abs(x[3]), reverse=True)
+
+    print(f"\n  Top NetGEX changes per strike (top 8):")
+    print(f"  {'Strike':>8s}  {'Before':>14s}  {'After':>14s}  {'Delta':>14s}  Bar")
+    for strike, b, a, d in diffs[:8]:
+        bar_len = min(int(abs(d) / 1_000_000), 20)
+        bar = ("+" if d > 0 else "-") * bar_len
+        print(f"  {strike:>8.2f}  {b:>14,.0f}  {a:>14,.0f}  {d:>+14,.0f}  {bar}")
+
+    # Auto interpretation
+    print(f"\n  >>> INTERPRETACION <<<")
+    interp = []
+    # Spot moved significantly?
+    if abs(spot_pct) < 0.2:
+        interp.append("Spot estable")
+    elif spot_pct > 0:
+        interp.append(f"Spot SUBE {spot_pct:+.2f}%")
+    else:
+        interp.append(f"Spot BAJA {spot_pct:+.2f}%")
+
+    # MAX_GEX migration
+    mg0 = old_meta.get("max_gex_strike")
+    mg1 = new_meta.get("max_gex_strike")
+    if mg0 is not None and mg1 is not None and mg0 != mg1:
+        if mg1 > mg0:
+            interp.append(f"MAX_GEX migra ARRIBA ({mg0:.2f} -> {mg1:.2f}) -- peso institucional sube")
+        else:
+            interp.append(f"MAX_GEX migra ABAJO ({mg0:.2f} -> {mg1:.2f}) -- peso institucional baja")
+
+    # Wall migration
+    cw0 = old_meta.get("call_wall")
+    cw1 = new_meta.get("call_wall")
+    if cw0 is not None and cw1 is not None and cw0 != cw1:
+        if cw1 > cw0:
+            interp.append(f"CALL_WALL SUBE {cw0:.2f} -> {cw1:.2f} (techo se aleja, alcista)")
+        else:
+            interp.append(f"CALL_WALL BAJA {cw0:.2f} -> {cw1:.2f} (techo se acerca, bajista)")
+    pw0 = old_meta.get("put_wall")
+    pw1 = new_meta.get("put_wall")
+    if pw0 is not None and pw1 is not None and pw0 != pw1:
+        if pw1 > pw0:
+            interp.append(f"PUT_WALL SUBE {pw0:.2f} -> {pw1:.2f} (suelo se eleva, alcista)")
+        else:
+            interp.append(f"PUT_WALL BAJA {pw0:.2f} -> {pw1:.2f} (suelo cede, bajista)")
+
+    # Asymmetry shift
+    if a0 is not None and a1 is not None:
+        delta_a = a1 - a0
+        if abs(delta_a) >= 0.10:
+            if delta_a > 0:
+                interp.append(f"Asimetria sube {delta_a:+.2f} (sesgo se vuelve mas alcista)")
+            else:
+                interp.append(f"Asimetria baja {delta_a:+.2f} (sesgo se vuelve mas bajista)")
+
+    # Regime change
+    if old_meta.get("regime") != new_meta.get("regime"):
+        interp.append(f"REGIMEN CAMBIA: {old_meta.get('regime')} -> {new_meta.get('regime')}")
+
+    if not interp:
+        interp.append("Sin cambios significativos")
+    for line in interp:
+        print(f"  - {line}")
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Process / Main
 # ---------------------------------------------------------------------------
 
@@ -859,7 +997,6 @@ def process_ticker(ticker, expiry=None, do_plot=False, persist=True):
 
     print_levels(ticker, spot, levels, chosen_exp, gex_df, analysis)
     print_reading(ticker, spot, levels, analysis)
-    save_levels_csv(ticker, spot, levels, chosen_exp, gex_df)
 
     if persist and not data_ok:
         print(f"  History persistence SKIPPED (OI=0, would contaminate JSONL).")
@@ -894,6 +1031,8 @@ def main():
                         help="Show last 7 days history table for TICKER")
     parser.add_argument("--patterns", action="store_true",
                         help="Show patterns detected in last 5 days (all tickers)")
+    parser.add_argument("--compare", type=str, metavar="TICKER",
+                        help="Compare 2 most recent intraday snapshots for TICKER")
     parser.add_argument("--days", type=int, default=None,
                         help="Override day window for --history (default 7) "
                              "or --patterns (default 5)")
@@ -913,6 +1052,11 @@ def main():
         cmd_patterns(days=days)
         return
 
+    # Compare view (no fetch)
+    if args.compare:
+        cmd_compare(args.compare.upper())
+        return
+
     # Decide tickers
     if args.scan_altair:
         tickers = ALL_TICKERS
@@ -921,7 +1065,7 @@ def main():
     elif args.ticker:
         tickers = [args.ticker.upper()]
     else:
-        parser.error("Provide --ticker, --scan, --scan-altair, --history or --patterns")
+        parser.error("Provide --ticker, --scan, --scan-altair, --history, --patterns or --compare")
 
     print(f"\nORION GEX -- {dt.datetime.now().strftime('%Y-%m-%d %H:%M')} local")
     print(f"Tickers: {', '.join(tickers)}")
