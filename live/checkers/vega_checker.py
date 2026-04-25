@@ -378,6 +378,16 @@ class VEGAChecker(BaseChecker):
         spread = z_a - z_b
         forecast = self._compute_forecast(spread)
 
+        # Per-bar diagnostic log (BT vs live drift investigation, see
+        # context/VEGA_DIAG_PLAN.md). Emitted ONCE per H4 bar, before filters,
+        # so we capture every bar even when discarded by time/day/ATR filter.
+        self.logger.info(
+            f"[{self.config_name}] VEGA diag: t={bar_time_utc.isoformat()} "
+            f"close_a={close_a:.4f} sma_a={sma_a:.4f} atr_a={atr_a:.4f} z_a={z_a:.4f} "
+            f"close_b={close_b:.4f} sma_b={sma_b:.4f} atr_b={atr_b:.4f} z_b={z_b:.4f} "
+            f"spread={spread:.4f} forecast={forecast:.4f}"
+        )
+
         # Mark bar as processed BEFORE filters (avoid re-processing on rejection)
         self._last_processed_bar_time = bar_time_utc
 
