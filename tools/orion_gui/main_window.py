@@ -44,7 +44,20 @@ CORE_TICKERS = gex.CORE_TICKERS
 CONTEXT_TICKERS = gex.CONTEXT_TICKERS
 ALL_TICKERS = gex.ALL_TICKERS
 TOP_STRIKES_N = 5
-SPOT_REFRESH_MS = 1000
+SPOT_REFRESH_MS = 2000
+
+# Fixed price ratios for tickers where MT5 quotes a different
+# instrument than the GEX source (yfinance). The ratio converts the
+# MT5 quote into the underlying ETF coordinate system used by the
+# options chain.
+#   SPY = SPX500 / 10   (official US convention, exact)
+#   QQQ ~ NAS100 / 41.1 (approximate, drifts ~0.5% over time)
+# Stocks (NVDA, V, MSFT, ...) are not listed -> ratio 1.0 (MT5 raw,
+# full precision).
+FIXED_RATIOS = {
+    "SPY": 1.0 / 10.0,
+    "QQQ": 1.0 / 41.1,
+}
 
 LOG_BG = "#0d0d0d"
 LOG_FG = "#d0d0d0"
@@ -83,6 +96,14 @@ class OrionGuiMainWindow(QMainWindow):
         # Cache of last (levels, expiry, snapshot_dict) per ticker, used
         # to compute deltas to display on the chart.
         self._last_snapshots: Dict[str, dict] = {}
+
+        # Per-ticker price-scale ratio (snapshot_spot / mt5_spot).
+        # Needed because GEX chains use the underlying ETF/stock
+        # (e.g. QQQ ~ 667), while the broker quotes the corresponding
+        # CFD/index (e.g. NAS100 ~ 27438). The ratio is recomputed on
+        # every SCAN so live MT5 ticks are mapped into the same
+        # coordinate system as the snapshot levels.
+        self._price_ratio: Dict[str, float] = {}
 
         self._build_ui()
         self._apply_dark_palette()
@@ -253,14 +274,29 @@ class OrionGuiMainWindow(QMainWindow):
         ticker = self._current_ticker()
         if not ticker:
             return
-        spot = self._spot.get_spot(ticker)
-        if spot is None:
-            self._spot_label.setText(f"SPOT: -- ({ticker})")
+        mt5_sym = self._spot.resolve(ticker)
+        ba = self._spot.get_bid_ask(ticker)
+        sym_disp = mt5_sym if mt5_sym else ticker
+        if ba is None:
+            self._spot_label.setText(f"BID/ASK: -- [{sym_disp}]")
             self._spot_label.setStyleSheet("color: #888888;")
             return
-        self._spot_label.setText(f"SPOT: {spot:.2f} ({ticker})")
+        bid_raw, ask_raw = ba
+        ratio = self._price_ratio.get(ticker, 1.0)
+        bid = bid_raw * ratio
+        ask = ask_raw * ratio
+        spread = ask - bid
+        if abs(ratio - 1.0) < 1e-6:
+            self._spot_label.setText(
+                f"BID {bid:.2f} / ASK {ask:.2f} (sp {spread:.2f}) [{sym_disp}]"
+            )
+        else:
+            self._spot_label.setText(
+                f"BID {bid:.2f} / ASK {ask:.2f} "
+                f"(MT5 {bid_raw:.2f}/{ask_raw:.2f} x{ratio:.4f}) [{sym_disp}]"
+            )
         self._spot_label.setStyleSheet("color: #3aa0ff;")
-        self._chart.update_spot(spot)
+        self._chart.update_spot_bidask(bid, ask)
 
     # ---- chart wiring -----------------------------------------------
 
@@ -302,11 +338,21 @@ class OrionGuiMainWindow(QMainWindow):
             expiry_changed=expiry_changed,
         )
 
-        # Overlay the current live spot if we have one.
-        spot = self._spot.get_spot(ticker)
-        if spot is None:
-            spot = meta.get("spot")
-        self._chart.update_spot(spot)
+        # Apply fixed ratio if defined for this ticker; otherwise 1.0.
+        ratio = FIXED_RATIOS.get(ticker, 1.0)
+        self._price_ratio[ticker] = ratio
+        if ratio != 1.0:
+            self._append_log(
+                f"  [ratio] {ticker}: fixed ratio {ratio:.4f} "
+                f"(MT5 quote * ratio -> underlying coordinate)\n"
+            )
+
+        ba = self._spot.get_bid_ask(ticker)
+        snap_spot = meta.get("spot")
+        if ba is not None:
+            self._chart.update_spot_bidask(ba[0] * ratio, ba[1] * ratio)
+        elif snap_spot is not None:
+            self._chart.update_spot(snap_spot)
 
     @staticmethod
     def _extract_levels(meta: dict) -> Dict[str, float]:

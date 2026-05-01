@@ -1,8 +1,14 @@
 """Pyqtgraph chart widget for ORION GEX GUI.
 
 Displays a dark, time-less chart with horizontal lines for each GEX
-level. Y axis is price; X axis is hidden. Left-click drag on the
-price (Y) axis scales the price range (MT5-like behavior).
+level. Y axis is price (right-hand side, MT5-like); X axis is hidden.
+Left-click drag on the price axis scales the price range.
+
+Visual style is intentionally minimal and matches MT5:
+  - Lines are 1 px thin; the exact price is read from the right axis.
+  - Each line carries a small "tag" label anchored to the right edge
+    showing "NAME price (delta)".
+  - No grid, no x axis, dark background.
 
 Public API:
     GexChartWidget(parent=None)
@@ -11,14 +17,6 @@ Public API:
                       deltas: dict, expiry_changed: bool)
         update_spot(spot: float)
         clear_levels()
-
-Levels rendered (key -> color, style):
-    SPOT       blue solid 2
-    CALL_WALL  green solid 3
-    PUT_WALL   red solid 3
-    GAMMA_FLIP yellow dashed 2
-    MAX_GEX    cyan dotted 2
-    Top strikes: green dashed thin (above flip), red dashed thin (below)
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -32,15 +30,21 @@ import pyqtgraph as pg
 
 BG_COLOR = "#0d0d0d"
 FG_COLOR = "#d0d0d0"
-ASYM_FONT_SIZE = 14
-LABEL_FONT_SIZE = 9
 
+ASYM_FONT_SIZE = 12
+LABEL_FONT_SIZE = 8
+LINE_WIDTH = 1
+STRIKE_LINE_WIDTH = 1
+
+# Color per level (line + label tag).
 LEVEL_STYLES = {
-    "SPOT":       {"color": "#3aa0ff", "width": 2, "style": Qt.PenStyle.SolidLine},
-    "CALL_WALL":  {"color": "#22dd55", "width": 3, "style": Qt.PenStyle.SolidLine},
-    "PUT_WALL":   {"color": "#ee3344", "width": 3, "style": Qt.PenStyle.SolidLine},
-    "GAMMA_FLIP": {"color": "#ffcc33", "width": 2, "style": Qt.PenStyle.DashLine},
-    "MAX_GEX":    {"color": "#33ddee", "width": 2, "style": Qt.PenStyle.DotLine},
+    "SPOT":       {"color": "#3aa0ff", "style": Qt.PenStyle.SolidLine},
+    "BID":        {"color": "#2266aa", "style": Qt.PenStyle.SolidLine},
+    "ASK":        {"color": "#66bbff", "style": Qt.PenStyle.SolidLine},
+    "CALL_WALL":  {"color": "#22dd55", "style": Qt.PenStyle.SolidLine},
+    "PUT_WALL":   {"color": "#ee3344", "style": Qt.PenStyle.SolidLine},
+    "GAMMA_FLIP": {"color": "#ffcc33", "style": Qt.PenStyle.DashLine},
+    "MAX_GEX":    {"color": "#33ddee", "style": Qt.PenStyle.DotLine},
 }
 
 
@@ -68,8 +72,6 @@ class PriceAxisItem(pg.AxisItem):
             return
         dy = ev.pos().y() - self._last_y
         self._last_y = ev.pos().y()
-        # Drag down (dy > 0) -> compress price (zoom out, factor > 1).
-        # Drag up   (dy < 0) -> expand price  (zoom in,  factor < 1).
         factor = 1.0 + dy * 0.005
         factor = max(0.2, min(5.0, factor))
         vb = self.linkedView()
@@ -77,12 +79,42 @@ class PriceAxisItem(pg.AxisItem):
             vb.scaleBy(y=factor, x=1.0)
 
 
+# Helper: build an InfiniteLine with an embedded right-anchored label.
+
+def _make_line(price: float, color: str, style, width: int,
+               text: str) -> pg.InfiniteLine:
+    pen = QPen(QColor(color))
+    pen.setWidth(width)
+    pen.setStyle(style)
+    pen.setCosmetic(True)
+    label_opts = {
+        "position": 1.0,                 # right-edge "tag"
+        "color": color,
+        "movable": False,
+        "fill": (13, 13, 13, 200),       # dark fill so text is readable
+        "border": pg.mkPen(color, width=1),
+        "anchors": [(1, 0.5), (1, 0.5)],
+    }
+    line = pg.InfiniteLine(
+        pos=price,
+        angle=0,
+        pen=pen,
+        label=text,
+        labelOpts=label_opts,
+    )
+    if line.label is not None:
+        f = QFont()
+        f.setPointSize(LABEL_FONT_SIZE)
+        f.setBold(True)
+        line.label.textItem.setFont(f)
+    return line
+
+
 # Main chart widget ----------------------------------------------------
 
 class GexChartWidget(pg.PlotWidget):
 
     def __init__(self, parent=None):
-        # Custom Y axis on the right (where MT5 keeps it).
         right_axis = PriceAxisItem(orientation="right")
         super().__init__(parent=parent, axisItems={"right": right_axis})
 
@@ -95,24 +127,34 @@ class GexChartWidget(pg.PlotWidget):
 
         self.setMouseEnabled(x=False, y=True)
         self.hideButtons()
-        self.showGrid(x=False, y=True, alpha=0.15)
+        self.showGrid(x=False, y=False)
+        self.getPlotItem().getViewBox().setDefaultPadding(0.02)
 
         self._items: List[pg.GraphicsObject] = []
         self._spot_line: Optional[pg.InfiniteLine] = None
-        self._spot_label: Optional[pg.TextItem] = None
-        self._asym_label: pg.TextItem = pg.TextItem("ASYM --", anchor=(1, 0))
-        font = QFont()
-        font.setPointSize(ASYM_FONT_SIZE)
-        font.setBold(True)
-        self._asym_label.setFont(font)
-        self.addItem(self._asym_label)
-        self._expiry_label: pg.TextItem = pg.TextItem("", anchor=(0, 0))
+        self._bid_line: Optional[pg.InfiniteLine] = None
+        self._ask_line: Optional[pg.InfiniteLine] = None
+        self._spread_region: Optional[pg.LinearRegionItem] = None
+
+        # Overlay labels (asymmetry top-right, expiry-changed top-left).
+        self._asym_label = pg.TextItem("ASYM --", anchor=(1, 0))
+        f = QFont()
+        f.setPointSize(ASYM_FONT_SIZE)
+        f.setBold(True)
+        self._asym_label.setFont(f)
+        self.addItem(self._asym_label, ignoreBounds=True)
+
+        self._expiry_label = pg.TextItem("", anchor=(0, 0))
         self._expiry_label.setColor(QColor("#ee3344"))
         ef = QFont()
         ef.setPointSize(ASYM_FONT_SIZE)
         ef.setBold(True)
         self._expiry_label.setFont(ef)
-        self.addItem(self._expiry_label)
+        self.addItem(self._expiry_label, ignoreBounds=True)
+
+        vb = self.getViewBox()
+        if vb is not None:
+            vb.sigRangeChanged.connect(self._reposition_overlay_labels)
 
     # ---- public API --------------------------------------------------
 
@@ -123,12 +165,14 @@ class GexChartWidget(pg.PlotWidget):
             except Exception:
                 pass
         self._items = []
-        if self._spot_line is not None:
-            self.removeItem(self._spot_line)
-            self._spot_line = None
-        if self._spot_label is not None:
-            self.removeItem(self._spot_label)
-            self._spot_label = None
+        for attr in ("_spot_line", "_bid_line", "_ask_line", "_spread_region"):
+            obj = getattr(self, attr, None)
+            if obj is not None:
+                try:
+                    self.removeItem(obj)
+                except Exception:
+                    pass
+                setattr(self, attr, None)
 
     def update_levels(
         self,
@@ -139,16 +183,14 @@ class GexChartWidget(pg.PlotWidget):
         deltas: Dict[str, Optional[float]],
         expiry_changed: bool,
     ) -> None:
-        """Redraw all GEX level lines + asymmetry label."""
         self.clear_levels()
 
         for name in ("CALL_WALL", "PUT_WALL", "GAMMA_FLIP", "MAX_GEX"):
             price = levels.get(name)
             if price is None:
                 continue
-            self._add_level_line(name, price, deltas.get(name))
+            self._add_named_level(name, price, deltas.get(name))
 
-        # Top strikes (excluding the named ones already drawn).
         named_prices = {levels.get(n) for n in
                         ("CALL_WALL", "PUT_WALL", "GAMMA_FLIP", "MAX_GEX")}
         for strike, _net in top_strikes:
@@ -156,12 +198,10 @@ class GexChartWidget(pg.PlotWidget):
                 continue
             self._add_strike_line(strike, gamma_flip)
 
-        # Asymmetry label (top-right).
         if asym is None:
             self._asym_label.setText("ASYM --")
             self._asym_label.setColor(QColor("#888888"))
         else:
-            txt = f"ASYM {asym:.2f}"
             color = "#888888"
             if asym >= 1.5:
                 color = "#22dd55"
@@ -171,71 +211,101 @@ class GexChartWidget(pg.PlotWidget):
                 color = "#88dd88"
             else:
                 color = "#dd8888"
-            self._asym_label.setText(txt)
+            self._asym_label.setText(f"ASYM {asym:.2f}")
             self._asym_label.setColor(QColor(color))
 
-        if expiry_changed:
-            self._expiry_label.setText("EXPIRY CHANGED")
-        else:
-            self._expiry_label.setText("")
+        self._expiry_label.setText("EXPIRY CHANGED" if expiry_changed else "")
 
-        self._reposition_overlay_labels()
         self._auto_range(levels, top_strikes)
+        self._reposition_overlay_labels()
 
     def update_spot(self, spot: Optional[float]) -> None:
-        """Update or create the live spot line + label."""
+        """Update the single mid SPOT line (used when bid/ask unavailable)."""
         if spot is None:
             return
+        text = f"SPOT {spot:.2f}"
         style = LEVEL_STYLES["SPOT"]
-        pen = QPen(QColor(style["color"]))
-        pen.setWidth(style["width"])
-        pen.setStyle(style["style"])
         if self._spot_line is None:
-            self._spot_line = pg.InfiniteLine(pos=spot, angle=0, pen=pen)
+            self._spot_line = _make_line(
+                spot, style["color"], style["style"],
+                LINE_WIDTH, text,
+            )
             self.addItem(self._spot_line)
         else:
             self._spot_line.setValue(spot)
+            if self._spot_line.label is not None:
+                self._spot_line.label.setText(text)
 
-        label_txt = f"SPOT {spot:.2f}"
-        if self._spot_label is None:
-            self._spot_label = pg.TextItem(label_txt, anchor=(0, 1))
-            self._spot_label.setColor(QColor(style["color"]))
-            f = QFont()
-            f.setPointSize(LABEL_FONT_SIZE)
-            f.setBold(True)
-            self._spot_label.setFont(f)
-            self.addItem(self._spot_label)
+    def update_spot_bidask(
+        self, bid: Optional[float], ask: Optional[float]
+    ) -> None:
+        """Render bid + ask as two thin lines with a shaded spread region."""
+        if bid is None or ask is None:
+            return
+        if bid > ask:
+            bid, ask = ask, bid
+        spread = ask - bid
+
+        bid_text = f"BID {bid:.2f}"
+        ask_text = f"ASK {ask:.2f} (sp {spread:.2f})"
+        bs = LEVEL_STYLES["BID"]
+        as_ = LEVEL_STYLES["ASK"]
+
+        # Drop a single SPOT line if it was created earlier.
+        if self._spot_line is not None:
+            try:
+                self.removeItem(self._spot_line)
+            except Exception:
+                pass
+            self._spot_line = None
+
+        if self._bid_line is None:
+            self._bid_line = _make_line(
+                bid, bs["color"], bs["style"], LINE_WIDTH, bid_text,
+            )
+            self.addItem(self._bid_line)
         else:
-            self._spot_label.setText(label_txt)
-        vb = self.getViewBox()
-        if vb is not None:
-            xrange = vb.viewRange()[0]
-            self._spot_label.setPos(xrange[0], spot)
+            self._bid_line.setValue(bid)
+            if self._bid_line.label is not None:
+                self._bid_line.label.setText(bid_text)
+
+        if self._ask_line is None:
+            self._ask_line = _make_line(
+                ask, as_["color"], as_["style"], LINE_WIDTH, ask_text,
+            )
+            self.addItem(self._ask_line)
+        else:
+            self._ask_line.setValue(ask)
+            if self._ask_line.label is not None:
+                self._ask_line.label.setText(ask_text)
+
+        # Shaded horizontal band between bid and ask.
+        brush = pg.mkBrush(58, 160, 255, 40)
+        if self._spread_region is None:
+            self._spread_region = pg.LinearRegionItem(
+                values=(bid, ask),
+                orientation="horizontal",
+                brush=brush,
+                movable=False,
+            )
+            self._spread_region.setZValue(-10)
+            self.addItem(self._spread_region)
+        else:
+            self._spread_region.setRegion((bid, ask))
 
     # ---- internal helpers --------------------------------------------
 
-    def _add_level_line(
+    def _add_named_level(
         self, name: str, price: float, delta: Optional[float]
     ) -> None:
         style = LEVEL_STYLES[name]
-        pen = QPen(QColor(style["color"]))
-        pen.setWidth(style["width"])
-        pen.setStyle(style["style"])
-        line = pg.InfiniteLine(pos=price, angle=0, pen=pen)
+        delta_str = self._fmt_delta(delta)
+        text = f"{name} {price:.2f} {delta_str}".rstrip()
+        line = _make_line(
+            price, style["color"], style["style"], LINE_WIDTH, text,
+        )
         self.addItem(line)
         self._items.append(line)
-
-        delta_str = self._fmt_delta(delta)
-        text = f"{name} {price:.2f} {delta_str}"
-        label = pg.TextItem(text, anchor=(0, 1))
-        label.setColor(QColor(style["color"]))
-        f = QFont()
-        f.setPointSize(LABEL_FONT_SIZE)
-        f.setBold(True)
-        label.setFont(f)
-        label.setPos(0, price)
-        self.addItem(label)
-        self._items.append(label)
 
     def _add_strike_line(
         self, strike: float, gamma_flip: Optional[float]
@@ -246,23 +316,15 @@ class GexChartWidget(pg.PlotWidget):
             color = "#226633"
         else:
             color = "#662233"
-        pen = QPen(QColor(color))
-        pen.setWidth(1)
-        pen.setStyle(Qt.PenStyle.DashLine)
-        line = pg.InfiniteLine(pos=strike, angle=0, pen=pen)
+        line = _make_line(
+            strike, color, Qt.PenStyle.DashLine,
+            STRIKE_LINE_WIDTH, f"{strike:.2f}",
+        )
         self.addItem(line)
         self._items.append(line)
 
-        label = pg.TextItem(f"{strike:.2f}", anchor=(0, 1))
-        label.setColor(QColor(color))
-        f = QFont()
-        f.setPointSize(LABEL_FONT_SIZE - 1)
-        label.setFont(f)
-        label.setPos(0, strike)
-        self.addItem(label)
-        self._items.append(label)
-
-    def _fmt_delta(self, delta: Optional[float]) -> str:
+    @staticmethod
+    def _fmt_delta(delta: Optional[float]) -> str:
         if delta is None:
             return ""
         if abs(delta) < 1e-9:
@@ -270,13 +332,15 @@ class GexChartWidget(pg.PlotWidget):
         sign = "+" if delta > 0 else ""
         return f"({sign}{delta:.2f})"
 
-    def _reposition_overlay_labels(self) -> None:
+    def _reposition_overlay_labels(self, *_args, **_kw) -> None:
         vb = self.getViewBox()
         if vb is None:
             return
         (xmin, xmax), (ymin, ymax) = vb.viewRange()
-        self._asym_label.setPos(xmax, ymax)
-        self._expiry_label.setPos(xmin, ymax)
+        xpad = (xmax - xmin) * 0.01
+        ypad = (ymax - ymin) * 0.01
+        self._asym_label.setPos(xmax - xpad, ymax - ypad)
+        self._expiry_label.setPos(xmin + xpad, ymax - ypad)
 
     def _auto_range(
         self,
