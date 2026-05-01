@@ -19,6 +19,8 @@ Usage (history / patterns):
     python tools/orion_gex.py --history NVDA         # last N days table
     python tools/orion_gex.py --patterns             # detected events last 5d
 
+python tools/orion_gex.py --compare NVDA
+
 Outputs:
     logs/orion/history.jsonl                            -- daily history (1 line/ticker/day, last-write-wins)
     logs/orion/snapshots/{TICKER}_{YYYYMMDD_HHMM}.json  -- raw GEX snapshot per run (intraday)
@@ -41,7 +43,7 @@ from scipy.stats import norm
 # Constants -- ticker tiers for --scan-altair
 # ---------------------------------------------------------------------------
 
-CORE_TICKERS = ["JPM", "NVDA", "GOOGL", "V", "ALB", "WDC", "GS"]
+CORE_TICKERS = ["JPM", "NVDA", "GOOGL", "V", "ALB", "WDC", "GS", "AMZN", "META", "MSFT", "TSLA"]
 CONTEXT_TICKERS = ["SPY", "QQQ"]
 ALL_TICKERS = CORE_TICKERS + CONTEXT_TICKERS
 
