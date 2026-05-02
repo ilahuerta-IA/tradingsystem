@@ -301,13 +301,21 @@ class VEGAChecker(BaseChecker):
         self,
         df: pd.DataFrame,
         reference_df: Optional[pd.DataFrame] = None,
+        *,
+        dense_df_a: Optional[pd.DataFrame] = None,
+        dense_df_b: Optional[pd.DataFrame] = None,
     ) -> Signal:
         """
         Check for VEGA trading signal.
 
         Args:
-            df: Leader index H4 bars (SP500/NDX) — "Index A" in BT
-            reference_df: Traded target H4 bars (NI225/GDAXI) — "Index B" in BT
+            df: Leader index H4 bars (SP500/NDX) -- "Index A" in BT
+            reference_df: Traded target H4 bars (NI225/GDAXI) -- "Index B" in BT
+            dense_df_a: Optional H4 bars for leader rebuilt from M1 (Step 5).
+                When provided, ATR(24) for the leader z-score is computed
+                from this dense feed instead of df. close/SMA still come
+                from df. Both atr_a (M5->H4) and atr_a_dense are logged.
+            dense_df_b: Same as dense_df_a but for the traded reference.
 
         Returns:
             Signal with direction, entry/SL/TP, and metadata including forecast
@@ -360,31 +368,70 @@ class VEGAChecker(BaseChecker):
         df_closed = df
         ref_closed = reference_df
 
-        # Index A (leader) — SMA, ATR, z-score
+        # Index A (leader) -- SMA, ATR, z-score
         sma_a = self._calculate_sma(df_closed["close"], self.sma_period)
         atr_a = self._calculate_atr(df_closed, self.atr_period)
         close_a = float(df_closed["close"].iloc[-1])
 
-        # Index B (traded target) — SMA, ATR, z-score
+        # Index B (traded target) -- SMA, ATR, z-score
         sma_b = self._calculate_sma(ref_closed["close"], self.sma_period)
         atr_b = self._calculate_atr(ref_closed, self.atr_period)
         close_b = float(ref_closed["close"].iloc[-1])
 
-        if math.isnan(atr_a) or math.isnan(atr_b) or atr_a <= 0 or atr_b <= 0:
-            return self._create_no_signal(f"ATR invalid: A={atr_a}, B={atr_b}")
+        # Step 5: dense H4 ATR (M1->H4). Used for z-score when both dense
+        # frames provided AND warmup is sufficient. Legacy atr_a/b are still
+        # logged for drift comparison via cross-join (see
+        # context/VEGA_DIAG_PLAN.md PASO 5).
+        atr_a_dense = float("nan")
+        atr_b_dense = float("nan")
+        atr_a_eff = atr_a
+        atr_b_eff = atr_b
+        if (
+            dense_df_a is not None and not dense_df_a.empty
+            and dense_df_b is not None and not dense_df_b.empty
+            and len(dense_df_a) >= self.atr_period + 5
+            and len(dense_df_b) >= self.atr_period + 5
+        ):
+            try:
+                atr_a_dense = self._calculate_atr(dense_df_a, self.atr_period)
+                atr_b_dense = self._calculate_atr(dense_df_b, self.atr_period)
+                if (
+                    not math.isnan(atr_a_dense) and not math.isnan(atr_b_dense)
+                    and atr_a_dense > 0 and atr_b_dense > 0
+                ):
+                    atr_a_eff = atr_a_dense
+                    atr_b_eff = atr_b_dense
+                else:
+                    self.logger.warning(
+                        f"[{self.config_name}] Dense ATR invalid "
+                        f"(A={atr_a_dense}, B={atr_b_dense}); falling back to M5->H4"
+                    )
+            except Exception as e:
+                self.logger.warning(
+                    f"[{self.config_name}] Dense ATR calc failed ({e}); "
+                    "falling back to M5->H4"
+                )
 
-        z_a = self._compute_zscore(close_a, sma_a, atr_a)
-        z_b = self._compute_zscore(close_b, sma_b, atr_b)
+        if math.isnan(atr_a_eff) or math.isnan(atr_b_eff) or atr_a_eff <= 0 or atr_b_eff <= 0:
+            return self._create_no_signal(
+                f"ATR invalid: A={atr_a_eff}, B={atr_b_eff}"
+            )
+
+        z_a = self._compute_zscore(close_a, sma_a, atr_a_eff)
+        z_b = self._compute_zscore(close_b, sma_b, atr_b_eff)
         spread = z_a - z_b
         forecast = self._compute_forecast(spread)
 
         # Per-bar diagnostic log (BT vs live drift investigation, see
         # context/VEGA_DIAG_PLAN.md). Emitted ONCE per H4 bar, before filters,
         # so we capture every bar even when discarded by time/day/ATR filter.
+        # Step 5: atr_a_dense / atr_b_dense added (NaN when dense not used).
         self.logger.info(
             f"[{self.config_name}] VEGA diag: t={bar_time_utc.isoformat()} "
-            f"close_a={close_a:.4f} sma_a={sma_a:.4f} atr_a={atr_a:.4f} z_a={z_a:.4f} "
-            f"close_b={close_b:.4f} sma_b={sma_b:.4f} atr_b={atr_b:.4f} z_b={z_b:.4f} "
+            f"close_a={close_a:.4f} sma_a={sma_a:.4f} atr_a={atr_a:.4f} "
+            f"atr_a_dense={atr_a_dense:.4f} z_a={z_a:.4f} "
+            f"close_b={close_b:.4f} sma_b={sma_b:.4f} atr_b={atr_b:.4f} "
+            f"atr_b_dense={atr_b_dense:.4f} z_b={z_b:.4f} "
             f"spread={spread:.4f} forecast={forecast:.4f}"
         )
 

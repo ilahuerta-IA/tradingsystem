@@ -127,6 +127,28 @@ SYMBOL_MAP = {
 # This set identifies configs where the executor uses reference_symbol for orders.
 VEGA_CONFIGS = {"NI225_VEGA", "GDAXI_VEGA", "NDAXI_VEGA"}
 
+# -----------------------------------------------------------------------------
+# VEGA Dense H4 ATR (Step 5, see context/VEGA_DIAG_PLAN.md)
+# -----------------------------------------------------------------------------
+# Cross-join 1C confirmed ATR drift 7-8% vs BT comes from M5->H4 high/low
+# under-sampling on free MT5 feed. Pulling M1 (5x more samples per H4 bar)
+# and resampling M1->H4 only for the ATR z-score reduces the bias while
+# keeping close/SMA/exits on the proven M5->H4 path.
+#
+# Behavior:
+#   - VEGA_USE_DENSE_ATR=True  -> multi_monitor fetches M1 for VEGA leader
+#                                 + reference symbols, resamples to H4 with
+#                                 origin='epoch', passes as dense_df_a/b to
+#                                 vega_checker.check_signal(); ATR for
+#                                 z-score uses dense feed. Diag log includes
+#                                 BOTH atr_a/b and atr_a_dense/b_dense.
+#   - VEGA_USE_DENSE_ATR=False -> legacy behavior (M5->H4 ATR everywhere).
+#                                 Use to rollback fast without redeploy.
+VEGA_USE_DENSE_ATR = True
+# Lookback days of M1 needed for stable Wilder ATR(24) on H4
+# (24 H4 bars warmup + ~5 days margin for weekends/holidays).
+VEGA_DENSE_ATR_LOOKBACK_DAYS = 11
+
 # ALTAIR configs: single-feed CFD stocks with per-ticker TF.
 # The checker reads params from config/settings_altair.py (ALTAIR_STRATEGIES_CONFIG).
 ALTAIR_CONFIGS = {"JPM_ALTAIR", "NVDA_ALTAIR", "GOOGL_ALTAIR", "V_ALTAIR", "ALB_ALTAIR", "WDC_ALTAIR", "GS_15m_ALTAIR"}

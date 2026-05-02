@@ -39,6 +39,8 @@ from .bot_settings import (
     VEGA_CONFIGS,
     ALTAIR_CONFIGS,
     ALTAIR_LIVE_TF,
+    VEGA_USE_DENSE_ATR,
+    VEGA_DENSE_ATR_LOOKBACK_DAYS,
 )
 from .connector import MT5Connector
 from .data_provider import DataProvider, Timeframe
@@ -1108,11 +1110,69 @@ class MultiStrategyMonitor:
         resampled = resampled.reset_index()
         return resampled
 
+    def _get_dense_h4_for_vega(
+        self, bt_symbol: str
+    ) -> Optional[pd.DataFrame]:
+        """Build a dense H4 DataFrame from M1 broker bars (Step 5).
+
+        Pulls M1 bars (lookback configured in bot_settings) and resamples
+        to H4 with origin='epoch' so the result aligns to the same UTC
+        boundaries (00:00, 04:00 ...) as the M5->H4 pipeline used for
+        close/SMA. The dense H4 is intended ONLY for Wilder ATR(24) in
+        vega_checker; it captures high/low extremes the M5 feed misses
+        on the free MT5 broker.
+
+        Cached per checkpoint (self._dense_h4_cache) to avoid double M1
+        fetch when the same symbol acts as both leader and reference
+        across configs.
+
+        Returns None on failure; caller falls back to legacy M5->H4 ATR.
+        """
+        if not VEGA_USE_DENSE_ATR:
+            return None
+        cache = getattr(self, "_dense_h4_cache", None)
+        if cache is None:
+            cache = {}
+            self._dense_h4_cache = cache
+        if bt_symbol in cache:
+            return cache[bt_symbol]
+        try:
+            broker_symbol = self._map_symbol(bt_symbol)
+            count = int(VEGA_DENSE_ATR_LOOKBACK_DAYS) * 1440
+            m1_bars = self.data_provider.get_bars(
+                symbol=broker_symbol,
+                timeframe=Timeframe.M1,
+                count=count,
+            )
+            if m1_bars is None or m1_bars.empty:
+                self.logger.warning(
+                    f"[VEGA dense] No M1 data for {broker_symbol}"
+                )
+                cache[bt_symbol] = None
+                return None
+            dense_h4 = self._resample_m5_to_tf(m1_bars, 240)
+            if dense_h4 is None or dense_h4.empty:
+                self.logger.warning(
+                    f"[VEGA dense] M1->H4 resample empty for {broker_symbol}"
+                )
+                cache[bt_symbol] = None
+                return None
+            cache[bt_symbol] = dense_h4
+            return dense_h4
+        except Exception as e:
+            self.logger.error(
+                f"[VEGA dense] Failed to build dense H4 for {bt_symbol}: {e}"
+            )
+            cache[bt_symbol] = None
+            return None
+
     def _process_candle(self):
         """
         Process the closed candle for all active checkers.
         """
         self.state = MonitorState.CHECKING_SIGNALS
+        # Reset per-checkpoint dense H4 cache (Step 5).
+        self._dense_h4_cache = {}
         
         # Fetch data for each symbol once
         symbol_data: Dict[str, Any] = {}
@@ -1278,6 +1338,18 @@ class MultiStrategyMonitor:
                     reference_bars = self._resample_m5_to_h4_utc(reference_bars)
                     if reference_bars is None or reference_bars.empty:
                         continue
+                # Step 5: build dense H4 from M1 for ATR z-score only.
+                # Cached per checkpoint via _get_dense_h4_for_vega.
+                if VEGA_USE_DENSE_ATR:
+                    dense_a = self._get_dense_h4_for_vega(symbol)
+                    dense_b = (
+                        self._get_dense_h4_for_vega(reference_symbol)
+                        if reference_symbol
+                        else None
+                    )
+                else:
+                    dense_a = None
+                    dense_b = None
 
             # ALTAIR: resample M5 broker bars to per-ticker TF (15m/30m/H1).
             # Each ticker has its own timeframe defined in ALTAIR_LIVE_TF.
@@ -1320,7 +1392,15 @@ class MultiStrategyMonitor:
                 
                 # Pass D1 data to ALTAIR for regime computation
                 d1_df = altair_d1_data.get(symbol) if config_name in ALTAIR_CONFIGS else None
-                self._check_and_execute(config_name, checker, traded_bt_symbol, bars, reference_bars, d1_df=d1_df)
+                # Step 5: forward dense H4 (M1->H4) to VEGA for ATR z-score.
+                vega_dense_a = dense_a if config_name in VEGA_CONFIGS else None
+                vega_dense_b = dense_b if config_name in VEGA_CONFIGS else None
+                self._check_and_execute(
+                    config_name, checker, traded_bt_symbol, bars, reference_bars,
+                    d1_df=d1_df,
+                    dense_df_a=vega_dense_a,
+                    dense_df_b=vega_dense_b,
+                )
             except Exception as e:
                 self.stats.errors_count += 1
                 self.logger.error(
@@ -1342,6 +1422,8 @@ class MultiStrategyMonitor:
         bars: Any,
         reference_bars: Any = None,
         d1_df: Any = None,
+        dense_df_a: Any = None,
+        dense_df_b: Any = None,
     ):
         """
         Check signal and execute if valid.
@@ -1353,10 +1435,18 @@ class MultiStrategyMonitor:
             bars: OHLCV DataFrame
             reference_bars: Reference symbol DataFrame (for GEMINI dual-feed)
             d1_df: D1 bars for ALTAIR regime computation (optional)
+            dense_df_a: VEGA dense H4 for leader symbol (M1->H4, ATR only)
+            dense_df_b: VEGA dense H4 for reference symbol (M1->H4, ATR only)
         """
         # Check for signal (pass reference_bars for dual-feed strategies)
         if reference_bars is not None:
-            signal = checker.check_signal(bars, reference_bars)
+            if config_name in VEGA_CONFIGS:
+                signal = checker.check_signal(
+                    bars, reference_bars,
+                    dense_df_a=dense_df_a, dense_df_b=dense_df_b,
+                )
+            else:
+                signal = checker.check_signal(bars, reference_bars)
         elif d1_df is not None:
             signal = checker.check_signal(bars, d1_df=d1_df)
         else:

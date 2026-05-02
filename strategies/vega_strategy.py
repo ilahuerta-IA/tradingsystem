@@ -103,6 +103,24 @@ class EntryExitLines(bt.Indicator):
         pass
 
 
+class MADCloseDiff(bt.Indicator):
+    """Mean Absolute Deviation of close-to-close differences.
+
+    mad[t] = mean(|close[i] - close[i-1]|) over the last `period` bars.
+
+    Used as alternative volatility estimator for z-score denominator,
+    avoiding high/low broker-noise sensitivity that plagues classic
+    Wilder ATR (see context/VEGA_DIAG_PLAN.md, Step 4 H2 verdict).
+    """
+    lines = ('mad',)
+    params = dict(period=24)
+    plotinfo = dict(plot=False)
+
+    def __init__(self):
+        absdiff = abs(self.data.close - self.data.close(-1))
+        self.lines.mad = bt.ind.SMA(absdiff, period=self.p.period)
+
+
 # =============================================================================
 # VEGA STRATEGY
 # =============================================================================
@@ -120,6 +138,13 @@ class VEGAStrategy(bt.Strategy):
         # === Z-SCORE SETTINGS ===
         sma_period=24,              # SMA period in H1 bars (24 = 24 hours)
         atr_period=24,              # ATR period in H1 bars
+        zscore_atr_method='wilder', # 'wilder' (default, classic ATR) or
+                                    # 'mad_close' (mean abs close-diff,
+                                    # robust to broker high/low noise).
+                                    # See context/VEGA_DIAG_PLAN.md Step 4.
+                                    # Only affects z-score denominator;
+                                    # protective stops and ATR filters
+                                    # keep using Wilder regardless.
 
         # === SIGNAL ===
         dead_zone=1.0,              # Minimum spread to generate signal
@@ -196,6 +221,28 @@ class VEGAStrategy(bt.Strategy):
         self.atr_a = bt.ind.ATR(self.data_a, period=self.p.atr_period)
         self.sma_b = bt.ind.SMA(self.data_b.close, period=self.p.sma_period)
         self.atr_b = bt.ind.ATR(self.data_b, period=self.p.atr_period)
+
+        # Z-score volatility estimator (opt-in alternative to Wilder ATR).
+        # Default 'wilder' -> aliases to self.atr_a/b (zero behavior change).
+        # 'mad_close' -> mean(|close[i]-close[i-1]|) over atr_period bars,
+        # ignores high/low to avoid broker noise (see VEGA_DIAG_PLAN.md).
+        method = self.p.zscore_atr_method
+        if method == 'mad_close':
+            self._zscore_atr_a = MADCloseDiff(self.data_a,
+                                              period=self.p.atr_period)
+            self._zscore_atr_b = MADCloseDiff(self.data_b,
+                                              period=self.p.atr_period)
+            self._zscore_atr_a.plotinfo.plot = False
+            self._zscore_atr_b.plotinfo.plot = False
+            print(f'[VEGA] zscore_atr_method=mad_close (opt-in)')
+        elif method == 'wilder':
+            self._zscore_atr_a = self.atr_a
+            self._zscore_atr_b = self.atr_b
+        else:
+            raise ValueError(
+                f"Unknown zscore_atr_method '{method}'. "
+                f"Use 'wilder' or 'mad_close'."
+            )
 
         # Hide indicators on reference
         self.sma_a.plotinfo.plot = False
@@ -321,9 +368,14 @@ class VEGAStrategy(bt.Strategy):
         return (close_val - sma_val) / atr_val
 
     def _compute_spread(self):
-        """Compute spread = z_A - z_B."""
-        z_a = self._compute_zscore(self.data_a.close, self.sma_a, self.atr_a)
-        z_b = self._compute_zscore(self.data_b.close, self.sma_b, self.atr_b)
+        """Compute spread = z_A - z_B.
+
+        Uses self._zscore_atr_a/b (Wilder by default, MAD-close if opt-in).
+        """
+        z_a = self._compute_zscore(self.data_a.close, self.sma_a,
+                                   self._zscore_atr_a)
+        z_b = self._compute_zscore(self.data_b.close, self.sma_b,
+                                   self._zscore_atr_b)
         return z_a - z_b, z_a, z_b
 
     def _compute_forecast(self, spread):
@@ -359,16 +411,20 @@ class VEGAStrategy(bt.Strategy):
             self._diag_file = None
 
     def _write_diag_row(self, dt, z_a, z_b, spread, forecast):
-        """Write one row matching live `VEGA diag:` log format."""
+        """Write one row matching live `VEGA diag:` log format.
+
+        Writes the EFFECTIVE atr used for z-score (Wilder or MAD-close),
+        so cross-join with vega_diff_diag.py compares apples to apples.
+        """
         if self._diag_file is None:
             return
         try:
             close_a = float(self.data_a.close[0])
             sma_a = float(self.sma_a[0])
-            atr_a = float(self.atr_a[0])
+            atr_a = float(self._zscore_atr_a[0])
             close_b = float(self.data_b.close[0])
             sma_b = float(self.sma_b[0])
-            atr_b = float(self.atr_b[0])
+            atr_b = float(self._zscore_atr_b[0])
             self._diag_file.write(
                 f"{dt.isoformat()},"
                 f"{close_a:.4f},{sma_a:.4f},{atr_a:.4f},{z_a:.4f},"
