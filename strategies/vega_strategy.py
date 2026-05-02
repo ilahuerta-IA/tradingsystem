@@ -169,6 +169,10 @@ class VEGAStrategy(bt.Strategy):
         # === DEBUG & REPORTING ===
         print_signals=False,
         export_reports=True,
+        export_diag=False,          # If True, write per-bar CSV with
+                                    # close/sma/atr/z/spread/forecast for
+                                    # both indices. For BT vs live drift
+                                    # diagnostic. Disable on long BTs.
 
         # === PLOT ===
         plot_reference=False,       # Show Index A chart
@@ -241,6 +245,10 @@ class VEGAStrategy(bt.Strategy):
         self.trade_reports = []
         self.trade_report_file = None
         self._init_trade_reporting()
+
+        # Diagnostic CSV (drift BT vs live, see context/VEGA_DIAG_PLAN.md)
+        self._diag_file = None
+        self._init_diag_export()
 
     # =========================================================================
     # DST OFFSET (ported from Luyten)
@@ -325,6 +333,50 @@ class VEGAStrategy(bt.Strategy):
         """
         raw = spread / self.p.dead_zone * self.p.max_forecast
         return max(-self.p.max_forecast, min(self.p.max_forecast, raw))
+
+    # =========================================================================
+    # DIAG CSV (BT vs live drift diagnostic, see context/VEGA_DIAG_PLAN.md)
+    # =========================================================================
+
+    def _init_diag_export(self):
+        """Open the per-bar diagnostic CSV if export_diag is True."""
+        if not self.p.export_diag:
+            return
+        try:
+            report_dir = Path("logs")
+            report_dir.mkdir(exist_ok=True)
+            cfg = getattr(self.data_b, '_name', 'B')
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            diag_path = report_dir / f"VEGA_diag_{cfg}_{timestamp}.csv"
+            self._diag_file = open(diag_path, 'w', encoding='ascii')
+            self._diag_file.write(
+                "timestamp_utc,close_a,sma_a,atr_a,z_a,"
+                "close_b,sma_b,atr_b,z_b,spread,forecast\n"
+            )
+            print(f"[VEGA] Diag CSV: {diag_path}")
+        except Exception as e:
+            print(f"[VEGA] Diag export init failed: {e}")
+            self._diag_file = None
+
+    def _write_diag_row(self, dt, z_a, z_b, spread, forecast):
+        """Write one row matching live `VEGA diag:` log format."""
+        if self._diag_file is None:
+            return
+        try:
+            close_a = float(self.data_a.close[0])
+            sma_a = float(self.sma_a[0])
+            atr_a = float(self.atr_a[0])
+            close_b = float(self.data_b.close[0])
+            sma_b = float(self.sma_b[0])
+            atr_b = float(self.atr_b[0])
+            self._diag_file.write(
+                f"{dt.isoformat()},"
+                f"{close_a:.4f},{sma_a:.4f},{atr_a:.4f},{z_a:.4f},"
+                f"{close_b:.4f},{sma_b:.4f},{atr_b:.4f},{z_b:.4f},"
+                f"{spread:.4f},{forecast:.4f}\n"
+            )
+        except Exception:
+            pass
 
     # =========================================================================
     # TRADE REPORTING (same pattern as GEMINI)
@@ -694,6 +746,9 @@ class VEGAStrategy(bt.Strategy):
         if self._first_bar_dt is None:
             self._first_bar_dt = dt
         self._last_bar_dt = dt
+
+        # Diagnostic CSV row (one per bar, before any filter)
+        self._write_diag_row(dt, z_a, z_b, spread, forecast)
 
         # Skip if order pending
         if self.order_b:
@@ -1086,5 +1141,12 @@ class VEGAStrategy(bt.Strategy):
                 self.trade_report_file.write(
                     f"Total Return: {total_return:.2f}%\n")
                 self.trade_report_file.close()
+            except Exception:
+                pass
+
+        # Close diag CSV if it was opened.
+        if self._diag_file:
+            try:
+                self._diag_file.close()
             except Exception:
                 pass
