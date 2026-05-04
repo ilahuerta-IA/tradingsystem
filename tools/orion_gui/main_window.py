@@ -45,6 +45,7 @@ CONTEXT_TICKERS = gex.CONTEXT_TICKERS
 ALL_TICKERS = gex.ALL_TICKERS
 TOP_STRIKES_N = 5
 SPOT_REFRESH_MS = 2000
+AUTO_POLL_MS = 10_000  # 10s; conservative wrt yfinance rate-limit
 
 # Fixed price ratios for tickers where MT5 quotes a different
 # instrument than the GEX source (yfinance). The ratio converts the
@@ -139,8 +140,14 @@ class OrionGuiMainWindow(QMainWindow):
 
         self._scan_btn = QPushButton("SCAN")
         self._compare_btn = QPushButton("COMPARE")
+        self._auto_btn = QPushButton("AUTO")
+        self._auto_btn.setCheckable(True)
+        self._auto_btn.setStyleSheet(
+            "QPushButton:checked { background: #2a6c2a; color: #ffffff; }"
+        )
         self._export_btn = QPushButton("EXPORT LOG")
-        for b in (self._scan_btn, self._compare_btn, self._export_btn):
+        for b in (self._scan_btn, self._compare_btn, self._auto_btn,
+                  self._export_btn):
             b.setMinimumWidth(110)
             top.addWidget(b)
 
@@ -202,13 +209,26 @@ class OrionGuiMainWindow(QMainWindow):
     def _wire_signals(self) -> None:
         self._scan_btn.clicked.connect(self._on_scan)
         self._compare_btn.clicked.connect(self._on_compare)
+        self._auto_btn.toggled.connect(self._on_auto_toggled)
         self._export_btn.clicked.connect(self._on_export)
+        self._ticker_combo.currentIndexChanged.connect(
+            self._on_ticker_changed
+        )
 
     def _start_spot_timer(self) -> None:
         self._spot_timer = QTimer(self)
         self._spot_timer.setInterval(SPOT_REFRESH_MS)
         self._spot_timer.timeout.connect(self._refresh_spot)
         self._spot_timer.start()
+
+        # Polling timer used by AUTO mode (created stopped).
+        self._auto_timer = QTimer(self)
+        self._auto_timer.setInterval(AUTO_POLL_MS)
+        self._auto_timer.timeout.connect(self._auto_tick)
+
+        # In-memory snapshot used by AUTO so we can compute deltas without
+        # touching disk. Reset every time AUTO starts.
+        self._auto_prev_snapshot: Dict[str, dict] = {}
 
     # ---- handlers ----------------------------------------------------
 
@@ -305,6 +325,7 @@ class OrionGuiMainWindow(QMainWindow):
         ticker: str,
         latest: dict,
         prev: Optional[dict],
+        preserve_range: bool = False,
     ) -> None:
         meta = latest.get("meta", {})
         levels = self._extract_levels(meta)
@@ -329,6 +350,9 @@ class OrionGuiMainWindow(QMainWindow):
             )
 
         top_strikes = self._top_strikes_from_snapshot(latest, TOP_STRIKES_N)
+        net_gex_map = self._build_net_gex_map(
+            latest, prev, levels, top_strikes,
+        )
         self._chart.update_levels(
             levels=levels,
             top_strikes=top_strikes,
@@ -336,6 +360,8 @@ class OrionGuiMainWindow(QMainWindow):
             gamma_flip=gamma_flip,
             deltas=deltas,
             expiry_changed=expiry_changed,
+            net_gex_map=net_gex_map,
+            preserve_range=preserve_range,
         )
 
         # Apply fixed ratio if defined for this ticker; otherwise 1.0.
@@ -362,6 +388,68 @@ class OrionGuiMainWindow(QMainWindow):
             "GAMMA_FLIP": meta.get("gamma_flip"),
             "MAX_GEX": meta.get("max_gex_strike"),
         }
+
+    @staticmethod
+    def _profile_net_by_strike(snapshot: dict) -> Dict[float, float]:
+        out: Dict[float, float] = {}
+        for r in (snapshot.get("gex_profile", []) or []):
+            try:
+                out[float(r.get("strike"))] = float(r.get("net_gex", 0.0))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    @classmethod
+    def _build_net_gex_map(
+        cls,
+        latest: dict,
+        prev: Optional[dict],
+        levels: Dict[str, float],
+        top_strikes: List[Tuple[float, float]],
+    ) -> Dict[float, Tuple[float, Optional[float]]]:
+        """For every strike rendered on the chart, return (current, delta).
+
+        Named levels (CALL_WALL / PUT_WALL / ...) are mapped to the closest
+        strike present in the gex_profile (tolerance 0.01). Unnamed top
+        strikes use exact match.
+        """
+        cur_by_strike = cls._profile_net_by_strike(latest)
+        prev_by_strike = (
+            cls._profile_net_by_strike(prev) if prev is not None else {}
+        )
+        all_strikes = sorted(cur_by_strike.keys())
+
+        def nearest(price: float) -> Optional[float]:
+            if not all_strikes:
+                return None
+            best = min(all_strikes, key=lambda s: abs(s - price))
+            return best if abs(best - price) <= 0.01 else None
+
+        out: Dict[float, Tuple[float, Optional[float]]] = {}
+
+        for name in ("CALL_WALL", "PUT_WALL", "GAMMA_FLIP", "MAX_GEX"):
+            price = levels.get(name)
+            if price is None:
+                continue
+            s = nearest(price)
+            if s is None:
+                continue
+            cur = cur_by_strike.get(s)
+            if cur is None:
+                continue
+            pv = prev_by_strike.get(s)
+            delta = (cur - pv) if pv is not None else None
+            out[price] = (cur, delta)
+
+        for strike, _net in top_strikes:
+            cur = cur_by_strike.get(strike)
+            if cur is None:
+                continue
+            pv = prev_by_strike.get(strike)
+            delta = (cur - pv) if pv is not None else None
+            out[strike] = (cur, delta)
+
+        return out
 
     @staticmethod
     def _top_strikes_from_snapshot(
@@ -431,6 +519,103 @@ class OrionGuiMainWindow(QMainWindow):
                     f"{r.get('put_gex', '')},"
                     f"{r.get('net_gex', '')}\n"
                 )
+
+    # ---- AUTO mode ---------------------------------------------------
+
+    def _on_auto_toggled(self, checked: bool) -> None:
+        if checked:
+            ticker = self._current_ticker()
+            if not ticker:
+                self._auto_btn.setChecked(False)
+                return
+            self._scan_btn.setEnabled(False)
+            self._compare_btn.setEnabled(False)
+            self._auto_btn.setText("AUTO ON")
+            self._auto_prev_snapshot.clear()
+            self._append_log(
+                f"=== AUTO ON [{ticker}] polling every "
+                f"{AUTO_POLL_MS // 1000}s, no disk writes\n"
+            )
+            # Fire one tick immediately, then start the timer.
+            self._auto_tick()
+            self._auto_timer.start()
+        else:
+            self._auto_timer.stop()
+            self._scan_btn.setEnabled(True)
+            self._compare_btn.setEnabled(True)
+            self._auto_btn.setText("AUTO")
+            self._append_log("=== AUTO OFF\n")
+
+    def _on_ticker_changed(self, *_args) -> None:
+        # Cancel AUTO when the ticker changes to avoid scanning a
+        # different symbol than what the user just selected.
+        if self._auto_btn.isChecked():
+            self._auto_btn.setChecked(False)
+
+    def _auto_tick(self) -> None:
+        ticker = self._current_ticker()
+        if not ticker:
+            return
+        try:
+            snapshot = self._build_snapshot_in_memory(ticker)
+        except Exception as exc:
+            self._append_log(f"  [AUTO] {ticker} fetch error: {exc}\n")
+            return
+        if snapshot is None:
+            return
+        prev = self._auto_prev_snapshot.get(ticker)
+        # First tick auto-ranges; subsequent ticks preserve the user's
+        # manual zoom/scroll on the price axis.
+        preserve = ticker in self._auto_prev_snapshot
+        self._render_chart(ticker, snapshot, prev, preserve_range=preserve)
+        self._auto_prev_snapshot[ticker] = snapshot
+
+    def _build_snapshot_in_memory(self, ticker: str) -> Optional[dict]:
+        """Replicate process_ticker + append_history but RAM-only.
+
+        Returns a dict shaped like the on-disk snapshot
+        ({"meta": {...}, "gex_profile": [...]}) so it can feed
+        _render_chart unchanged. No file I/O.
+        """
+        try:
+            calls, puts, spot, chosen_exp, _ = gex.fetch_options_data(
+                ticker, None,
+            )
+        except Exception:
+            raise
+        import datetime as _dt
+        exp_date = _dt.datetime.strptime(chosen_exp, "%Y-%m-%d").date()
+        T = max((exp_date - _dt.date.today()).days, 1) / 365.0
+        gex_df = gex.calc_gex_per_strike(calls, puts, spot, T)
+        levels = gex.identify_levels(gex_df, spot)
+        analysis = gex.analyze_levels(gex_df, spot, levels)
+
+        total_oi = (
+            gex._safe_int(calls["openInterest"].sum())
+            + gex._safe_int(puts["openInterest"].sum())
+        )
+        if total_oi == 0:
+            # Empty chain (market closed). Skip silently in AUTO.
+            return None
+
+        meta = {
+            "date": _dt.date.today().isoformat(),
+            "ticker": ticker,
+            "spot": round(spot, 4),
+            "expiry": chosen_exp,
+            "call_wall": levels.get("CALL_WALL"),
+            "put_wall": levels.get("PUT_WALL"),
+            "gamma_flip": levels.get("GAMMA_FLIP"),
+            "max_gex_strike": levels.get("MAX_GEX"),
+            "max_call_oi": levels.get("MAX_CALL_OI"),
+            "max_put_oi": levels.get("MAX_PUT_OI"),
+            "asym": analysis.get("asym"),
+        }
+        return {
+            "meta": meta,
+            "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),
+            "gex_profile": gex_df.to_dict(orient="records"),
+        }
 
     # ---- log helpers -------------------------------------------------
 

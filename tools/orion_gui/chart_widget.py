@@ -182,21 +182,34 @@ class GexChartWidget(pg.PlotWidget):
         gamma_flip: Optional[float],
         deltas: Dict[str, Optional[float]],
         expiry_changed: bool,
+        net_gex_map: Optional[Dict[float, Tuple[float, Optional[float]]]] = None,
+        preserve_range: bool = False,
     ) -> None:
+        """Render levels.
+
+        net_gex_map: optional {strike -> (current_net_gex, delta_or_None)}.
+        When provided, each line tag is prefixed with the net GEX value
+        and the change vs the previous snapshot.
+        preserve_range: when True, do NOT auto-range the Y axis. Used by
+        AUTO mode so the user's manual zoom/scroll survives polling.
+        """
         self.clear_levels()
+        nmap = net_gex_map or {}
 
         for name in ("CALL_WALL", "PUT_WALL", "GAMMA_FLIP", "MAX_GEX"):
             price = levels.get(name)
             if price is None:
                 continue
-            self._add_named_level(name, price, deltas.get(name))
+            self._add_named_level(
+                name, price, deltas.get(name), nmap.get(price),
+            )
 
         named_prices = {levels.get(n) for n in
                         ("CALL_WALL", "PUT_WALL", "GAMMA_FLIP", "MAX_GEX")}
         for strike, _net in top_strikes:
             if strike in named_prices:
                 continue
-            self._add_strike_line(strike, gamma_flip)
+            self._add_strike_line(strike, gamma_flip, nmap.get(strike))
 
         if asym is None:
             self._asym_label.setText("ASYM --")
@@ -216,7 +229,8 @@ class GexChartWidget(pg.PlotWidget):
 
         self._expiry_label.setText("EXPIRY CHANGED" if expiry_changed else "")
 
-        self._auto_range(levels, top_strikes)
+        if not preserve_range:
+            self._auto_range(levels, top_strikes)
         self._reposition_overlay_labels()
 
     def update_spot(self, spot: Optional[float]) -> None:
@@ -296,11 +310,13 @@ class GexChartWidget(pg.PlotWidget):
     # ---- internal helpers --------------------------------------------
 
     def _add_named_level(
-        self, name: str, price: float, delta: Optional[float]
+        self, name: str, price: float, delta: Optional[float],
+        net_gex_pair: Optional[Tuple[float, Optional[float]]] = None,
     ) -> None:
         style = LEVEL_STYLES[name]
         delta_str = self._fmt_delta(delta)
-        text = f"{name} {price:.2f} {delta_str}".rstrip()
+        prefix = self._fmt_net_gex_prefix(net_gex_pair)
+        text = f"{prefix}{name} {price:.2f} {delta_str}".rstrip()
         line = _make_line(
             price, style["color"], style["style"], LINE_WIDTH, text,
         )
@@ -308,7 +324,8 @@ class GexChartWidget(pg.PlotWidget):
         self._items.append(line)
 
     def _add_strike_line(
-        self, strike: float, gamma_flip: Optional[float]
+        self, strike: float, gamma_flip: Optional[float],
+        net_gex_pair: Optional[Tuple[float, Optional[float]]] = None,
     ) -> None:
         if gamma_flip is None:
             color = "#888888"
@@ -316,9 +333,11 @@ class GexChartWidget(pg.PlotWidget):
             color = "#226633"
         else:
             color = "#662233"
+        prefix = self._fmt_net_gex_prefix(net_gex_pair)
+        text = f"{prefix}{strike:.2f}"
         line = _make_line(
             strike, color, Qt.PenStyle.DashLine,
-            STRIKE_LINE_WIDTH, f"{strike:.2f}",
+            STRIKE_LINE_WIDTH, text,
         )
         self.addItem(line)
         self._items.append(line)
@@ -331,6 +350,36 @@ class GexChartWidget(pg.PlotWidget):
             return "(==)"
         sign = "+" if delta > 0 else ""
         return f"({sign}{delta:.2f})"
+
+    @staticmethod
+    def _fmt_net_gex_prefix(
+        pair: Optional[Tuple[float, Optional[float]]]
+    ) -> str:
+        """Format the leading '[GEX (delta)] ' chunk for the line tag."""
+        if pair is None:
+            return ""
+        cur, delta = pair
+        if cur is None:
+            return ""
+        cur_s = GexChartWidget._fmt_si(cur)
+        if delta is None:
+            return f"[{cur_s}] "
+        if abs(delta) < 1e-9:
+            return f"[{cur_s} (==)] "
+        return f"[{cur_s} ({GexChartWidget._fmt_si(delta)})] "
+
+    @staticmethod
+    def _fmt_si(x: float) -> str:
+        """Compact +/- value with SI suffix (K/M/B)."""
+        ax = abs(x)
+        sign = "+" if x >= 0 else "-"
+        if ax < 1_000:
+            return f"{sign}{ax:.0f}"
+        if ax < 1_000_000:
+            return f"{sign}{ax/1_000:.2f}K"
+        if ax < 1_000_000_000:
+            return f"{sign}{ax/1_000_000:.2f}M"
+        return f"{sign}{ax/1_000_000_000:.2f}B"
 
     def _reposition_overlay_labels(self, *_args, **_kw) -> None:
         vb = self.getViewBox()
