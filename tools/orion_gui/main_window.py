@@ -562,12 +562,27 @@ class OrionGuiMainWindow(QMainWindow):
             self._append_log(f"  [AUTO] {ticker} fetch error: {exc}\n")
             return
         if snapshot is None:
+            self._append_log(f"  [AUTO] {ticker} skipped (empty chain)\n")
             return
         prev = self._auto_prev_snapshot.get(ticker)
         # First tick auto-ranges; subsequent ticks preserve the user's
         # manual zoom/scroll on the price axis.
         preserve = ticker in self._auto_prev_snapshot
         self._render_chart(ticker, snapshot, prev, preserve_range=preserve)
+        # Concise per-tick feedback so the user sees AUTO is alive.
+        import datetime as _dt
+        meta = snapshot.get("meta", {})
+        spot = meta.get("spot")
+        prev_spot = (prev or {}).get("meta", {}).get("spot") if prev else None
+        if spot is not None and prev_spot is not None:
+            dspot = spot - prev_spot
+            spot_str = f"spot {spot:.2f} (d{dspot:+.2f})"
+        elif spot is not None:
+            spot_str = f"spot {spot:.2f}"
+        else:
+            spot_str = "spot --"
+        ts = _dt.datetime.now().strftime("%H:%M:%S")
+        self._append_log(f"  [AUTO {ts}] {ticker} {spot_str}\n")
         self._auto_prev_snapshot[ticker] = snapshot
 
     def _build_snapshot_in_memory(self, ticker: str) -> Optional[dict]:
