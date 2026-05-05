@@ -171,3 +171,12 @@ class SpotProvider:
 
     def status(self) -> str:
         return self._status_msg
+
+    # ---- low-level access (for order executor) -----------------------
+
+    def mt5(self):
+        """Return the underlying MetaTrader5 module (or None)."""
+        return self._mt5 if self._connected else None
+
+    def is_connected(self) -> bool:
+        return self._connected

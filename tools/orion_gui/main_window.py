@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Tuple
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPalette, QTextCursor
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QHBoxLayout, QLabel, QMainWindow,
+    QApplication, QComboBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QSplitter, QStatusBar, QVBoxLayout,
     QWidget,
 )
@@ -33,6 +33,9 @@ for _p in (_ROOT_DIR, _TOOLS_DIR):
 import orion_gex as gex  # noqa: E402
 
 from .chart_widget import GexChartWidget  # noqa: E402
+from .order_executor import (  # noqa: E402
+    OrionOrderError, OrionOrderExecutor,
+)
 from .spot_provider import SpotProvider  # noqa: E402
 
 
@@ -46,6 +49,13 @@ ALL_TICKERS = gex.ALL_TICKERS
 TOP_STRIKES_N = 5
 SPOT_REFRESH_MS = 2000
 AUTO_POLL_MS = 10_000  # 10s; conservative wrt yfinance rate-limit
+
+# Order presets: (label, sl_pct). TP is always = SL (1:1 R:R).
+ORDER_PRESETS = [
+    ("0.5% SL/TP", 0.005),
+    ("1.0% SL/TP", 0.010),
+]
+ORDER_RISK_PCT = 0.01  # 1% of equity at SL
 
 # Fixed price ratios for tickers where MT5 quotes a different
 # instrument than the GEX source (yfinance). The ratio converts the
@@ -94,6 +104,10 @@ class OrionGuiMainWindow(QMainWindow):
         self._spot = SpotProvider()
         self._spot.connect()  # silently fall back to "no live" if it fails
 
+        # Order executor (DEMO-only by design). Logs to logs/orion/orders.jsonl.
+        _orders_dir = os.path.join(_ROOT_DIR, "logs", "orion")
+        self._executor = OrionOrderExecutor(self._spot, _orders_dir)
+
         # Cache of last (levels, expiry, snapshot_dict) per ticker, used
         # to compute deltas to display on the chart.
         self._last_snapshots: Dict[str, dict] = {}
@@ -135,7 +149,7 @@ class OrionGuiMainWindow(QMainWindow):
         self._ticker_combo.insertSeparator(len(CORE_TICKERS))
         for t in CONTEXT_TICKERS:
             self._ticker_combo.addItem(t)
-        self._ticker_combo.setMinimumWidth(120)
+        self._ticker_combo.setMinimumWidth(80)
         top.addWidget(self._ticker_combo)
 
         self._scan_btn = QPushButton("SCAN")
@@ -148,7 +162,32 @@ class OrionGuiMainWindow(QMainWindow):
         self._export_btn = QPushButton("EXPORT LOG")
         for b in (self._scan_btn, self._compare_btn, self._auto_btn,
                   self._export_btn):
-            b.setMinimumWidth(110)
+            b.setMinimumWidth(60)
+            top.addWidget(b)
+
+        # Order controls (BUY / SELL with fixed risk %, dropdown for SL%).
+        top.addSpacing(20)
+        top.addWidget(QLabel("Risk:"))
+        self._risk_combo = QComboBox()
+        for label, _pct in ORDER_PRESETS:
+            self._risk_combo.addItem(label)
+        self._risk_combo.setMinimumWidth(70)
+        top.addWidget(self._risk_combo)
+
+        self._buy_btn = QPushButton("BUY")
+        self._buy_btn.setStyleSheet(
+            "QPushButton { background: #1e5a1e; color: #ffffff; "
+            "font-weight: bold; }"
+            "QPushButton:disabled { background: #333; color: #666; }"
+        )
+        self._sell_btn = QPushButton("SELL")
+        self._sell_btn.setStyleSheet(
+            "QPushButton { background: #6c1e1e; color: #ffffff; "
+            "font-weight: bold; }"
+            "QPushButton:disabled { background: #333; color: #666; }"
+        )
+        for b in (self._buy_btn, self._sell_btn):
+            b.setMinimumWidth(50)
             top.addWidget(b)
 
         top.addStretch(1)
@@ -189,7 +228,12 @@ class OrionGuiMainWindow(QMainWindow):
         splitter.setStretchFactor(0, 35)
         splitter.setStretchFactor(1, 65)
         splitter.setSizes([520, 980])
+        splitter.setChildrenCollapsible(True)
         outer.addWidget(splitter, 1)
+
+        # Allow window to shrink aggressively (so it can dock side-by-side
+        # with another app). Top bar wraps via horizontal scroll if needed.
+        self.setMinimumSize(400, 300)
 
         self.setStatusBar(QStatusBar())
 
@@ -211,6 +255,8 @@ class OrionGuiMainWindow(QMainWindow):
         self._compare_btn.clicked.connect(self._on_compare)
         self._auto_btn.toggled.connect(self._on_auto_toggled)
         self._export_btn.clicked.connect(self._on_export)
+        self._buy_btn.clicked.connect(lambda: self._on_order("BUY"))
+        self._sell_btn.clicked.connect(lambda: self._on_order("SELL"))
         self._ticker_combo.currentIndexChanged.connect(
             self._on_ticker_changed
         )
@@ -290,6 +336,99 @@ class OrionGuiMainWindow(QMainWindow):
             f.write(self._log.toPlainText())
         self._append_log(f"\n=== Exported log to {path}\n")
 
+    # ---- order handlers ---------------------------------------------
+
+    def _on_order(self, side: str) -> None:
+        ticker = self._current_ticker()
+        if not ticker:
+            return
+
+        # Hard guard: DEMO only.
+        is_demo, msg = self._executor.is_demo_account()
+        if not is_demo:
+            QMessageBox.critical(
+                self, "ORION order blocked",
+                f"Order refused.\n\n{msg}",
+            )
+            self._append_log(f"  [ORDER] BLOCKED: {msg}\n")
+            return
+
+        sl_pct = ORDER_PRESETS[self._risk_combo.currentIndex()][1]
+        try:
+            plan = self._executor.compute_plan(
+                ticker=ticker, side=side,
+                sl_pct=sl_pct, risk_pct=ORDER_RISK_PCT,
+            )
+        except OrionOrderError as exc:
+            QMessageBox.warning(
+                self, "ORION order rejected",
+                f"Cannot prepare order:\n\n{exc}",
+            )
+            self._append_log(f"  [ORDER] REJECTED ({side} {ticker}): {exc}\n")
+            return
+
+        # Confirmation modal with full plan.
+        money_at_risk = plan.lots * plan.contract_size * abs(
+            plan.entry_price - plan.sl_price
+        )
+        text = (
+            f"{plan.side}  {plan.symbol}  ({plan.ticker})\n"
+            f"\n"
+            f"Lots:           {plan.lots:g}\n"
+            f"Entry (mkt):    {plan.entry_price:.4f}\n"
+            f"SL:             {plan.sl_price:.4f}  "
+            f"({plan.sl_pct*100:.2f}%)\n"
+            f"TP:             {plan.tp_price:.4f}  "
+            f"({plan.sl_pct*100:.2f}%, 1:1)\n"
+            f"\n"
+            f"Equity:         {plan.equity:.2f}\n"
+            f"Risk budget:    {plan.risk_money:.2f}  "
+            f"({plan.risk_pct*100:.2f}%)\n"
+            f"Actual loss@SL: {money_at_risk:.2f}\n"
+            f"\n"
+            f"Spread:         {plan.spread_price:.4f}  "
+            f"({plan.spread_fraction*100:.1f}% of SL distance)\n"
+            f"\n"
+            f"{plan.notes}"
+        )
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(f"Confirm {plan.side} {plan.ticker}")
+        box.setText(text)
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Ok
+            | QMessageBox.StandardButton.Cancel
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        if box.exec() != QMessageBox.StandardButton.Ok:
+            self._append_log(
+                f"  [ORDER] cancelled by user ({side} {ticker})\n"
+            )
+            return
+
+        try:
+            result = self._executor.execute(plan, comment=f"ORION_{side}")
+        except OrionOrderError as exc:
+            QMessageBox.critical(
+                self, "ORION order failed",
+                f"Order send failed:\n\n{exc}",
+            )
+            self._append_log(f"  [ORDER] FAILED ({side} {ticker}): {exc}\n")
+            return
+
+        status = result.get("status")
+        if status == "ok":
+            self._append_log(
+                f"  [ORDER OK] {side} {plan.symbol} "
+                f"vol={result.get('volume')} @ {result.get('price')} "
+                f"deal={result.get('deal')}\n"
+            )
+        else:
+            self._append_log(
+                f"  [ORDER {status.upper()}] retcode={result.get('retcode')} "
+                f"comment={result.get('comment')}\n"
+            )
+
     def _refresh_spot(self) -> None:
         ticker = self._current_ticker()
         if not ticker:
@@ -366,8 +505,10 @@ class OrionGuiMainWindow(QMainWindow):
 
         # Apply fixed ratio if defined for this ticker; otherwise 1.0.
         ratio = FIXED_RATIOS.get(ticker, 1.0)
+        prev_ratio = self._price_ratio.get(ticker)
         self._price_ratio[ticker] = ratio
-        if ratio != 1.0:
+        # Log only on change (avoids spam in AUTO mode).
+        if ratio != 1.0 and prev_ratio != ratio:
             self._append_log(
                 f"  [ratio] {ticker}: fixed ratio {ratio:.4f} "
                 f"(MT5 quote * ratio -> underlying coordinate)\n"
