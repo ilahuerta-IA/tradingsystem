@@ -221,6 +221,23 @@ class OrionOrderExecutor:
             else mt5.ORDER_TYPE_SELL
         )
 
+        # Pick a filling mode the broker actually accepts.
+        # symbol_info.filling_mode is a bitmask:
+        #   bit 0 (1) = FOK, bit 1 (2) = IOC, bit 2 (4) = RETURN.
+        # Hardcoding IOC fails on brokers that only support FOK/RETURN
+        # (e.g. forex.com -> retcode 10030 "Unsupported filling mode").
+        sym_info = mt5.symbol_info(plan.symbol)
+        fmask = int(getattr(sym_info, "filling_mode", 0)) if sym_info else 0
+        if fmask & 1:
+            filling = mt5.ORDER_FILLING_FOK
+        elif fmask & 2:
+            filling = mt5.ORDER_FILLING_IOC
+        elif fmask & 4:
+            filling = mt5.ORDER_FILLING_RETURN
+        else:
+            # Last resort: try FOK (most common for stock CFDs).
+            filling = mt5.ORDER_FILLING_FOK
+
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": plan.symbol,
@@ -233,7 +250,7 @@ class OrionOrderExecutor:
             "magic": 990001,
             "comment": comment[:31],
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "type_filling": filling,
         }
 
         result = mt5.order_send(request)
