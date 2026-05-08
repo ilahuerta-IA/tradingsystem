@@ -38,6 +38,15 @@ TICKER_TO_MT5 = {
     "AMZN":  "Amazon",
     "META":  "Meta Platforms Inc",
     "DAX":   "GER40",
+    # 2026-05-08: added per MT5 broker availability.
+    "AAPL":  "Apple",
+    "AMD":   "Advanced Micro Devices",
+    "NFLX":  "Netflix",
+    "DELL":  "Dell Technologies",
+    "LLY":   "Eli Lilly",
+    "GE":    "General Electric",
+    "MRNA":  "Moderna",
+    "XLK":   "Technology Select Sector SPDR",
 }
 
 

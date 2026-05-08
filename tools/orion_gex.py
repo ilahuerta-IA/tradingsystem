@@ -43,8 +43,17 @@ from scipy.stats import norm
 # Constants -- ticker tiers for --scan-altair
 # ---------------------------------------------------------------------------
 
-CORE_TICKERS = ["JPM", "NVDA", "GOOGL", "V", "ALB", "WDC", "GS", "AMZN", "META", "MSFT", "TSLA"]
-CONTEXT_TICKERS = ["SPY", "QQQ"]
+CORE_TICKERS = [
+    # Existing core (US large-caps with liquid option chains).
+    "JPM", "NVDA", "GOOGL", "V", "ALB", "WDC", "GS",
+    "AMZN", "META", "MSFT", "TSLA",
+    # 2026-05-08: added per MT5 broker availability + yfinance chain check.
+    # APO dropped: live near-OI ~7k (vs META 191k, MSFT 184k); walls would be
+    # built on noise. Re-evaluate if open interest grows.
+    "AAPL", "AMD", "NFLX", "DELL", "LLY", "GE", "MRNA",
+]
+# CONTEXT = macro overlays / ETFs (regime thermometer, not direct trades).
+CONTEXT_TICKERS = ["SPY", "QQQ", "XLK"]
 ALL_TICKERS = CORE_TICKERS + CONTEXT_TICKERS
 
 DEFAULT_RISK_FREE = 0.045
