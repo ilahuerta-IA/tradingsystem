@@ -275,6 +275,15 @@ class OrionGuiMainWindow(QMainWindow):
         # In-memory snapshot used by AUTO so we can compute deltas without
         # touching disk. Reset every time AUTO starts.
         self._auto_prev_snapshot: Dict[str, dict] = {}
+        # Per-ticker AUTO state (cleared on AUTO ON):
+        # _auto_prev_hash: detect "no refresh" of yfinance chain.
+        # _auto_prev_imp:  previous GEX impulse (B) for delta.
+        # _auto_run:       run length of spot delta in ticks.
+        self._auto_prev_hash: Dict[str, str] = {}
+        self._auto_prev_imp: Dict[str, float] = {}
+        self._auto_run: Dict[str, int] = {}
+        # SPY/QQQ prior close cache (fetched once per AUTO session).
+        self._auto_index_prev_close: Dict[str, float] = {}
 
     # ---- handlers ----------------------------------------------------
 
@@ -673,6 +682,10 @@ class OrionGuiMainWindow(QMainWindow):
             self._compare_btn.setEnabled(False)
             self._auto_btn.setText("AUTO ON")
             self._auto_prev_snapshot.clear()
+            self._auto_prev_hash.clear()
+            self._auto_prev_imp.clear()
+            self._auto_run.clear()
+            self._auto_index_prev_close.clear()
             self._append_log(
                 f"=== AUTO ON [{ticker}] polling every "
                 f"{AUTO_POLL_MS // 1000}s, no disk writes\n"
@@ -710,21 +723,218 @@ class OrionGuiMainWindow(QMainWindow):
         # manual zoom/scroll on the price axis.
         preserve = ticker in self._auto_prev_snapshot
         self._render_chart(ticker, snapshot, prev, preserve_range=preserve)
-        # Concise per-tick feedback so the user sees AUTO is alive.
-        import datetime as _dt
-        meta = snapshot.get("meta", {})
-        spot = meta.get("spot")
-        prev_spot = (prev or {}).get("meta", {}).get("spot") if prev else None
-        if spot is not None and prev_spot is not None:
-            dspot = spot - prev_spot
-            spot_str = f"spot {spot:.2f} (d{dspot:+.2f})"
-        elif spot is not None:
-            spot_str = f"spot {spot:.2f}"
-        else:
-            spot_str = "spot --"
-        ts = _dt.datetime.now().strftime("%H:%M:%S")
-        self._append_log(f"  [AUTO {ts}] {ticker} {spot_str}\n")
+
+        # Fixed-width single-line log entry. Columns align vertically so
+        # consecutive ticks are easy to scan.
+        line = self._format_auto_line(ticker, snapshot, prev)
+        self._append_log(line + "\n")
         self._auto_prev_snapshot[ticker] = snapshot
+
+    # ---- AUTO log formatting / helpers -------------------------------
+
+    @staticmethod
+    def _snapshot_hash(snapshot: Optional[dict]) -> str:
+        """Cheap fingerprint to detect whether yfinance refreshed.
+
+        Combines spot (4 dp) + sum of all OI in the gex_profile. If two
+        consecutive snapshots share the same hash, yfinance has not
+        served new data and we render '(__)' instead of '(d+0.00)'.
+        """
+        if snapshot is None:
+            return ""
+        meta = snapshot.get("meta") or {}
+        spot = round(float(meta.get("spot") or 0.0), 4)
+        oi_sum = 0.0
+        for r in (snapshot.get("gex_profile") or []):
+            try:
+                oi_sum += float(r.get("call_oi", 0) or 0)
+                oi_sum += float(r.get("put_oi", 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        return f"{spot}|{oi_sum:.0f}"
+
+    @classmethod
+    def _gex_total_b(cls, snapshot: Optional[dict]) -> Optional[float]:
+        """Total net_gex of the snapshot in billions."""
+        if snapshot is None:
+            return None
+        prof = cls._profile_net_by_strike(snapshot)
+        if not prof:
+            return None
+        return sum(prof.values()) / 1e9
+
+    @classmethod
+    def _gex_impulse_b(cls, snapshot: Optional[dict]) -> Optional[float]:
+        """Sum of net_gex (in B) for strikes in (spot, call_wall].
+
+        BUY-bias indicator: positive means dealers are accumulating
+        gamma above the spot, between the current price and the next
+        major resistance. Growing -> resistance acting as magnet.
+        """
+        if snapshot is None:
+            return None
+        meta = snapshot.get("meta") or {}
+        spot = meta.get("spot")
+        cw = meta.get("call_wall")
+        if spot is None or cw is None or cw <= spot:
+            return None
+        prof = cls._profile_net_by_strike(snapshot)
+        if not prof:
+            return None
+        total = sum(v for k, v in prof.items() if spot < k <= cw)
+        return total / 1e9
+
+    def _index_pct(self, ticker: str) -> Optional[float]:
+        """Pct change vs prior close for SPY/QQQ via MT5 spot.
+
+        Prior close is fetched once per AUTO session via yfinance
+        (cached). Current price uses the broker BID/ASK with the
+        FIXED_RATIO so it matches the underlying ETF coordinate.
+        Returns None if MT5 not connected or yfinance lookup failed.
+        """
+        prev_close = self._auto_index_prev_close.get(ticker)
+        if prev_close is None:
+            try:
+                import yfinance as yf
+                hist = yf.Ticker(ticker).history(period="2d", interval="1d")
+                if not hist.empty and "Close" in hist.columns:
+                    prev_close = float(hist["Close"].iloc[-1])
+                    self._auto_index_prev_close[ticker] = prev_close
+            except Exception:
+                return None
+        if prev_close is None or prev_close <= 0:
+            return None
+        ba = self._spot.get_bid_ask(ticker)
+        if ba is None:
+            return None
+        ratio = FIXED_RATIOS.get(ticker, 1.0)
+        mid = (ba[0] + ba[1]) / 2.0 * ratio
+        return (mid - prev_close) / prev_close * 100.0
+
+    @staticmethod
+    def _fmt_b(val: Optional[float], width: int = 6) -> str:
+        if val is None:
+            return "  --  ".rjust(width)
+        return f"{val:+.2f}B".rjust(width)
+
+    @staticmethod
+    def _fmt_delta(val: Optional[float], unit: str, width: int) -> str:
+        """'(d+0.30)' / '(__   )' rendered to a fixed width."""
+        if val is None:
+            return ("(" + "__".ljust(width - 3) + ")").rjust(width + 1)
+        if unit == "B":
+            body = f"d{val:+.2f}B"
+        elif unit == "%":
+            body = f"d{val:+.2f}%"
+        else:
+            body = f"d{val:+.2f}"
+        return ("(" + body + ")").rjust(width + 2)
+
+    @staticmethod
+    def _fmt_pct(val: Optional[float], width: int = 7) -> str:
+        if val is None:
+            return "  --   ".rjust(width)
+        return f"{val:+.2f}%".rjust(width)
+
+    def _update_run(self, ticker: str, dspot_pct: Optional[float]) -> int:
+        """Update consecutive-direction counter for spot delta.
+
+        Threshold: 0.02% of spot. Below threshold (incl. None) resets
+        run to 0 only if it actually breaks direction; if the snapshot
+        did not refresh (dspot_pct is None) we keep the previous run.
+        """
+        prev_run = self._auto_run.get(ticker, 0)
+        if dspot_pct is None:
+            return prev_run  # no refresh -> keep
+        thr = 0.02
+        if dspot_pct >= thr:
+            new_run = prev_run + 1 if prev_run >= 0 else 1
+        elif dspot_pct <= -thr:
+            new_run = prev_run - 1 if prev_run <= 0 else -1
+        else:
+            new_run = 0
+        self._auto_run[ticker] = new_run
+        return new_run
+
+    def _format_auto_line(
+        self, ticker: str, snapshot: dict, prev: Optional[dict],
+    ) -> str:
+        import datetime as _dt
+        ts = _dt.datetime.now().strftime("%H:%M:%S")
+        meta = snapshot.get("meta") or {}
+        spot = meta.get("spot")
+        prev_meta = (prev or {}).get("meta") or {}
+        prev_spot = prev_meta.get("spot")
+
+        # Detect whether yfinance refreshed.
+        cur_hash = self._snapshot_hash(snapshot)
+        prev_hash = self._auto_prev_hash.get(ticker, "")
+        refreshed = (cur_hash != prev_hash) and bool(prev_hash)
+        first_tick = not bool(prev_hash)
+        self._auto_prev_hash[ticker] = cur_hash
+
+        # Spot + delta (only meaningful when refreshed).
+        if spot is None:
+            spot_str = "  --  "
+        else:
+            spot_str = f"{spot:>7.2f}"
+        if refreshed and spot is not None and prev_spot is not None:
+            dspot = spot - prev_spot
+            dspot_pct = dspot / prev_spot * 100.0 if prev_spot else None
+            d_spot_str = self._fmt_delta(dspot, "", 6)
+        else:
+            dspot_pct = None
+            d_spot_str = self._fmt_delta(None, "", 6)
+
+        # NetGEX total + delta.
+        gex_b = self._gex_total_b(snapshot)
+        gex_b_prev = self._gex_total_b(prev) if refreshed else None
+        if gex_b is None:
+            gex_str = "  --  "
+            d_gex_str = self._fmt_delta(None, "B", 7)
+        else:
+            gex_str = f"{gex_b:+.2f}B"
+            if gex_b_prev is not None:
+                d_gex_str = self._fmt_delta(gex_b - gex_b_prev, "B", 7)
+            else:
+                d_gex_str = self._fmt_delta(None, "B", 7)
+
+        # GEX impulse (spot, call_wall].
+        imp = self._gex_impulse_b(snapshot)
+        if imp is None:
+            imp_str = "  --  "
+            d_imp_str = self._fmt_delta(None, "B", 7)
+        else:
+            imp_str = f"{imp:+.2f}B"
+            if refreshed:
+                imp_prev = self._auto_prev_imp.get(ticker)
+                d_imp_str = (
+                    self._fmt_delta(imp - imp_prev, "B", 7)
+                    if imp_prev is not None
+                    else self._fmt_delta(None, "B", 7)
+                )
+                self._auto_prev_imp[ticker] = imp
+            else:
+                d_imp_str = self._fmt_delta(None, "B", 7)
+                if first_tick:
+                    self._auto_prev_imp[ticker] = imp
+
+        # SPY / QQQ context (% vs prior close, MT5 spot).
+        spy_pct = self._index_pct("SPY")
+        qqq_pct = self._index_pct("QQQ")
+        spy_str = self._fmt_pct(spy_pct)
+        qqq_str = self._fmt_pct(qqq_pct)
+
+        # Run length of spot delta.
+        run = self._update_run(ticker, dspot_pct)
+        run_str = f"r{run:+d}" if run != 0 else "r 0"
+
+        return (
+            f"  [{ts}] {ticker:<5s} {spot_str} {d_spot_str} "
+            f"GEX {gex_str:>7s} {d_gex_str} "
+            f"IMP {imp_str:>7s} {d_imp_str} "
+            f"SPY {spy_str} QQQ {qqq_str} {run_str}"
+        )
 
     def _build_snapshot_in_memory(self, ticker: str) -> Optional[dict]:
         """Replicate process_ticker + append_history but RAM-only.
