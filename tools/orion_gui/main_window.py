@@ -282,8 +282,8 @@ class OrionGuiMainWindow(QMainWindow):
         self._auto_prev_hash: Dict[str, str] = {}
         self._auto_prev_imp: Dict[str, float] = {}
         self._auto_run: Dict[str, int] = {}
-        # SPY/QQQ prior close cache (fetched once per AUTO session).
-        self._auto_index_prev_close: Dict[str, float] = {}
+        # SPY/QQQ previous-tick MT5 mid (for tick-to-tick delta %).
+        self._auto_index_prev_mid: Dict[str, float] = {}
 
     # ---- handlers ----------------------------------------------------
 
@@ -685,7 +685,7 @@ class OrionGuiMainWindow(QMainWindow):
             self._auto_prev_hash.clear()
             self._auto_prev_imp.clear()
             self._auto_run.clear()
-            self._auto_index_prev_close.clear()
+            self._auto_index_prev_mid.clear()
             self._append_log(
                 f"=== AUTO ON [{ticker}] polling every "
                 f"{AUTO_POLL_MS // 1000}s, no disk writes\n"
@@ -783,32 +783,24 @@ class OrionGuiMainWindow(QMainWindow):
             return None
         return sum(v for k, v in prof.items() if spot < k <= cw)
 
-    def _index_pct(self, ticker: str) -> Optional[float]:
-        """Pct change vs prior close for SPY/QQQ via MT5 spot.
+    def _index_tick_pct(self, ticker: str) -> Optional[float]:
+        """Pct change of SPY/QQQ vs the previous AUTO tick (~10s).
 
-        Prior close is fetched once per AUTO session via yfinance
-        (cached). Current price uses the broker BID/ASK with the
-        FIXED_RATIO so it matches the underlying ETF coordinate.
-        Returns None if MT5 not connected or yfinance lookup failed.
+        Uses MT5 BID/ASK mid-price scaled by FIXED_RATIOS to live in the
+        underlying ETF coordinate. State is per-ticker and reset when
+        AUTO is toggled. Returns None on first tick or if MT5 is not
+        available.
         """
-        prev_close = self._auto_index_prev_close.get(ticker)
-        if prev_close is None:
-            try:
-                import yfinance as yf
-                hist = yf.Ticker(ticker).history(period="2d", interval="1d")
-                if not hist.empty and "Close" in hist.columns:
-                    prev_close = float(hist["Close"].iloc[-1])
-                    self._auto_index_prev_close[ticker] = prev_close
-            except Exception:
-                return None
-        if prev_close is None or prev_close <= 0:
-            return None
         ba = self._spot.get_bid_ask(ticker)
         if ba is None:
             return None
         ratio = FIXED_RATIOS.get(ticker, 1.0)
         mid = (ba[0] + ba[1]) / 2.0 * ratio
-        return (mid - prev_close) / prev_close * 100.0
+        prev_mid = self._auto_index_prev_mid.get(ticker)
+        self._auto_index_prev_mid[ticker] = mid
+        if prev_mid is None or prev_mid <= 0:
+            return None
+        return (mid - prev_mid) / prev_mid * 100.0
 
     @staticmethod
     def _scale_gex(val: Optional[float]) -> str:
@@ -905,15 +897,6 @@ class OrionGuiMainWindow(QMainWindow):
             dspot_pct = None
             d_spot_str = self._fmt_delta(None, "", 6)
 
-        # NetGEX total + delta (auto-scaled to B/M/K/raw).
-        gex_v = self._gex_total(snapshot)
-        gex_v_prev = self._gex_total(prev) if refreshed else None
-        gex_str = self._scale_gex(gex_v)
-        if gex_v is not None and gex_v_prev is not None:
-            d_gex_str = self._scale_gex_delta(gex_v - gex_v_prev)
-        else:
-            d_gex_str = self._scale_gex_delta(None)
-
         # GEX impulse (spot, call_wall], auto-scaled.
         imp = self._gex_impulse(snapshot)
         imp_str = self._scale_gex(imp)
@@ -933,19 +916,24 @@ class OrionGuiMainWindow(QMainWindow):
                 if first_tick:
                     self._auto_prev_imp[ticker] = imp
 
-        # SPY / QQQ context (% vs prior close, MT5 spot).
-        spy_pct = self._index_pct("SPY")
-        qqq_pct = self._index_pct("QQQ")
+        # SPY / QQQ context (tick-to-tick %, MT5 mid).
+        spy_pct = self._index_tick_pct("SPY")
+        qqq_pct = self._index_tick_pct("QQQ")
         spy_str = self._fmt_pct(spy_pct)
         qqq_str = self._fmt_pct(qqq_pct)
 
-        # Run length of spot delta.
+        # Run length of spot delta. Stale (no refresh) carries the
+        # previous run but is marked with '.' so it does not look like
+        # a new tick in the same direction.
         run = self._update_run(ticker, dspot_pct)
-        run_str = f"r{run:+d}" if run != 0 else "r 0"
+        if run == 0:
+            run_body = "r 0"
+        else:
+            run_body = f"r{run:+d}"
+        run_str = run_body if refreshed else (run_body + ".")
 
         return (
             f"  [{ts}] {ticker:<5s} {spot_str} {d_spot_str} "
-            f"GEX {gex_str} {d_gex_str} "
             f"IMP {imp_str} {d_imp_str} "
             f"SPY {spy_str} QQQ {qqq_str} {run_str}"
         )
