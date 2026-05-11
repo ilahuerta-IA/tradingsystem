@@ -754,18 +754,18 @@ class OrionGuiMainWindow(QMainWindow):
         return f"{spot}|{oi_sum:.0f}"
 
     @classmethod
-    def _gex_total_b(cls, snapshot: Optional[dict]) -> Optional[float]:
-        """Total net_gex of the snapshot in billions."""
+    def _gex_total(cls, snapshot: Optional[dict]) -> Optional[float]:
+        """Total net_gex of the snapshot in raw units."""
         if snapshot is None:
             return None
         prof = cls._profile_net_by_strike(snapshot)
         if not prof:
             return None
-        return sum(prof.values()) / 1e9
+        return sum(prof.values())
 
     @classmethod
-    def _gex_impulse_b(cls, snapshot: Optional[dict]) -> Optional[float]:
-        """Sum of net_gex (in B) for strikes in (spot, call_wall].
+    def _gex_impulse(cls, snapshot: Optional[dict]) -> Optional[float]:
+        """Sum of net_gex (raw units) for strikes in (spot, call_wall].
 
         BUY-bias indicator: positive means dealers are accumulating
         gamma above the spot, between the current price and the next
@@ -781,8 +781,7 @@ class OrionGuiMainWindow(QMainWindow):
         prof = cls._profile_net_by_strike(snapshot)
         if not prof:
             return None
-        total = sum(v for k, v in prof.items() if spot < k <= cw)
-        return total / 1e9
+        return sum(v for k, v in prof.items() if spot < k <= cw)
 
     def _index_pct(self, ticker: str) -> Optional[float]:
         """Pct change vs prior close for SPY/QQQ via MT5 spot.
@@ -812,29 +811,49 @@ class OrionGuiMainWindow(QMainWindow):
         return (mid - prev_close) / prev_close * 100.0
 
     @staticmethod
-    def _fmt_b(val: Optional[float], width: int = 6) -> str:
+    def _scale_gex(val: Optional[float]) -> str:
+        """Auto-scale GEX magnitude to B / M / K / raw.
+
+        Signed, 2 decimals, fixed 8-char field so columns stay aligned.
+        Examples: '+2.10B  ', '+450.32M', '+12.40K ', '   +832 '.
+        """
         if val is None:
-            return "  --  ".rjust(width)
-        return f"{val:+.2f}B".rjust(width)
+            return "   --   "
+        a = abs(val)
+        if a >= 1e9:
+            body = f"{val / 1e9:+.2f}B"
+        elif a >= 1e6:
+            body = f"{val / 1e6:+.2f}M"
+        elif a >= 1e3:
+            body = f"{val / 1e3:+.2f}K"
+        else:
+            body = f"{val:+.0f}"
+        return body.rjust(8)
+
+    @classmethod
+    def _scale_gex_delta(cls, val: Optional[float]) -> str:
+        """'(d+450.32M)' / '(d__     )' fixed 11-char body."""
+        if val is None:
+            return "(d__     )"
+        body = "d" + cls._scale_gex(val).strip()
+        return "(" + body.ljust(8) + ")"
 
     @staticmethod
     def _fmt_delta(val: Optional[float], unit: str, width: int) -> str:
         """'(d+0.30)' / '(__   )' rendered to a fixed width."""
         if val is None:
             return ("(" + "__".ljust(width - 3) + ")").rjust(width + 1)
-        if unit == "B":
-            body = f"d{val:+.2f}B"
-        elif unit == "%":
+        if unit == "%":
             body = f"d{val:+.2f}%"
         else:
             body = f"d{val:+.2f}"
         return ("(" + body + ")").rjust(width + 2)
 
     @staticmethod
-    def _fmt_pct(val: Optional[float], width: int = 7) -> str:
+    def _fmt_pct(val: Optional[float], width: int = 8) -> str:
         if val is None:
-            return "  --   ".rjust(width)
-        return f"{val:+.2f}%".rjust(width)
+            return "  --    ".rjust(width)
+        return f"{val:+.3f}%".rjust(width)
 
     def _update_run(self, ticker: str, dspot_pct: Optional[float]) -> int:
         """Update consecutive-direction counter for spot delta.
@@ -886,36 +905,31 @@ class OrionGuiMainWindow(QMainWindow):
             dspot_pct = None
             d_spot_str = self._fmt_delta(None, "", 6)
 
-        # NetGEX total + delta.
-        gex_b = self._gex_total_b(snapshot)
-        gex_b_prev = self._gex_total_b(prev) if refreshed else None
-        if gex_b is None:
-            gex_str = "  --  "
-            d_gex_str = self._fmt_delta(None, "B", 7)
+        # NetGEX total + delta (auto-scaled to B/M/K/raw).
+        gex_v = self._gex_total(snapshot)
+        gex_v_prev = self._gex_total(prev) if refreshed else None
+        gex_str = self._scale_gex(gex_v)
+        if gex_v is not None and gex_v_prev is not None:
+            d_gex_str = self._scale_gex_delta(gex_v - gex_v_prev)
         else:
-            gex_str = f"{gex_b:+.2f}B"
-            if gex_b_prev is not None:
-                d_gex_str = self._fmt_delta(gex_b - gex_b_prev, "B", 7)
-            else:
-                d_gex_str = self._fmt_delta(None, "B", 7)
+            d_gex_str = self._scale_gex_delta(None)
 
-        # GEX impulse (spot, call_wall].
-        imp = self._gex_impulse_b(snapshot)
+        # GEX impulse (spot, call_wall], auto-scaled.
+        imp = self._gex_impulse(snapshot)
+        imp_str = self._scale_gex(imp)
         if imp is None:
-            imp_str = "  --  "
-            d_imp_str = self._fmt_delta(None, "B", 7)
+            d_imp_str = self._scale_gex_delta(None)
         else:
-            imp_str = f"{imp:+.2f}B"
             if refreshed:
                 imp_prev = self._auto_prev_imp.get(ticker)
                 d_imp_str = (
-                    self._fmt_delta(imp - imp_prev, "B", 7)
+                    self._scale_gex_delta(imp - imp_prev)
                     if imp_prev is not None
-                    else self._fmt_delta(None, "B", 7)
+                    else self._scale_gex_delta(None)
                 )
                 self._auto_prev_imp[ticker] = imp
             else:
-                d_imp_str = self._fmt_delta(None, "B", 7)
+                d_imp_str = self._scale_gex_delta(None)
                 if first_tick:
                     self._auto_prev_imp[ticker] = imp
 
@@ -931,8 +945,8 @@ class OrionGuiMainWindow(QMainWindow):
 
         return (
             f"  [{ts}] {ticker:<5s} {spot_str} {d_spot_str} "
-            f"GEX {gex_str:>7s} {d_gex_str} "
-            f"IMP {imp_str:>7s} {d_imp_str} "
+            f"GEX {gex_str} {d_gex_str} "
+            f"IMP {imp_str} {d_imp_str} "
             f"SPY {spy_str} QQQ {qqq_str} {run_str}"
         )
 
