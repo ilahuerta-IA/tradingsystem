@@ -40,13 +40,14 @@ from lib.commission import ETFCommission, ETFCSVData  # noqa: E402
 
 
 # Window of the live screenshot. Inclusive on both ends.
-LIVE_WINDOW_START_UTC = dt.datetime(2026, 4, 8, 0, 0, 0)
-LIVE_WINDOW_END_UTC = dt.datetime(2026, 4, 30, 23, 59, 59)
+# Run #2 (2026-05-16): last 2 weeks. Only live ALTAIR entry: JPM 2026-05-04.
+LIVE_WINDOW_START_UTC = dt.datetime(2026, 5, 2, 0, 0, 0)
+LIVE_WINDOW_END_UTC = dt.datetime(2026, 5, 16, 23, 59, 59)
 
 # BT warmup: ALTAIR D1 regime needs SMA(252d) -> ~13 months minimum.
 # Use 2024-01-01 to be safe; resample is M5 -> 15/30/60m.
 BT_FROM = dt.datetime(2024, 1, 1)
-BT_TO = dt.datetime(2026, 5, 1)
+BT_TO = dt.datetime(2026, 5, 16)
 
 STARTING_CASH = 100_000.0
 
@@ -60,19 +61,20 @@ TICKERS = [
     ("V",     "V_5m_8Yea.csv",     60,  7, "V_ALTAIR"),
 ]
 
-# Live trades from MT5 screenshot (already converted to UTC; broker = UTC+3 DST).
+# Live trades from MT5 screenshot (Run #2, window 2026-05-02 -> 2026-05-16).
+# Broker timezone is UTC+3 (DST), bot log timestamps are already UTC+3.
+# Only ALTAIR live entry in this window: JPM 2026-05-04 (TP hit 2026-05-06).
+# Real fills per MT5 screenshot (NOT bot's ESTIMATED $0).
 LIVE_TRADES = {
-    "NVDA": [
-        # (entry_utc, entry_price, exit_utc, exit_price, pnl, ticket)
-        (dt.datetime(2026, 4, 15, 18, 50), 197.410,
-         dt.datetime(2026, 4, 17, 13, 30), 200.710, 699.60, 12690632),
-        (dt.datetime(2026, 4, 20, 16, 20), 199.290,
-         dt.datetime(2026, 4, 21, 13, 30), 202.300, 647.15, 12714164),
-        (dt.datetime(2026, 4, 21, 18, 35), 200.130,
-         dt.datetime(2026, 4, 23, 13, 30), 202.780, 572.40, 12723986),
-    ],
+    "NVDA":  [],
     "GOOGL": [],
-    "JPM":   [],
+    "JPM": [
+        # (entry_utc, entry_price, exit_utc, exit_price, pnl, ticket)
+        # Bot signal log: UTC=2026-05-04 18:00, entry=307.88 SL=306.49 TP=313.35
+        # MT5 real fills: buy @ 307.500, exit @ 313.500 = +870 USD (TP hit).
+        (dt.datetime(2026, 5, 4, 18, 0), 307.500,
+         dt.datetime(2026, 5, 6, 13, 31), 313.500, 870.00, 0),
+    ],
     "V":     [],
 }
 
