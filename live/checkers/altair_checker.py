@@ -72,6 +72,11 @@ class ALTAIRChecker(BaseChecker):
         self.regime_atr_period = params.get("regime_atr_period", 252)
         self.regime_atr_current_period = params.get("regime_atr_current_period", 14)
         self.regime_atr_threshold = params.get("regime_atr_threshold", 1.0)
+        # Hysteresis band on ATR ratio (added 2026-05-16, BT/live parity):
+        # calm_ok=True if atr_ratio<lower, False if >upper, else sticky.
+        self.regime_atr_hyst_lower = params.get("regime_atr_hyst_lower", 0.95)
+        self.regime_atr_hyst_upper = params.get("regime_atr_hyst_upper", 1.05)
+        self._prev_calm_ok = False  # Hysteresis sticky state
         self.momentum_63d_period = params.get("momentum_63d_period", 63)
         self.bars_per_day = params.get("bars_per_day", 7)
 
@@ -295,7 +300,14 @@ class ALTAIRChecker(BaseChecker):
             return self._regime_state
 
         atr_ratio = atr_val / sma_atr_val
-        calm_ok = atr_ratio < self.regime_atr_threshold
+        # Hysteresis band (sticky inside [lower, upper]).
+        if atr_ratio < self.regime_atr_hyst_lower:
+            calm_ok = True
+        elif atr_ratio > self.regime_atr_hyst_upper:
+            calm_ok = False
+        else:
+            calm_ok = self._prev_calm_ok
+        self._prev_calm_ok = calm_ok
 
         # Mom63d: close > close[63 trading days ago]
         lookback = self.momentum_63d_period * bpd
@@ -357,7 +369,14 @@ class ALTAIRChecker(BaseChecker):
             return self._regime_state
 
         atr_ratio = atr_val / sma_atr_val
-        calm_ok = atr_ratio < self.regime_atr_threshold
+        # Hysteresis band (sticky inside [lower, upper]).
+        if atr_ratio < self.regime_atr_hyst_lower:
+            calm_ok = True
+        elif atr_ratio > self.regime_atr_hyst_upper:
+            calm_ok = False
+        else:
+            calm_ok = self._prev_calm_ok
+        self._prev_calm_ok = calm_ok
 
         # Mom63d (D1 periods)
         lookback = self.momentum_63d_period

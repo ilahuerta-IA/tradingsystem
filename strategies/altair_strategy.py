@@ -161,7 +161,14 @@ class ALTAIRStrategy(bt.Strategy):
         regime_sma_period=252,
         regime_atr_period=252,
         regime_atr_current_period=14,
-        regime_atr_threshold=1.0,
+        regime_atr_threshold=1.0,         # Legacy single threshold (kept for backwards compat / reporting)
+        # Hysteresis band on ATR ratio (introduced 2026-05-16):
+        # calm_ok=True  if atr_ratio < lower
+        # calm_ok=False if atr_ratio > upper
+        # else: keep previous calm_ok (sticky inside band)
+        # Prevents regime flip-flop driven by ~2-3pct feed-quality bias on ATR.
+        regime_atr_hyst_lower=0.95,
+        regime_atr_hyst_upper=1.05,
         momentum_63d_period=63,
         bars_per_day=7,             # H1 bars per trading day (US stocks)
 
@@ -283,6 +290,7 @@ class ALTAIRStrategy(bt.Strategy):
         self._regime_mom12m = 0.0
         self._regime_mom63d = 0.0
         self._regime_atr_ratio = 0.0
+        self._prev_calm_ok = False  # Hysteresis state (sticky inside band)
 
         # Statistics
         self.total_trades = 0
@@ -351,7 +359,16 @@ class ALTAIRStrategy(bt.Strategy):
         # ATR ratio: current ATR / long-term average ATR
         atr_ratio = atr_val / sma_atr_val
         self._regime_atr_ratio = atr_ratio
-        calm_ok = atr_ratio < self.p.regime_atr_threshold
+        # Hysteresis band: sticky inside [lower, upper] to avoid feed-bias flicker.
+        lower = self.p.regime_atr_hyst_lower
+        upper = self.p.regime_atr_hyst_upper
+        if atr_ratio < lower:
+            calm_ok = True
+        elif atr_ratio > upper:
+            calm_ok = False
+        else:
+            calm_ok = self._prev_calm_ok
+        self._prev_calm_ok = calm_ok
 
         # Mom63d: close > close[63 days ago] (in H1 bars)
         mom63d_ok = False
@@ -538,7 +555,8 @@ class ALTAIRStrategy(bt.Strategy):
             if self.p.regime_enabled:
                 f.write(
                     f"Regime: Mom12M({self.p.regime_sma_period}) + "
-                    f"ATR_ratio(<{self.p.regime_atr_threshold}) + "
+                    f"ATR_ratio_hyst([{self.p.regime_atr_hyst_lower}, "
+                    f"{self.p.regime_atr_hyst_upper}]) + "
                     f"Mom63d({self.p.momentum_63d_period})\n")
             else:
                 f.write("Regime: DISABLED\n")

@@ -69,7 +69,9 @@ _DEFAULT_PARAMS = {
     'regime_sma_period': 252,       # Mom12M: close > SMA(252d)
     'regime_atr_period': 252,       # SMA window for ATR ratio
     'regime_atr_current_period': 14,  # ATR period for current volatility
-    'regime_atr_threshold': 1.0,    # CALM if ATR_ratio < 1.0
+    'regime_atr_threshold': 1.0,    # Legacy single threshold (kept for reporting)
+    'regime_atr_hyst_lower': 0.95,  # Hysteresis: enter CALM if atr_ratio < lower
+    'regime_atr_hyst_upper': 1.05,  # Hysteresis: exit CALM if atr_ratio > upper
     'momentum_63d_period': 63,      # Mom63d sub-filter
 
     # --- Risk / Exit ---
