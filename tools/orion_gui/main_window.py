@@ -49,6 +49,10 @@ ALL_TICKERS = gex.ALL_TICKERS
 TOP_STRIKES_N = 5
 SPOT_REFRESH_MS = 2000
 AUTO_POLL_MS = 10_000  # 10s; conservative wrt yfinance rate-limit
+# Emit a multi-line LEVELS block every N AUTO ticks (~5 min at 10s/tick).
+# Block is independent from the 10s line so live readability is preserved
+# while the exported log remains self-sufficient for post-hoc analysis.
+AUTO_LEVELS_EVERY_TICKS = 30
 
 # Order presets: (label, sl_pct). TP is always = SL (1:1 R:R).
 ORDER_PRESETS = [
@@ -282,6 +286,10 @@ class OrionGuiMainWindow(QMainWindow):
         self._auto_prev_hash: Dict[str, str] = {}
         self._auto_prev_imp: Dict[str, float] = {}
         self._auto_run: Dict[str, int] = {}
+        # AUTO_LEVELS: ticks elapsed since the last LEVELS block was emitted.
+        # Reset on AUTO ON; incremented per _auto_tick; when it reaches
+        # AUTO_LEVELS_EVERY_TICKS we emit a fresh block and reset to 0.
+        self._auto_levels_ticks: Dict[str, int] = {}
         # SPY/QQQ previous-tick MT5 mid (for tick-to-tick delta %).
         self._auto_index_prev_mid: Dict[str, float] = {}
 
@@ -686,9 +694,15 @@ class OrionGuiMainWindow(QMainWindow):
             self._auto_prev_imp.clear()
             self._auto_run.clear()
             self._auto_index_prev_mid.clear()
+            self._auto_levels_ticks.clear()
             self._append_log(
                 f"=== AUTO ON [{ticker}] polling every "
                 f"{AUTO_POLL_MS // 1000}s, no disk writes\n"
+            )
+            # Session header for the exported log: UTC date so multi-day
+            # exports can be split unambiguously by downstream parsers.
+            self._append_log(
+                f"=== SESSION {dt.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC ===\n"
             )
             # Fire one tick immediately, then start the timer.
             self._auto_tick()
@@ -723,6 +737,17 @@ class OrionGuiMainWindow(QMainWindow):
         # manual zoom/scroll on the price axis.
         preserve = ticker in self._auto_prev_snapshot
         self._render_chart(ticker, snapshot, prev, preserve_range=preserve)
+
+        # LEVELS block: emit on the very first tick (session header levels)
+        # and then every AUTO_LEVELS_EVERY_TICKS ticks. Independent from the
+        # 10s line so live readability is preserved. No extra yfinance call:
+        # values are read from the snapshot already fetched for this tick.
+        ticks = self._auto_levels_ticks.get(ticker, -1)
+        if ticks < 0 or ticks >= AUTO_LEVELS_EVERY_TICKS:
+            self._append_log(self._format_levels_block(ticker, snapshot) + "\n")
+            self._auto_levels_ticks[ticker] = 0
+        else:
+            self._auto_levels_ticks[ticker] = ticks + 1
 
         # Fixed-width single-line log entry. Columns align vertically so
         # consecutive ticks are easy to scan.
@@ -846,6 +871,39 @@ class OrionGuiMainWindow(QMainWindow):
         if val is None:
             return "  --    ".rjust(width)
         return f"{val:+.3f}%".rjust(width)
+
+    @staticmethod
+    def _fmt_level(val: Optional[float]) -> str:
+        """Compact fixed-width level value: '210.00' or '   --  '."""
+        if val is None:
+            return "   --  "
+        return f"{val:>7.2f}"
+
+    def _format_levels_block(self, ticker: str, snapshot: dict) -> str:
+        """Multi-line LEVELS block (independent from the 10s ticker line).
+
+        Emitted at AUTO start and every AUTO_LEVELS_EVERY_TICKS ticks.
+        Format (line prefixed with '===' so it is trivial to parse and
+        to ignore visually in a live terminal):
+
+            === [HH:MM:SS] LEVELS NVDA  CW=210.00  MG=207.50  GF=198.49  PW=195.00 ===
+
+        Only the active ticker's levels are emitted; SPY/QQQ are not
+        scanned in AUTO mode (their per-tick % comes from MT5 mid, not
+        from a yfinance options chain). No extra yfinance call: values
+        are read from the snapshot already fetched for this tick.
+        """
+        import datetime as _dt
+        ts = _dt.datetime.now().strftime("%H:%M:%S")
+        meta = snapshot.get("meta") or {}
+        cw = self._fmt_level(meta.get("call_wall"))
+        mg = self._fmt_level(meta.get("max_gex_strike"))
+        gf = self._fmt_level(meta.get("gamma_flip"))
+        pw = self._fmt_level(meta.get("put_wall"))
+        return (
+            f"=== [{ts}] LEVELS {ticker:<5s} "
+            f"CW={cw}  MG={mg}  GF={gf}  PW={pw} ==="
+        )
 
     def _update_run(self, ticker: str, dspot_pct: Optional[float]) -> int:
         """Update consecutive-direction counter for spot delta.
