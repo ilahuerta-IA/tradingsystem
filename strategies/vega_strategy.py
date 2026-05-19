@@ -121,6 +121,46 @@ class MADCloseDiff(bt.Indicator):
         self.lines.mad = bt.ind.SMA(absdiff, period=self.p.period)
 
 
+class HybridATR(bt.Indicator):
+    """Hybrid ATR estimator robust to broker high/low noise.
+
+    Eliminates dependency on high/low entirely. Combines magnitude of
+    last close-to-close move with a vol-scaled floor to avoid denominator
+    collapse when consecutive closes are nearly identical:
+
+        atr_hybrid[t] = max(|close[t] - close[t-1]|,
+                            alpha * vol[t] * close[t])
+
+    where vol[t] = EMA(|return[i]|, period) and
+          return[i] = close[i] / close[i-1] - 1.
+
+    Designed for VEGA z-score denominator on CFD indices where the broker
+    underreports high/low extremes (see context/VEGA_DIAG_PLAN.md Step 6).
+    """
+    lines = ('atr_hybrid',)
+    params = dict(period=24, alpha=0.5)
+    plotinfo = dict(plot=False)
+
+    def __init__(self):
+        # |return[i]| = |close[i]/close[i-1] - 1|
+        abs_ret = abs(self.data.close / self.data.close(-1) - 1.0)
+        # EMA of absolute returns (volatility proxy, dimensionless)
+        self._vol = bt.ind.ExponentialMovingAverage(
+            abs_ret, period=self.p.period,
+        )
+        # Need one extra bar for close(-1) in next()
+        self.addminperiod(self.p.period + 1)
+
+    def next(self):
+        delta_close = abs(self.data.close[0] - self.data.close[-1])
+        floor = (
+            self.p.alpha
+            * float(self._vol[0])
+            * float(self.data.close[0])
+        )
+        self.lines.atr_hybrid[0] = max(delta_close, floor)
+
+
 # =============================================================================
 # VEGA STRATEGY
 # =============================================================================
@@ -138,13 +178,21 @@ class VEGAStrategy(bt.Strategy):
         # === Z-SCORE SETTINGS ===
         sma_period=24,              # SMA period in H1 bars (24 = 24 hours)
         atr_period=24,              # ATR period in H1 bars
-        zscore_atr_method='wilder', # 'wilder' (default, classic ATR) or
+        zscore_atr_method='wilder', # 'wilder' (default, classic ATR),
                                     # 'mad_close' (mean abs close-diff,
-                                    # robust to broker high/low noise).
-                                    # See context/VEGA_DIAG_PLAN.md Step 4.
+                                    # robust to broker high/low noise),
+                                    # or 'hybrid' (max of |delta close|
+                                    # and alpha*vol*close, no high/low).
+                                    # See context/VEGA_DIAG_PLAN.md
+                                    # Steps 4 and 6.
                                     # Only affects z-score denominator;
                                     # protective stops and ATR filters
                                     # keep using Wilder regardless.
+        hybrid_alpha=0.5,           # Floor weight for 'hybrid' method.
+                                    # Higher -> more reliance on EMA vol
+                                    # estimate; lower -> closer to pure
+                                    # |delta close|. Vol window reuses
+                                    # atr_period.
 
         # === SIGNAL ===
         dead_zone=1.0,              # Minimum spread to generate signal
@@ -226,6 +274,9 @@ class VEGAStrategy(bt.Strategy):
         # Default 'wilder' -> aliases to self.atr_a/b (zero behavior change).
         # 'mad_close' -> mean(|close[i]-close[i-1]|) over atr_period bars,
         # ignores high/low to avoid broker noise (see VEGA_DIAG_PLAN.md).
+        # 'hybrid'    -> max(|delta close|, alpha*EMA(|ret|)*close), also
+        # ignores high/low, with vol-scaled floor to avoid pathological
+        # zero denominator (see VEGA_DIAG_PLAN.md Step 6).
         method = self.p.zscore_atr_method
         if method == 'mad_close':
             self._zscore_atr_a = MADCloseDiff(self.data_a,
@@ -235,13 +286,24 @@ class VEGAStrategy(bt.Strategy):
             self._zscore_atr_a.plotinfo.plot = False
             self._zscore_atr_b.plotinfo.plot = False
             print(f'[VEGA] zscore_atr_method=mad_close (opt-in)')
+        elif method == 'hybrid':
+            self._zscore_atr_a = HybridATR(self.data_a,
+                                           period=self.p.atr_period,
+                                           alpha=self.p.hybrid_alpha)
+            self._zscore_atr_b = HybridATR(self.data_b,
+                                           period=self.p.atr_period,
+                                           alpha=self.p.hybrid_alpha)
+            self._zscore_atr_a.plotinfo.plot = False
+            self._zscore_atr_b.plotinfo.plot = False
+            print(f'[VEGA] zscore_atr_method=hybrid '
+                  f'(opt-in, alpha={self.p.hybrid_alpha})')
         elif method == 'wilder':
             self._zscore_atr_a = self.atr_a
             self._zscore_atr_b = self.atr_b
         else:
             raise ValueError(
                 f"Unknown zscore_atr_method '{method}'. "
-                f"Use 'wilder' or 'mad_close'."
+                f"Use 'wilder', 'mad_close' or 'hybrid'."
             )
 
         # Hide indicators on reference
@@ -370,7 +432,8 @@ class VEGAStrategy(bt.Strategy):
     def _compute_spread(self):
         """Compute spread = z_A - z_B.
 
-        Uses self._zscore_atr_a/b (Wilder by default, MAD-close if opt-in).
+        Uses self._zscore_atr_a/b (Wilder by default; MAD-close or hybrid
+        if opt-in via zscore_atr_method).
         """
         z_a = self._compute_zscore(self.data_a.close, self.sma_a,
                                    self._zscore_atr_a)

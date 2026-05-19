@@ -550,7 +550,12 @@ if __name__ == '__main__':
     # Optional date overrides: --to-date YYYY-MM-DD and/or --from-date YYYY-MM-DD
     # Usage: python run_backtest.py GLD_CERES --to-date 2024-01-01
     #        python run_backtest.py GLD_CERES --from-date 2020-01-01 --to-date 2024-01-01
+    # Optional strategy param overrides via --param key=value (repeatable).
+    # Value parsed as int -> float -> str fallback. Booleans: true/false.
+    # Usage: python run_backtest.py NDAXI_VEGA --param zscore_atr_method=hybrid
+    #        python run_backtest.py NDAXI_VEGA --param hybrid_alpha=0.5
     date_overrides = {}
+    param_overrides = {}
     args = sys.argv[2:]
     i = 0
     while i < len(args):
@@ -560,6 +565,26 @@ if __name__ == '__main__':
         elif args[i] == '--from-date' and i + 1 < len(args):
             date_overrides['from_date'] = datetime.strptime(args[i + 1], '%Y-%m-%d')
             i += 2
+        elif args[i] == '--param' and i + 1 < len(args):
+            kv = args[i + 1]
+            if '=' not in kv:
+                print(f'[WARN] --param expects key=value, got: {kv}')
+            else:
+                k, v = kv.split('=', 1)
+                # Type coercion: bool > int > float > str
+                vl = v.strip().lower()
+                if vl in ('true', 'false'):
+                    parsed = (vl == 'true')
+                else:
+                    try:
+                        parsed = int(v)
+                    except ValueError:
+                        try:
+                            parsed = float(v)
+                        except ValueError:
+                            parsed = v
+                param_overrides[k.strip()] = parsed
+            i += 2
         else:
             i += 1
 
@@ -567,5 +592,13 @@ if __name__ == '__main__':
     if date_overrides and config_to_run in STRATEGIES_CONFIG:
         for key, val in date_overrides.items():
             STRATEGIES_CONFIG[config_to_run][key] = val
+
+    # Apply strategy param overrides (temporary, does not modify settings.py)
+    if param_overrides and config_to_run in STRATEGIES_CONFIG:
+        cfg = STRATEGIES_CONFIG[config_to_run]
+        cfg.setdefault('params', {})
+        for k, v in param_overrides.items():
+            cfg['params'][k] = v
+            print(f'[OVERRIDE] {config_to_run}.params.{k} = {v!r}')
 
     run_backtest(config_to_run)
