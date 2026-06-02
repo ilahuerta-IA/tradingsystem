@@ -21,9 +21,10 @@ from typing import Dict, Optional
 
 
 # Manual ticker -> MT5 symbol map (broker-specific).
-# Edit this table when adding tickers if the broker uses
-# descriptive names instead of standard tickers.
-TICKER_TO_MT5 = {
+# Prefer config/settings_orion.py (single source of truth, user-editable
+# via the active flag). The hardcoded table below is the fallback used
+# only when the config cannot be imported.
+_FALLBACK_TICKER_TO_MT5 = {
     "GOOGL": "Alphabet Inc A",
     "MSFT":  "Microsoft",
     "NVDA":  "Nvidia",
@@ -48,6 +49,12 @@ TICKER_TO_MT5 = {
     "MRNA":  "Moderna",
     "XLK":   "Technology Select Sector SPDR",
 }
+
+try:
+    from config import settings_orion as _orion_cfg
+    TICKER_TO_MT5 = _orion_cfg.ticker_to_mt5()
+except Exception:
+    TICKER_TO_MT5 = dict(_FALLBACK_TICKER_TO_MT5)
 
 
 class SpotProvider:

@@ -46,9 +46,19 @@ from .spot_provider import SpotProvider  # noqa: E402
 # Constants
 # ---------------------------------------------------------------------
 
-CORE_TICKERS = gex.CORE_TICKERS
-CONTEXT_TICKERS = gex.CONTEXT_TICKERS
-ALL_TICKERS = gex.ALL_TICKERS
+# Asset list / MT5 mapping: prefer config/settings_orion.py (single
+# source of truth, user-editable via the active flag). Fall back to the
+# hardcoded gex lists if the config is unavailable.
+try:
+    from config import settings_orion as _orion_cfg  # noqa: E402
+    CORE_TICKERS = _orion_cfg.core_tickers()
+    CONTEXT_TICKERS = _orion_cfg.context_tickers()
+    ALL_TICKERS = _orion_cfg.all_tickers()
+except Exception:
+    _orion_cfg = None
+    CORE_TICKERS = gex.CORE_TICKERS
+    CONTEXT_TICKERS = gex.CONTEXT_TICKERS
+    ALL_TICKERS = gex.ALL_TICKERS
 TOP_STRIKES_N = 5
 SPOT_REFRESH_MS = 2000
 AUTO_POLL_MS = 10_000  # 10s; conservative wrt yfinance rate-limit
@@ -72,10 +82,13 @@ ORDER_RISK_PCT = 0.01  # 1% of equity at SL
 #   QQQ ~ NAS100 / 41.1 (approximate, drifts ~0.5% over time)
 # Stocks (NVDA, V, MSFT, ...) are not listed -> ratio 1.0 (MT5 raw,
 # full precision).
-FIXED_RATIOS = {
-    "SPY": 1.0 / 10.0,
-    "QQQ": 1.0 / 41.1,
-}
+if _orion_cfg is not None:
+    FIXED_RATIOS = _orion_cfg.fixed_ratios()
+else:
+    FIXED_RATIOS = {
+        "SPY": 1.0 / 10.0,
+        "QQQ": 1.0 / 41.1,
+    }
 
 LOG_BG = "#0d0d0d"
 LOG_FG = "#d0d0d0"
