@@ -33,6 +33,9 @@ for _p in (_ROOT_DIR, _TOOLS_DIR):
 import orion_gex as gex  # noqa: E402
 
 from .chart_widget import GexChartWidget  # noqa: E402
+from .momentum_radar import (  # noqa: E402
+    MomentumRadarWidget, normalize_deltas,
+)
 from .order_executor import (  # noqa: E402
     OrionOrderError, OrionOrderExecutor,
 )
@@ -164,8 +167,13 @@ class OrionGuiMainWindow(QMainWindow):
             "QPushButton:checked { background: #2a6c2a; color: #ffffff; }"
         )
         self._export_btn = QPushButton("EXPORT LOG")
+        self._radar_btn = QPushButton("RADAR")
+        self._radar_btn.setCheckable(True)
+        self._radar_btn.setStyleSheet(
+            "QPushButton:checked { background: #1e5a6c; color: #ffffff; }"
+        )
         for b in (self._scan_btn, self._compare_btn, self._auto_btn,
-                  self._export_btn):
+                  self._export_btn, self._radar_btn):
             b.setMinimumWidth(60)
             top.addWidget(b)
 
@@ -214,6 +222,12 @@ class OrionGuiMainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(4)
 
+        # Left column: log on top, momentum radar docked below it. Both
+        # share the same column width, so dragging the horizontal handle
+        # resizes the radar together with the log (no decoupling).
+        left_split = QSplitter(Qt.Orientation.Vertical)
+        left_split.setHandleWidth(4)
+
         self._log = QPlainTextEdit()
         self._log.setReadOnly(True)
         mono = QFont("Consolas")
@@ -224,7 +238,19 @@ class OrionGuiMainWindow(QMainWindow):
             f"QPlainTextEdit {{ background: {LOG_BG}; color: {LOG_FG}; "
             f"border: 1px solid #333333; }}"
         )
-        splitter.addWidget(self._log)
+        left_split.addWidget(self._log)
+
+        self._radar = MomentumRadarWidget()
+        self._radar.setMinimumHeight(140)
+        self._radar.hide()  # shown via the RADAR toggle
+        left_split.addWidget(self._radar)
+
+        left_split.setStretchFactor(0, 65)
+        left_split.setStretchFactor(1, 35)
+        left_split.setSizes([600, 320])
+        left_split.setChildrenCollapsible(True)
+        self._left_split = left_split
+        splitter.addWidget(left_split)
 
         self._chart = GexChartWidget()
         splitter.addWidget(self._chart)
@@ -259,6 +285,7 @@ class OrionGuiMainWindow(QMainWindow):
         self._compare_btn.clicked.connect(self._on_compare)
         self._auto_btn.toggled.connect(self._on_auto_toggled)
         self._export_btn.clicked.connect(self._on_export)
+        self._radar_btn.toggled.connect(self._on_radar_toggled)
         self._buy_btn.clicked.connect(lambda: self._on_order("BUY"))
         self._sell_btn.clicked.connect(lambda: self._on_order("SELL"))
         self._ticker_combo.currentIndexChanged.connect(
@@ -292,6 +319,12 @@ class OrionGuiMainWindow(QMainWindow):
         self._auto_levels_ticks: Dict[str, int] = {}
         # SPY/QQQ previous-tick MT5 mid (for tick-to-tick delta %).
         self._auto_index_prev_mid: Dict[str, float] = {}
+        # Momentum radar state: raw deltas captured each tick, previous
+        # QQQ % (for QQQ->SPY lead detection), and a rolling history of
+        # normalized payloads (last 6) for the 1-minute average polygon.
+        self._auto_last_deltas: Dict[str, dict] = {}
+        self._auto_prev_qqq: Dict[str, float] = {}
+        self._auto_radar_hist: Dict[str, list] = {}
 
     # ---- handlers ----------------------------------------------------
 
@@ -695,6 +728,9 @@ class OrionGuiMainWindow(QMainWindow):
             self._auto_run.clear()
             self._auto_index_prev_mid.clear()
             self._auto_levels_ticks.clear()
+            self._auto_last_deltas.clear()
+            self._auto_prev_qqq.clear()
+            self._auto_radar_hist.clear()
             self._append_log(
                 f"=== AUTO ON [{ticker}] polling every "
                 f"{AUTO_POLL_MS // 1000}s, no disk writes\n"
@@ -754,6 +790,79 @@ class OrionGuiMainWindow(QMainWindow):
         line = self._format_auto_line(ticker, snapshot, prev)
         self._append_log(line + "\n")
         self._auto_prev_snapshot[ticker] = snapshot
+        self._feed_radar(ticker)
+
+    def _feed_radar(self, ticker: str) -> None:
+        """Update the momentum radar from this tick's captured deltas.
+
+        Purely additive: reuses raw deltas already computed for the log
+        line (no extra MT5/yfinance calls). Does nothing if the radar
+        window is closed.
+        """
+        radar = self._radar
+        if radar is None or not radar.isVisible():
+            return
+        d = self._auto_last_deltas.get(ticker)
+        if not d:
+            return
+        norm = normalize_deltas(
+            d_price=d.get("d_price"),
+            spot=d.get("spot"),
+            d_imp=d.get("d_imp"),
+            imp_base=d.get("imp_base"),
+            d_spy_pct=d.get("spy_pct"),
+            d_qqq_pct=d.get("qqq_pct"),
+        )
+        # Rolling 1-minute history (six 10s ticks) for the average polygon.
+        hist = self._auto_radar_hist.setdefault(ticker, [])
+        hist.append(norm)
+        if len(hist) > 6:
+            del hist[0]
+        avg = self._avg_norm(hist) if len(hist) > 1 else None
+        # QQQ leads SPY: QQQ moved positive last tick and SPY confirms now.
+        spy_pct = d.get("spy_pct")
+        qqq_pct = d.get("qqq_pct")
+        prev_qqq = self._auto_prev_qqq.get(ticker)
+        qqq_leads = bool(
+            prev_qqq is not None and prev_qqq > 0.0
+            and spy_pct is not None and spy_pct > 0.0
+        )
+        if qqq_pct is not None:
+            self._auto_prev_qqq[ticker] = qqq_pct
+        radar.update_data(
+            norm,
+            avg_1m=avg,
+            racha=int(d.get("run") or 0),
+            qqq_leads=qqq_leads,
+            ticker=ticker,
+        )
+
+    @staticmethod
+    def _avg_norm(hist: list) -> dict:
+        """Element-wise mean of the N/E/S/O axes over the history."""
+        keys = ("N", "E", "S", "O")
+        n = len(hist)
+        out = {}
+        for k in keys:
+            out[k] = sum(float(h.get(k, 0.0)) for h in hist) / n
+        return out
+
+    def _on_radar_toggled(self, checked: bool) -> None:
+        if self._radar is None:
+            return
+        if checked:
+            self._radar.show()
+            # Re-balance the vertical splitter: a child hidden when sizes
+            # were first applied can otherwise come back with height 0.
+            total = self._left_split.height() or 900
+            radar_h = max(220, int(total * 0.32))
+            self._left_split.setSizes([total - radar_h, radar_h])
+            # Render immediately from the last tick if AUTO is running.
+            ticker = self._current_ticker()
+            if ticker:
+                self._feed_radar(ticker)
+        else:
+            self._radar.hide()
 
     # ---- AUTO log formatting / helpers -------------------------------
 
@@ -958,11 +1067,14 @@ class OrionGuiMainWindow(QMainWindow):
         # GEX impulse (spot, call_wall], auto-scaled.
         imp = self._gex_impulse(snapshot)
         imp_str = self._scale_gex(imp)
+        d_imp_raw = None  # raw delta captured for the momentum radar
         if imp is None:
             d_imp_str = self._scale_gex_delta(None)
         else:
             if refreshed:
                 imp_prev = self._auto_prev_imp.get(ticker)
+                if imp_prev is not None:
+                    d_imp_raw = imp - imp_prev
                 d_imp_str = (
                     self._scale_gex_delta(imp - imp_prev)
                     if imp_prev is not None
@@ -989,6 +1101,22 @@ class OrionGuiMainWindow(QMainWindow):
         else:
             run_body = f"r{run:+d}"
         run_str = run_body if refreshed else (run_body + ".")
+
+        # Capture raw deltas for the momentum radar (no recomputation,
+        # no extra MT5/yfinance calls). d_price / d_imp are only set when
+        # the chain refreshed; stale ticks leave them None (neutral axis).
+        d_price = (spot - prev_spot) if (
+            refreshed and spot is not None and prev_spot is not None
+        ) else None
+        self._auto_last_deltas[ticker] = {
+            "d_price": d_price,
+            "spot": spot,
+            "d_imp": d_imp_raw,
+            "imp_base": imp,
+            "spy_pct": spy_pct,
+            "qqq_pct": qqq_pct,
+            "run": run,
+        }
 
         return (
             f"  [{ts}] {ticker:<5s} {spot_str} {d_spot_str} "
