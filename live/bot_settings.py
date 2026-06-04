@@ -44,9 +44,9 @@ ENABLED_CONFIGS = {
 
     # VEGA strategy (Cross-Index Z-Score Divergence, H4)
     # Deployed 2026-04-05: transitioning from M5 to H4 structural approach
-    "NI225_VEGA": True,   # SP500→JPN225, London session, LONG only
+    "NI225_VEGA": True,   # SP500->JPN225, London session, LONG only
     "GDAXI_VEGA": False,  # DISABLED 2026-04-11: 73% overlap with NDAXI, worse PF(1.28 vs 1.31)/DD(15% vs 14%)
-    "NDAXI_VEGA": True,   # NAS100→GER40, London session, LONG+SHORT
+    "NDAXI_VEGA": True,   # NAS100->GER40, London session, LONG+SHORT
     # ALTAIR strategy (Trend-Following Momentum, Miner DTOSC, CFD stocks)
     # Deployed 2026-04-15: live demo on FOREX.comGLOBAL DEMO
     # 2026-06-04 universe re-evaluation (tools/altair_sweep.py, hysteresis ON):
@@ -104,7 +104,7 @@ STRATEGY_TYPES = {
 
 
 # =============================================================================
-# SYMBOL MAPPING (BT name → broker name)
+# SYMBOL MAPPING (BT name -> broker name)
 # =============================================================================
 # CFD index symbol names differ between BT data (Dukascopy) and broker (FOREX.comGLOBAL).
 # Forex pairs (EURUSD, etc.) are identical and don't need mapping.

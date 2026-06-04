@@ -326,15 +326,28 @@ ALTAIR_STRATEGIES_CONFIG = {
         active=False,  # PF 0.90/0.96 (A/B). Financial services: close but never profitable
     ),
 
-    # --- FASE E: LIVE-REAL CANDIDATE PORTFOLIO (2026-06-04) ---
+    # --- FASE E: LIVE-REAL CANDIDATE PORTFOLIO (Darwinex Zero, 2026-06-04) ---
+    # DISTINCT from live-demo (FOREX.comGLOBAL). This is the target portfolio for
+    # the real-money Darwinex Zero account (CFD stocks, $0.02/share, 5x leverage).
     # Universe re-evaluation via tools/altair_sweep.py (regime hysteresis ON,
     # native 15m, bars_per_day=26). Selection criterion (Ivan): BOTH presets
     # (A & B) profitable = parameter-robust edge, weighting winning-years and
     # recent-year strength over the 8-year aggregate PF.
-    # Proven live-demo core already active above: NVDA, GOOGL (15m), GS_15m,
-    # JPM (30m). These FASE E picks add industrial/defense diversification away
-    # from the tech/financial core. active=False until live-real wiring.
-    # All use Config A (defaults: dtosc_os=25, max_sl_atr_mult=2.0).
+    #
+    # FULL LIVE-REAL PORTFOLIO = proven core + Tier 1 + Tier 2 (see context/
+    # CONTEXT_LIVE.md "ALTAIR Live-Real" for the rationale and roadmap):
+    #   CORE (reuse existing configs above, already live-demo validated):
+    #     NVDA_ALTAIR (15m A 2.13), GOOGL_ALTAIR (15m A 1.64),
+    #     GS_15m_ALTAIR (15m A 1.56), JPM_ALTAIR (30m B 1.62)
+    #   TIER 1 (new, native 15m, both presets win, top winning-years/Sharpe):
+    #     ETN, TDG, HII, NOC  -> defined below
+    #   TIER 2 (support diversifiers, native 15m, both presets win, lower edge
+    #           or single-sector overlap): MSCI, MPC, PGR, GRMN, COHR, AVGO
+    #           -> defined below
+    # All Tier 1/2 use Config A (defaults: dtosc_os=25, max_sl_atr_mult=2.0).
+    # active=False until live-real wiring (do NOT enable on the demo bot).
+    #
+    # --- Tier 1: core diversifiers (industrial / defense) ---
     'ETN_ALTAIR': _make_config(
         'ETN', 'ETN_15m_8Yea.csv',
         datetime.datetime(2017, 1, 1),
@@ -362,5 +375,50 @@ ALTAIR_STRATEGIES_CONFIG = {
         universe='sp500',
         bars_per_day=26, resample_minutes=0,
         active=False,  # 15m A PF 1.78 / B 1.27, 6/7 winning years
+    ),
+    # --- Tier 2: support diversifiers (financials / energy / insurance /
+    #     consumer-tech / semis). Lower or sector-overlapping edge; enable
+    #     selectively for correlation balance, not all at once. ---
+    'MSCI_ALTAIR': _make_config(
+        'MSCI', 'MSCI_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.74 / B 1.39 (financial data)
+    ),
+    'MPC_15m_ALTAIR': _make_config(
+        'MPC', 'MPC_15m_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.45 / B 1.32 (energy/refining)
+    ),
+    'PGR_15m_ALTAIR': _make_config(
+        'PGR', 'PGR_15m_8Yea.csv',
+        datetime.datetime(2018, 3, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.43 / B 1.32 (insurance)
+    ),
+    'GRMN_ALTAIR': _make_config(
+        'GRMN', 'GRMN_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.52 / B 1.27 (consumer tech)
+    ),
+    'COHR_ALTAIR': _make_config(
+        'COHR', 'COHR_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.94 / B 1.57 (photonics/semis, high but volatile)
+    ),
+    'AVGO_15m_ALTAIR': _make_config(
+        'AVGO', 'AVGO_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.43 / B 1.45 (semis, overlaps NVDA-tech)
     ),
 }

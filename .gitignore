@@ -79,3 +79,5 @@ config/settings_vega.py
 analysis/gex_*.csv
 # ORION history + snapshots + patterns log
 logs/orion/
+# ORION private data studies (ODT/spreadsheet working docs)
+analysis/*.odt
