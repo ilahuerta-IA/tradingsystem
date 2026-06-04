@@ -40,14 +40,15 @@ from lib.commission import ETFCommission, ETFCSVData  # noqa: E402
 
 
 # Window of the live screenshot. Inclusive on both ends.
-# Run #2 (2026-05-16): last 2 weeks. Only live ALTAIR entry: JPM 2026-05-04.
-LIVE_WINDOW_START_UTC = dt.datetime(2026, 5, 2, 0, 0, 0)
-LIVE_WINDOW_END_UTC = dt.datetime(2026, 5, 16, 23, 59, 59)
+# Run #3 (2026-06-02): window 2026-05-16 -> 2026-05-30 (last 2 weeks).
+# Only live ALTAIR entry in window: JPM 2026-05-27 (entry) -> 2026-05-28 (exit).
+LIVE_WINDOW_START_UTC = dt.datetime(2026, 5, 16, 0, 0, 0)
+LIVE_WINDOW_END_UTC = dt.datetime(2026, 5, 30, 23, 59, 59)
 
 # BT warmup: ALTAIR D1 regime needs SMA(252d) -> ~13 months minimum.
 # Use 2024-01-01 to be safe; resample is M5 -> 15/30/60m.
 BT_FROM = dt.datetime(2024, 1, 1)
-BT_TO = dt.datetime(2026, 5, 16)
+BT_TO = dt.datetime(2026, 5, 30)
 
 STARTING_CASH = 100_000.0
 
@@ -61,19 +62,22 @@ TICKERS = [
     ("V",     "V_5m_8Yea.csv",     60,  7, "V_ALTAIR"),
 ]
 
-# Live trades from MT5 screenshot (Run #2, window 2026-05-02 -> 2026-05-16).
-# Broker timezone is UTC+3 (DST), bot log timestamps are already UTC+3.
-# Only ALTAIR live entry in this window: JPM 2026-05-04 (TP hit 2026-05-06).
-# Real fills per MT5 screenshot (NOT bot's ESTIMATED $0).
+# Live trades from MT5 screenshot (Run #3, window 2026-05-16 -> 2026-05-30).
+# Time conversion: bot JSONL timestamps = CEST (UTC+2 summer), MT5 screenshot = UTC+3.
+# Both map to the same UTC: bot 21:35 CEST == screenshot 22:35 UTC+3 == 19:35 UTC.
+# Only ALTAIR live entry in this window: JPM 2026-05-27 (ticket 12980057).
+# Real fills per MT5 screenshot (NOT bot's ESTIMATED $0 TRADE_CLOSED event).
 LIVE_TRADES = {
     "NVDA":  [],
     "GOOGL": [],
     "JPM": [
         # (entry_utc, entry_price, exit_utc, exit_price, pnl, ticket)
-        # Bot signal log: UTC=2026-05-04 18:00, entry=307.88 SL=306.49 TP=313.35
-        # MT5 real fills: buy @ 307.500, exit @ 313.500 = +870 USD (TP hit).
-        (dt.datetime(2026, 5, 4, 18, 0), 307.500,
-         dt.datetime(2026, 5, 6, 13, 31), 313.500, 870.00, 0),
+        # Bot SIGNAL log: 2026-05-27 21:35 CEST = 19:35 UTC, entry=299.04
+        #   SL=297.19 TP=306.11, volume=152, slippage 0 (stock market order).
+        # MT5 real fills: buy @ 299.040, exit @ 297.50 = -224.96 (close above SL,
+        #   not PROT_STOP; ~13:30 UTC 2026-05-28).
+        (dt.datetime(2026, 5, 27, 19, 35), 299.040,
+         dt.datetime(2026, 5, 28, 13, 30), 297.500, -224.96, 12980057),
     ],
     "V":     [],
 }

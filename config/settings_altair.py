@@ -222,12 +222,14 @@ ALTAIR_STRATEGIES_CONFIG = {
     ),
 
     # --- FASE D: 15m EXPANSION (2026-04-19) ---
-    # GS 15m: PF 1.51, Shrp 0.62, DD 10.6%, +$23,394, T=128, Y+ 5/8
+    # GS 15m: 2026-06-04 re-eval (hysteresis ON, bars_per_day=26 = correct 15m
+    # scaling). Config A (defaults) beats B: PF 1.56 vs 1.40, 6/6 winning years
+    # vs 4/8. Switched B->A per universe sweep (tools/altair_sweep.py).
     'GS_15m_ALTAIR': _make_config(
         'GS', 'GS_15m_8Yea.csv',
         datetime.datetime(2017, 2, 1),
         universe='dj30',
-        max_sl_atr_mult=4.0, dtosc_os=20,
+        bars_per_day=26,     # 15m native (was implicitly H1=7, now correct)
         resample_minutes=0,  # native 15m, no resample needed
     ),
 
@@ -322,5 +324,43 @@ ALTAIR_STRATEGIES_CONFIG = {
         datetime.datetime(2018, 3, 1),
         universe='sp500',
         active=False,  # PF 0.90/0.96 (A/B). Financial services: close but never profitable
+    ),
+
+    # --- FASE E: LIVE-REAL CANDIDATE PORTFOLIO (2026-06-04) ---
+    # Universe re-evaluation via tools/altair_sweep.py (regime hysteresis ON,
+    # native 15m, bars_per_day=26). Selection criterion (Ivan): BOTH presets
+    # (A & B) profitable = parameter-robust edge, weighting winning-years and
+    # recent-year strength over the 8-year aggregate PF.
+    # Proven live-demo core already active above: NVDA, GOOGL (15m), GS_15m,
+    # JPM (30m). These FASE E picks add industrial/defense diversification away
+    # from the tech/financial core. active=False until live-real wiring.
+    # All use Config A (defaults: dtosc_os=25, max_sl_atr_mult=2.0).
+    'ETN_ALTAIR': _make_config(
+        'ETN', 'ETN_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.67 / B 1.64, 8/8 winning years, Sharpe 0.96
+    ),
+    'TDG_ALTAIR': _make_config(
+        'TDG', 'TDG_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.85 / B 1.20, 6/7 winning years, Sharpe 1.01 (best)
+    ),
+    'HII_ALTAIR': _make_config(
+        'HII', 'HII_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.67 / B 1.54, 7/8 winning years
+    ),
+    'NOC_ALTAIR': _make_config(
+        'NOC', 'NOC_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=0,
+        active=False,  # 15m A PF 1.78 / B 1.27, 6/7 winning years
     ),
 }

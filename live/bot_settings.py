@@ -49,15 +49,19 @@ ENABLED_CONFIGS = {
     "NDAXI_VEGA": True,   # NAS100→GER40, London session, LONG+SHORT
     # ALTAIR strategy (Trend-Following Momentum, Miner DTOSC, CFD stocks)
     # Deployed 2026-04-15: live demo on FOREX.comGLOBAL DEMO
-    # TF Live per ticker: 15m (NVDA, GOOGL), 30m (JPM), H1 (V, ALB, WDC)
-    "JPM_ALTAIR":   True,  # 30m, Config B (os=20, max_sl=4.0), PF 1.57
-    "NVDA_ALTAIR":  True,  # 15m, Config A (os=25, max_sl=2.0), PF 1.97
-    "GOOGL_ALTAIR": True,  # 15m, Config A (os=25, max_sl=2.0), PF 1.58
-    "V_ALTAIR":     True,  # H1,  Config B (os=20, max_sl=4.0), PF 1.84
-    "ALB_ALTAIR":   True,  # H1,  Config B (os=20, max_sl=4.0), PF 2.15
-    "WDC_ALTAIR":   True,  # H1,  Config A (default), PF 1.88
+    # 2026-06-04 universe re-evaluation (tools/altair_sweep.py, hysteresis ON):
+    #   Kept the parameter-robust 15m/30m survivors, disabled the H1 picks.
+    #   V/ALB/WDC only "worked" in H1 with n<30 (noise); at 15m all three lose
+    #   both presets (V 0.80/0.92, ALB 0.89/1.33, WDC 0.87/0.84). History kept.
+    # TF Live per ticker: 15m (NVDA, GOOGL, GS), 30m (JPM)
+    "JPM_ALTAIR":   True,   # 30m, Config B (os=20, max_sl=4.0), PF 1.62 (hyst)
+    "NVDA_ALTAIR":  True,   # 15m, Config A (os=25, max_sl=2.0), PF 2.13 (hyst)
+    "GOOGL_ALTAIR": True,   # 15m, Config A (os=25, max_sl=2.0), PF 1.64 (hyst)
+    "V_ALTAIR":     False,  # DISABLED 2026-06-04: 15m PF 0.80/0.92, H1 was noise (n=55)
+    "ALB_ALTAIR":   False,  # DISABLED 2026-06-04: 15m PF 0.89/1.33, H1 was noise (n=11)
+    "WDC_ALTAIR":   False,  # DISABLED 2026-06-04: 15m PF 0.87/0.84, H1 was noise (n=25)
     # Fase D expansion (15m picks, live demo 2026-04-19)
-    "GS_15m_ALTAIR": True,  # 15m, Config B (os=20, max_sl=4.0), PF 1.51 Shrp 0.62
+    "GS_15m_ALTAIR": True,   # 15m, Config A (os=25, max_sl=2.0), PF 1.56 6/6 yrs (hyst)
 }
 
 # Strategy type mapping (which checker class to use)
