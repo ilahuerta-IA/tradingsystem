@@ -421,4 +421,35 @@ ALTAIR_STRATEGIES_CONFIG = {
         bars_per_day=26, resample_minutes=0,
         active=False,  # 15m A PF 1.43 / B 1.45 (semis, overlaps NVDA-tech)
     ),
+    # --- Tier 2b: resample 5m->15m candidates (2026-06-04 5m sweep) ---
+    # WARNING: source CSV is 5m, needs resample_minutes=15. The standard
+    # run_backtest does NOT consume resample_minutes (only altair_sweep.py does
+    # the in-memory resample). PF/year figures below come from the SWEEP tool,
+    # NOT reproducible by a direct run_backtest until the engine consumes the
+    # resample param. Kept active=False, documented for live-real Darwinex Zero.
+    # Only the 3 robust survivors of the 5m sweep are kept; rest discarded
+    # (Ivan 2026-06-04: numbers not convincing). Best preset per ticker.
+    'MCO_15m_ALTAIR': _make_config(
+        'MCO', 'MCO_5m_8Yea.csv',
+        datetime.datetime(2018, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=15,
+        active=False,  # 5m->15m Config A PF 1.57, Sharpe 0.88, DD 5.9%, 7/7 yrs (best 5m pick)
+    ),
+    'HCA_15m_ALTAIR': _make_config(
+        'HCA', 'HCA_5m_8Yea.csv',
+        datetime.datetime(2018, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=15,
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B
+        active=False,  # 5m->15m Config B PF 1.55, Sharpe 0.71, DD 13.4%, 5/7 yrs (A also wins 1.50)
+    ),
+    'WST_15m_ALTAIR': _make_config(
+        'WST', 'WST_5m_8Yea.csv',
+        datetime.datetime(2018, 1, 1),
+        universe='sp500',
+        bars_per_day=26, resample_minutes=15,
+        max_sl_atr_mult=4.0, dtosc_os=20,  # Config B
+        active=False,  # 5m->15m Config B PF 1.58, Sharpe 0.73, DD 4.6% (lowest), 4/6 yrs (A also wins 1.34)
+    ),
 }
