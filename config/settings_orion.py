@@ -40,6 +40,14 @@ ORION_ASSETS = [
     {"yf": "NFLX",  "mt5": "Netflix",                       "role": "core",    "ratio": 1.0,        "active": True},
     {"yf": "MSFT",  "mt5": "Microsoft",                     "role": "core",    "ratio": 1.0,        "active": True},
     {"yf": "PLTR",  "mt5": "Palantir Tech Inc A",           "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "SHOP",  "mt5": "Shopify Inc",                   "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "CSCO",  "mt5": "Cisco Systems",                 "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "ORCL",  "mt5": "Oracle",                        "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "MSTR",  "mt5": "MicroStrategy Inc",             "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "WMT",   "mt5": "Walmart",                       "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "TXN",   "mt5": "Texas Instruments",             "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "LRCX",  "mt5": "Lam Research Corp",             "role": "core",    "ratio": 1.0,        "active": True},
+    {"yf": "AVGO",  "mt5": "Broadcom Ltd",                  "role": "core",    "ratio": 1.0,        "active": True},
 
     # --- Context overlays / index proxies (not direct trades) ----------
     {"yf": "XLK",   "mt5": "Technology Select Sector SPDR", "role": "context", "ratio": 1.0,        "active": True},
