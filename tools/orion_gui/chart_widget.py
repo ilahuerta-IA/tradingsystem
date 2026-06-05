@@ -36,6 +36,27 @@ LABEL_FONT_SIZE = 8
 LINE_WIDTH = 1
 STRIKE_LINE_WIDTH = 1
 
+# Option flow ("vol/OI") encoding. A strike whose today volume reaches
+# VOL_ALIVE_THRESHOLD of its accumulated OI is "alive" (fresh flow) and
+# its line is drawn one pixel thicker. Subtle on purpose: it must read
+# at a glance without masking the SPOT line when price approaches it.
+VOL_ALIVE_THRESHOLD = 0.20
+LINE_WIDTH_ALIVE = 2
+
+# Z order: SPOT / BID / ASK must always sit above any (possibly thicker)
+# strike line, regardless of insertion order.
+Z_STRIKE = 0.0
+Z_SPOT = 20.0
+
+# Compact display names for the chart tags (colors already identify the
+# level; abbreviating frees room for the vol/OI datum).
+LEVEL_ABBREV = {
+    "CALL_WALL": "CW",
+    "PUT_WALL": "PW",
+    "GAMMA_FLIP": "GF",
+    "MAX_GEX": "MAX",
+}
+
 # Color per level (line + label tag).
 LEVEL_STYLES = {
     "SPOT":       {"color": "#3aa0ff", "style": Qt.PenStyle.SolidLine},
@@ -183,6 +204,7 @@ class GexChartWidget(pg.PlotWidget):
         deltas: Dict[str, Optional[float]],
         expiry_changed: bool,
         net_gex_map: Optional[Dict[float, Tuple[float, Optional[float]]]] = None,
+        vol_oi_map: Optional[Dict[float, float]] = None,
         preserve_range: bool = False,
     ) -> None:
         """Render levels.
@@ -190,11 +212,15 @@ class GexChartWidget(pg.PlotWidget):
         net_gex_map: optional {strike -> (current_net_gex, delta_or_None)}.
         When provided, each line tag is prefixed with the net GEX value
         and the change vs the previous snapshot.
+        vol_oi_map: optional {strike -> vol/OI ratio}. When provided, each
+        tag gains a compact "vXX%" datum and "alive" strikes (ratio >=
+        VOL_ALIVE_THRESHOLD) are drawn one pixel thicker.
         preserve_range: when True, do NOT auto-range the Y axis. Used by
         AUTO mode so the user's manual zoom/scroll survives polling.
         """
         self.clear_levels()
         nmap = net_gex_map or {}
+        vmap = vol_oi_map or {}
 
         for name in ("CALL_WALL", "PUT_WALL", "GAMMA_FLIP", "MAX_GEX"):
             price = levels.get(name)
@@ -202,6 +228,7 @@ class GexChartWidget(pg.PlotWidget):
                 continue
             self._add_named_level(
                 name, price, deltas.get(name), nmap.get(price),
+                vmap.get(price),
             )
 
         named_prices = {levels.get(n) for n in
@@ -209,7 +236,9 @@ class GexChartWidget(pg.PlotWidget):
         for strike, _net in top_strikes:
             if strike in named_prices:
                 continue
-            self._add_strike_line(strike, gamma_flip, nmap.get(strike))
+            self._add_strike_line(
+                strike, gamma_flip, nmap.get(strike), vmap.get(strike),
+            )
 
         if asym is None:
             self._asym_label.setText("ASYM --")
@@ -244,6 +273,7 @@ class GexChartWidget(pg.PlotWidget):
                 spot, style["color"], style["style"],
                 LINE_WIDTH, text,
             )
+            self._spot_line.setZValue(Z_SPOT)
             self.addItem(self._spot_line)
         else:
             self._spot_line.setValue(spot)
@@ -277,6 +307,7 @@ class GexChartWidget(pg.PlotWidget):
             self._bid_line = _make_line(
                 bid, bs["color"], bs["style"], LINE_WIDTH, bid_text,
             )
+            self._bid_line.setZValue(Z_SPOT)
             self.addItem(self._bid_line)
         else:
             self._bid_line.setValue(bid)
@@ -287,6 +318,7 @@ class GexChartWidget(pg.PlotWidget):
             self._ask_line = _make_line(
                 ask, as_["color"], as_["style"], LINE_WIDTH, ask_text,
             )
+            self._ask_line.setZValue(Z_SPOT)
             self.addItem(self._ask_line)
         else:
             self._ask_line.setValue(ask)
@@ -312,20 +344,28 @@ class GexChartWidget(pg.PlotWidget):
     def _add_named_level(
         self, name: str, price: float, delta: Optional[float],
         net_gex_pair: Optional[Tuple[float, Optional[float]]] = None,
+        vol_oi: Optional[float] = None,
     ) -> None:
         style = LEVEL_STYLES[name]
         delta_str = self._fmt_delta(delta)
         prefix = self._fmt_net_gex_prefix(net_gex_pair)
-        text = f"{prefix}{name} {price:.2f} {delta_str}".rstrip()
-        line = _make_line(
-            price, style["color"], style["style"], LINE_WIDTH, text,
+        disp = LEVEL_ABBREV.get(name, name)
+        vol_str = self._fmt_vol(vol_oi)
+        text = (
+            f"{prefix}{disp} {price:.2f} {delta_str}{vol_str}".rstrip()
         )
+        line = _make_line(
+            price, style["color"], style["style"],
+            self._line_width(vol_oi), text,
+        )
+        line.setZValue(Z_STRIKE)
         self.addItem(line)
         self._items.append(line)
 
     def _add_strike_line(
         self, strike: float, gamma_flip: Optional[float],
         net_gex_pair: Optional[Tuple[float, Optional[float]]] = None,
+        vol_oi: Optional[float] = None,
     ) -> None:
         if gamma_flip is None:
             color = "#888888"
@@ -334,13 +374,29 @@ class GexChartWidget(pg.PlotWidget):
         else:
             color = "#662233"
         prefix = self._fmt_net_gex_prefix(net_gex_pair)
-        text = f"{prefix}{strike:.2f}"
+        vol_str = self._fmt_vol(vol_oi)
+        text = f"{prefix}{strike:.2f}{vol_str}"
         line = _make_line(
             strike, color, Qt.PenStyle.DashLine,
-            STRIKE_LINE_WIDTH, text,
+            self._line_width(vol_oi), text,
         )
+        line.setZValue(Z_STRIKE)
         self.addItem(line)
         self._items.append(line)
+
+    @staticmethod
+    def _line_width(vol_oi: Optional[float]) -> int:
+        """One pixel thicker when the strike is 'alive' (vol/OI high)."""
+        if vol_oi is not None and vol_oi >= VOL_ALIVE_THRESHOLD:
+            return LINE_WIDTH_ALIVE
+        return STRIKE_LINE_WIDTH
+
+    @staticmethod
+    def _fmt_vol(vol_oi: Optional[float]) -> str:
+        """Compact ' vXX%' (today volume / accumulated OI). '' if absent."""
+        if vol_oi is None:
+            return ""
+        return f" v{vol_oi * 100:.0f}%"
 
     @staticmethod
     def _fmt_delta(delta: Optional[float]) -> str:

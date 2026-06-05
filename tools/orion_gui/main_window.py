@@ -555,6 +555,7 @@ class OrionGuiMainWindow(QMainWindow):
         net_gex_map = self._build_net_gex_map(
             latest, prev, levels, top_strikes,
         )
+        vol_oi_map = self._build_vol_oi_map(latest, levels, top_strikes)
         self._chart.update_levels(
             levels=levels,
             top_strikes=top_strikes,
@@ -563,6 +564,7 @@ class OrionGuiMainWindow(QMainWindow):
             deltas=deltas,
             expiry_changed=expiry_changed,
             net_gex_map=net_gex_map,
+            vol_oi_map=vol_oi_map,
             preserve_range=preserve_range,
         )
 
@@ -653,6 +655,51 @@ class OrionGuiMainWindow(QMainWindow):
             delta = (cur - pv) if pv is not None else None
             out[strike] = (cur, delta)
 
+        return out
+
+    @staticmethod
+    def _profile_vol_oi_by_strike(snapshot: dict) -> Dict[float, float]:
+        out: Dict[float, float] = {}
+        for r in (snapshot.get("gex_profile", []) or []):
+            try:
+                out[float(r.get("strike"))] = float(r.get("vol_oi", 0.0))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    @classmethod
+    def _build_vol_oi_map(
+        cls,
+        latest: dict,
+        levels: Dict[str, float],
+        top_strikes: List[Tuple[float, float]],
+    ) -> Dict[float, float]:
+        """Map every rendered strike to its vol/OI ratio.
+
+        Mirrors _build_net_gex_map: named levels resolve to the closest
+        profile strike (tolerance 0.01); unnamed top strikes match exactly.
+        Empty when the snapshot carries no vol_oi (e.g. SCAN from disk).
+        """
+        by_strike = cls._profile_vol_oi_by_strike(latest)
+        all_strikes = sorted(by_strike.keys())
+
+        def nearest(price: float) -> Optional[float]:
+            if not all_strikes:
+                return None
+            best = min(all_strikes, key=lambda s: abs(s - price))
+            return best if abs(best - price) <= 0.01 else None
+
+        out: Dict[float, float] = {}
+        for name in ("CALL_WALL", "PUT_WALL", "GAMMA_FLIP", "MAX_GEX"):
+            price = levels.get(name)
+            if price is None:
+                continue
+            s = nearest(price)
+            if s is not None:
+                out[price] = by_strike[s]
+        for strike, _net in top_strikes:
+            if strike in by_strike:
+                out[strike] = by_strike[strike]
         return out
 
     @staticmethod
@@ -1156,6 +1203,7 @@ class OrionGuiMainWindow(QMainWindow):
         gex_df = gex.calc_gex_per_strike(calls, puts, spot, T)
         levels = gex.identify_levels(gex_df, spot)
         analysis = gex.analyze_levels(gex_df, spot, levels)
+        vol_by_strike = self._sum_vol_by_strike(calls, puts)
 
         total_oi = (
             gex._safe_int(calls["openInterest"].sum())
@@ -1181,8 +1229,53 @@ class OrionGuiMainWindow(QMainWindow):
         return {
             "meta": meta,
             "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),
-            "gex_profile": gex_df.to_dict(orient="records"),
+            "gex_profile": self._enrich_vol_oi(
+                gex_df.to_dict(orient="records"), vol_by_strike,
+            ),
         }
+
+    @staticmethod
+    def _sum_vol_by_strike(calls, puts) -> Dict[float, int]:
+        """Total option contracts traded TODAY per strike (calls + puts).
+
+        Reads the 'volume' column already present in the yfinance chain
+        DataFrames. Today's flow -- distinct from accumulated openInterest.
+        """
+        out: Dict[float, int] = {}
+        for df in (calls, puts):
+            if df is None or "volume" not in df.columns:
+                continue
+            grouped = df.groupby("strike")["volume"].sum()
+            for strike, vol in grouped.items():
+                try:
+                    k = float(strike)
+                except (TypeError, ValueError):
+                    continue
+                out[k] = out.get(k, 0) + gex._safe_int(vol)
+        return out
+
+    @staticmethod
+    def _enrich_vol_oi(
+        profile: List[dict], vol_by_strike: Dict[float, int]
+    ) -> List[dict]:
+        """Attach 'vol_oi' (today's volume / accumulated OI) to each row.
+
+        Ratio > threshold => the strike is being actively traded today
+        ("alive") rather than a stale wall. OI is taken from the profile
+        row itself (call_oi + put_oi). 0.0 when OI is zero.
+        """
+        for r in profile:
+            try:
+                k = float(r.get("strike"))
+            except (TypeError, ValueError):
+                r["vol_oi"] = 0.0
+                continue
+            oi = gex._safe_int(r.get("call_oi", 0)) + gex._safe_int(
+                r.get("put_oi", 0)
+            )
+            vol = vol_by_strike.get(k, 0)
+            r["vol_oi"] = (vol / oi) if oi > 0 else 0.0
+        return profile
 
     # ---- log helpers -------------------------------------------------
 
