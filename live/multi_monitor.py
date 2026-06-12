@@ -1197,23 +1197,26 @@ class MultiStrategyMonitor:
             if ref_symbol:
                 symbol_timeframes.setdefault(ref_symbol, set()).add(tf)
         
-        # Determine M5 count per symbol: VEGA needs 2000 (SMA24 warmup),
-        # others need 500 (sufficient for DTOSC + ATR after resample).
-        # Both the leader (asset_name) AND reference symbol need 2000 for VEGA.
+        # Determine M5 count per symbol: VEGA needs 4000 (~83 H4 bars) so
+        # the hybrid ATR EMA(24) converges in-window (SMA seed influence
+        # ~0.7% after ~59 recursive steps). With 2000 (~41 H4 bars) the
+        # seed still weighed ~26%, causing permanent BT-live drift.
+        # Others need 500 (sufficient for DTOSC + ATR after resample).
+        # Both the leader (asset_name) AND reference symbol need 4000 for VEGA.
         symbol_m5_count: Dict[str, int] = {}
         for sym, cfg_list in self.active_symbols.items():
             max_count = 500
             for cfg in cfg_list:
                 if cfg in VEGA_CONFIGS:
-                    max_count = max(max_count, 2000)
+                    max_count = max(max_count, 4000)
             symbol_m5_count[sym] = max_count
         # VEGA reference symbols (NI225, GDAXI) are in active_symbols with
-        # empty cfg_list. Mark them 2000 via their parent config.
+        # empty cfg_list. Mark them 4000 via their parent config.
         for cfg_name in self.checkers:
             if cfg_name in VEGA_CONFIGS:
                 ref = STRATEGIES_CONFIG.get(cfg_name, {}).get("reference_symbol")
                 if ref and ref in symbol_m5_count:
-                    symbol_m5_count[ref] = max(symbol_m5_count[ref], 2000)
+                    symbol_m5_count[ref] = max(symbol_m5_count[ref], 4000)
         
         # Also fetch D1 bars for ALTAIR stocks (regime filter needs SMA252d).
         # D1 bars don't have the H4 offset problem (midnight is universal).
