@@ -4116,6 +4116,12 @@ STRATEGIES_CONFIG = {
             'allow_long': True,
             'allow_short': False,
 
+            # Hybrid ATR (Eje A, promoted 2026-06-12): closes-only z-score
+            # denominator, immune to broker high/low noise (live drift fix).
+            # NI225 alpha=1.0 = BT parity vs wilder. VEGA_DIAG_PLAN PASO 6.
+            'zscore_atr_method': 'hybrid',
+            'hybrid_alpha': 1.0,
+
             # Session: London
             'session_start_hour': 7,
             'session_end_hour': 12,
@@ -4286,6 +4292,12 @@ STRATEGIES_CONFIG = {
             # Direction filter (L+S as per GDAXI_VEGA proven)
             'allow_long': True,
             'allow_short': True,
+
+            # Hybrid ATR (Eje A, promoted 2026-06-12): closes-only z-score
+            # denominator. NDAXI alpha=2.0 = strict BT win vs wilder
+            # (PF 1.37->1.42, DD 9.68->9.48). VEGA_DIAG_PLAN PASO 6.
+            'zscore_atr_method': 'hybrid',
+            'hybrid_alpha': 2.0,
 
             # Session: London open
             'session_start_hour': 7,

@@ -57,6 +57,14 @@ class VEGAChecker(BaseChecker):
         self.sma_period = params.get("sma_period", 24)
         self.atr_period = params.get("atr_period", 24)
 
+        # Z-score volatility estimator (mirror of strategies/vega_strategy.py
+        # dispatch). 'wilder' (default) keeps classic ATR; 'hybrid' uses the
+        # closes-only HybridATR (Eje A) immune to broker high/low noise.
+        # Only affects the z-score denominator; protective stops, TP and
+        # ATR filters keep using Wilder regardless (same contract as BT).
+        self.zscore_atr_method = params.get("zscore_atr_method", "wilder")
+        self.hybrid_alpha = params.get("hybrid_alpha", 0.5)
+
         # Signal
         self.dead_zone = params.get("dead_zone", 1.0)
         self.max_forecast = params.get("max_forecast", 20)
@@ -100,6 +108,8 @@ class VEGAChecker(BaseChecker):
         self.logger.info(
             f"[{self.config_name}] VEGA Checker initialized | "
             f"SMA={self.sma_period}, ATR={self.atr_period}, "
+            f"ATRm={self.zscore_atr_method}"
+            f"{f'(a={self.hybrid_alpha})' if self.zscore_atr_method == 'hybrid' else ''}, "
             f"DZ={self.dead_zone}, holding={self.holding_hours}H4bars | "
             f"DST={self.dst_mode} | "
             f"long={'Y' if self.allow_long else 'N'} "
@@ -198,6 +208,34 @@ class VEGAChecker(BaseChecker):
         # Wilder's RMA (alpha = 1/period)
         atr_series = tr.ewm(alpha=1.0 / period, adjust=False).mean()
         return float(atr_series.iloc[-1])
+
+    def _calculate_atr_hybrid(
+        self, df: pd.DataFrame, period: int, alpha: float
+    ) -> float:
+        """Closes-only hybrid ATR. Mirror of HybridATR (vega_strategy.py).
+
+        atr_hybrid[t] = max(|close[t] - close[t-1]|, alpha * vol[t] * close[t])
+        where vol = EMA(|return|, period).
+
+        The EMA is seeded with the SMA of the first `period` values and then
+        smoothed recursively with k = 2/(period+1), matching backtrader's
+        ExponentialMovingAverage exactly (BT-live fidelity is the whole
+        point of this estimator; see context/VEGA_DIAG_PLAN.md PASO 6).
+        """
+        close = df["close"].astype(float)
+        if len(close) < period + 2:
+            return float("nan")
+        abs_ret = (close / close.shift(1) - 1.0).abs().dropna()
+        if len(abs_ret) < period:
+            return float("nan")
+        values = abs_ret.to_numpy()
+        k = 2.0 / (period + 1.0)
+        ema = float(values[:period].mean())  # SMA seed (backtrader EMA)
+        for x in values[period:]:
+            ema += k * (float(x) - ema)
+        delta_close = abs(float(close.iloc[-1]) - float(close.iloc[-2]))
+        floor = alpha * ema * float(close.iloc[-1])
+        return max(delta_close, floor)
 
     def _compute_zscore(self, close_val: float, sma_val: float, atr_val: float) -> float:
         """Compute z-score: (close - SMA) / ATR."""
@@ -417,6 +455,30 @@ class VEGAChecker(BaseChecker):
                 f"ATR invalid: A={atr_a_eff}, B={atr_b_eff}"
             )
 
+        # Hybrid z-score ATR (Eje A): closes-only estimator, takes
+        # precedence over Wilder AND dense ATR for the z-score denominator
+        # (closes are identical in sparse/dense feeds, so dense is moot).
+        # SL/TP and ATR filters below keep using Wilder atr_b (BT contract).
+        atr_a_hyb = float("nan")
+        atr_b_hyb = float("nan")
+        if self.zscore_atr_method == "hybrid":
+            atr_a_hyb = self._calculate_atr_hybrid(
+                df_closed, self.atr_period, self.hybrid_alpha)
+            atr_b_hyb = self._calculate_atr_hybrid(
+                ref_closed, self.atr_period, self.hybrid_alpha)
+            if (
+                not math.isnan(atr_a_hyb) and not math.isnan(atr_b_hyb)
+                and atr_a_hyb > 0 and atr_b_hyb > 0
+            ):
+                atr_a_eff = atr_a_hyb
+                atr_b_eff = atr_b_hyb
+            else:
+                self.logger.warning(
+                    f"[{self.config_name}] Hybrid ATR invalid "
+                    f"(A={atr_a_hyb}, B={atr_b_hyb}); falling back to "
+                    f"previous effective ATR"
+                )
+
         z_a = self._compute_zscore(close_a, sma_a, atr_a_eff)
         z_b = self._compute_zscore(close_b, sma_b, atr_b_eff)
         spread = z_a - z_b
@@ -426,13 +488,15 @@ class VEGAChecker(BaseChecker):
         # context/VEGA_DIAG_PLAN.md). Emitted ONCE per H4 bar, before filters,
         # so we capture every bar even when discarded by time/day/ATR filter.
         # Step 5: atr_a_dense / atr_b_dense added (NaN when dense not used).
+        # Eje A: atr_a_hyb / atr_b_hyb appended (NaN unless method=hybrid).
         self.logger.info(
             f"[{self.config_name}] VEGA diag: t={bar_time_utc.isoformat()} "
             f"close_a={close_a:.4f} sma_a={sma_a:.4f} atr_a={atr_a:.4f} "
             f"atr_a_dense={atr_a_dense:.4f} z_a={z_a:.4f} "
             f"close_b={close_b:.4f} sma_b={sma_b:.4f} atr_b={atr_b:.4f} "
             f"atr_b_dense={atr_b_dense:.4f} z_b={z_b:.4f} "
-            f"spread={spread:.4f} forecast={forecast:.4f}"
+            f"spread={spread:.4f} forecast={forecast:.4f} "
+            f"atr_a_hyb={atr_a_hyb:.4f} atr_b_hyb={atr_b_hyb:.4f}"
         )
 
         # Mark bar as processed BEFORE filters (avoid re-processing on rejection)
