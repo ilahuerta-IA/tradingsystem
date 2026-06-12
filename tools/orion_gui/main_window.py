@@ -69,8 +69,10 @@ AUTO_LEVELS_EVERY_TICKS = 30
 
 # Order presets: (label, sl_pct). TP is always = SL (1:1 R:R).
 ORDER_PRESETS = [
-    ("0.5% SL/TP", 0.005),
-    ("1.0% SL/TP", 0.010),
+    ("0.5%", 0.005),
+    ("1%", 0.010),
+    ("1.5%", 0.015),
+    ("2%", 0.020),
 ]
 ORDER_RISK_PCT = 0.01  # 1% of equity at SL
 
