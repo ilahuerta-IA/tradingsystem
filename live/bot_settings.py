@@ -44,7 +44,7 @@ ENABLED_CONFIGS = {
 
     # VEGA strategy (Cross-Index Z-Score Divergence, H4)
     # Deployed 2026-04-05: transitioning from M5 to H4 structural approach
-    "NI225_VEGA": True,   # SP500->JPN225, London session, LONG only
+    "NI225_VEGA": False,  # DISABLED 2026-07-05: max_atr_entry=300 pts blocked 100% of bars since 2021; modern-era PF 1.34 < 1.5 -> no viable edge
     "GDAXI_VEGA": False,  # DISABLED 2026-04-11: 73% overlap with NDAXI, worse PF(1.28 vs 1.31)/DD(15% vs 14%)
     "NDAXI_VEGA": True,   # NAS100->GER40, London session, LONG+SHORT
     # ALTAIR strategy (Trend-Following Momentum, Miner DTOSC, CFD stocks)
