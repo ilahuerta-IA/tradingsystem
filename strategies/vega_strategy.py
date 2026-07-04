@@ -161,6 +161,30 @@ class HybridATR(bt.Indicator):
         self.lines.atr_hybrid[0] = max(delta_close, floor)
 
 
+class EmaVolATR(bt.Indicator):
+    """Pure EMA-of-returns volatility estimator (closes only, smooth).
+
+    Drops the |delta close| spike term of HybridATR entirely:
+
+        atr_ema[t] = alpha * vol[t] * close[t]
+
+    where vol[t] = EMA(|return[i]|, period). Rationale: the raw first
+    difference |close[t]-close[t-1]| amplifies broker close-level drift
+    (0.2-0.6%) by ~2 orders of magnitude on individual bars (measured
+    2026-07-04, see context/VEGA_DIAG_PLAN.md validation section). The
+    smoothed EMA branch is stable across feeds; using it alone maximizes
+    BT-live fidelity of the z-score denominator.
+    """
+    lines = ('atr_ema',)
+    params = dict(period=24, alpha=1.0)
+    plotinfo = dict(plot=False)
+
+    def __init__(self):
+        abs_ret = abs(self.data.close / self.data.close(-1) - 1.0)
+        vol = bt.ind.ExponentialMovingAverage(abs_ret, period=self.p.period)
+        self.lines.atr_ema = self.p.alpha * vol * self.data.close
+
+
 # =============================================================================
 # VEGA STRATEGY
 # =============================================================================
@@ -216,6 +240,13 @@ class VEGAStrategy(bt.Strategy):
         allowed_days=[0, 1, 2, 3, 4],
         min_atr_entry=0.0,          # Min ATR(B) to enter (0=disabled)
         max_atr_entry=0.0,          # Max ATR(B) to enter (0=disabled)
+                                    # NOTE: absolute points; breaks as
+                                    # index level grows (NI225 study
+                                    # 2026-07-04: 300pt cap blocked 100%
+                                    # of bars since 2021). Prefer pct.
+        max_atr_entry_pct=0.0,      # Max ATR(B) as % of close_b
+                                    # (0=disabled). Level-independent
+                                    # replacement for max_atr_entry.
 
         # === DST ===
         dst_mode='none',            # 'none', 'us', 'london_uk'
@@ -297,13 +328,24 @@ class VEGAStrategy(bt.Strategy):
             self._zscore_atr_b.plotinfo.plot = False
             print(f'[VEGA] zscore_atr_method=hybrid '
                   f'(opt-in, alpha={self.p.hybrid_alpha})')
+        elif method == 'ema':
+            self._zscore_atr_a = EmaVolATR(self.data_a,
+                                           period=self.p.atr_period,
+                                           alpha=self.p.hybrid_alpha)
+            self._zscore_atr_b = EmaVolATR(self.data_b,
+                                           period=self.p.atr_period,
+                                           alpha=self.p.hybrid_alpha)
+            self._zscore_atr_a.plotinfo.plot = False
+            self._zscore_atr_b.plotinfo.plot = False
+            print(f'[VEGA] zscore_atr_method=ema '
+                  f'(opt-in, alpha={self.p.hybrid_alpha})')
         elif method == 'wilder':
             self._zscore_atr_a = self.atr_a
             self._zscore_atr_b = self.atr_b
         else:
             raise ValueError(
                 f"Unknown zscore_atr_method '{method}'. "
-                f"Use 'wilder', 'mad_close' or 'hybrid'."
+                f"Use 'wilder', 'mad_close', 'hybrid' or 'ema'."
             )
 
         # Hide indicators on reference
@@ -932,6 +974,10 @@ class VEGAStrategy(bt.Strategy):
                 return
             if self.p.max_atr_entry > 0 and atr_b_now > self.p.max_atr_entry:
                 return
+            if self.p.max_atr_entry_pct > 0:
+                atr_b_pct = atr_b_now / float(self.data_b.close[0]) * 100.0
+                if atr_b_pct > self.p.max_atr_entry_pct:
+                    return
 
             # Dead zone / forecast threshold
             if abs(forecast) < self.p.min_forecast_entry:

@@ -4083,7 +4083,12 @@ STRATEGIES_CONFIG = {
     # Study: Sharpe 2.36 (Conv), Sharpe ~2.0 (Index B), PF 1.26, 7/7 years
     # Dead zone sweep: dz=1.0 h=6h optimal for stability
     'NI225_VEGA': {
-        'active': True,
+        # DEACTIVATED 2026-07-05: max_atr_entry=300 pts blocked 100% of
+        # bars since 2021 in BT and live alike (Nikkei level tripled).
+        # Modern-era re-test (2021+, pct filter): PF 1.34 < 1.5 threshold
+        # -> no viable edge. Config and results preserved (Axiom 9).
+        # See context/VEGA_DIAG_PLAN.md 2026-07-04 section.
+        'active': False,
         'strategy_name': 'VEGA',
         'asset_name': 'SP500',
         'data_path': 'data/SP500_5m_15Yea.csv',
@@ -4116,11 +4121,11 @@ STRATEGIES_CONFIG = {
             'allow_long': True,
             'allow_short': False,
 
-            # Hybrid ATR (Eje A, promoted 2026-06-12): closes-only z-score
-            # denominator, immune to broker high/low noise (live drift fix).
-            # NI225 alpha=1.0 = BT parity vs wilder. VEGA_DIAG_PLAN PASO 6.
-            'zscore_atr_method': 'hybrid',
-            'hybrid_alpha': 1.0,
+            # Z-score ATR: back to Wilder (2026-07-05). Hybrid promoted
+            # 2026-06-12 was REJECTED after 3-week live validation:
+            # 10x worse BT-live fidelity (|dC| first-difference noise).
+            # Wilder drift ~3% after April M5-rebuild fixes.
+            'zscore_atr_method': 'wilder',
 
             # Session: London
             'session_start_hour': 7,
@@ -4293,11 +4298,11 @@ STRATEGIES_CONFIG = {
             'allow_long': True,
             'allow_short': True,
 
-            # Hybrid ATR (Eje A, promoted 2026-06-12): closes-only z-score
-            # denominator. NDAXI alpha=2.0 = strict BT win vs wilder
-            # (PF 1.37->1.42, DD 9.68->9.48). VEGA_DIAG_PLAN PASO 6.
-            'zscore_atr_method': 'hybrid',
-            'hybrid_alpha': 2.0,
+            # Z-score ATR: back to Wilder (2026-07-05). Hybrid a=2.0
+            # promoted 2026-06-12 was REJECTED after 3-week live
+            # validation: 4x worse fidelity (11% vs 2.7% drift). BT cost
+            # of revert: PF 1.42 -> 1.37 (accepted for fidelity).
+            'zscore_atr_method': 'wilder',
 
             # Session: London open
             'session_start_hour': 7,
