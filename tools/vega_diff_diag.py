@@ -59,6 +59,8 @@ LIVE_LINE_RE = re.compile(
     r"z_b=(?P<z_b>-?\d+\.?\d*)\s+"
     r"spread=(?P<spread>-?\d+\.?\d*)\s+"
     r"forecast=(?P<forecast>-?\d+\.?\d*)"
+    r"(?:\s+atr_a_hyb=(?P<atr_a_hyb>-?\d+\.?\d*|nan|NaN))?"
+    r"(?:\s+atr_b_hyb=(?P<atr_b_hyb>-?\d+\.?\d*|nan|NaN))?"
 )
 
 # Columns the BT diag CSV writes (unchanged across Step 5).
@@ -68,9 +70,13 @@ NUMERIC_COLS = (
     "spread", "forecast",
 )
 
-# Extra columns only present in live (Step 5). Optional in regex; when
-# absent or NaN they are skipped from the cross-join report.
-LIVE_EXTRA_COLS = ("atr_a_dense", "atr_b_dense")
+# Extra columns only present in live (Step 5 dense; v0.12.0+ hybrid).
+# Optional in regex; when absent or NaN they are skipped from the
+# cross-join report. NOTE: since Eje A promotion (2026-06-12) the BT
+# CSV atr_a/atr_b hold the EFFECTIVE z-score ATR (hybrid), while the
+# live atr_a/atr_b remain classic Wilder. The apples-to-apples
+# comparison is BT atr_* vs live atr_*_hyb.
+LIVE_EXTRA_COLS = ("atr_a_dense", "atr_b_dense", "atr_a_hyb", "atr_b_hyb")
 
 
 def parse_bt_csv(path: Path) -> dict:
@@ -147,8 +153,10 @@ def cross_join(bt: dict, live: dict) -> list[dict]:
             row[f"live_{c}"] = lv
             row[f"delta_{c}"] = lv - bv
             row[f"rel_{c}"] = ((lv - bv) / bv * 100.0) if bv != 0 else 0.0
-        # Step 5: dense ATR (live-only) compared against BT atr_a/b baseline.
-        for c, bt_col in (("atr_a_dense", "atr_a"), ("atr_b_dense", "atr_b")):
+        # Live-only extra ATRs compared against BT atr_a/b baseline
+        # (Step 5 dense; v0.12.0+ hybrid = effective z-score ATR in BT).
+        for c, bt_col in (("atr_a_dense", "atr_a"), ("atr_b_dense", "atr_b"),
+                          ("atr_a_hyb", "atr_a"), ("atr_b_hyb", "atr_b")):
             lv = live_norm[ts].get(c, float("nan"))
             bv = bt_norm[ts][bt_col]
             row[f"live_{c}"] = lv
@@ -234,6 +242,38 @@ def print_summary(rows: list[dict]) -> None:
                   f"(n={len(dense_b_rows)}, classic atr_b = {rel_classic_b:.2f}%)")
         print("  Target: dense drift < 3% (classic typically 7-8%)")
         print()
+
+    # v0.12.0+: hybrid ATR validation (BT atr_* is hybrid since Eje A
+    # promotion, so this is the true apples-to-apples fidelity check).
+    hyb_a_rows = [r for r in rows
+                  if r["rel_atr_a_hyb"] == r["rel_atr_a_hyb"]]
+    hyb_b_rows = [r for r in rows
+                  if r["rel_atr_b_hyb"] == r["rel_atr_b_hyb"]]
+    if hyb_a_rows or hyb_b_rows:
+        print(f"  --- Eje A: HYBRID ATR (live) vs BT effective ATR ---")
+        if hyb_a_rows:
+            rel_hyb_a = sum(abs(r["rel_atr_a_hyb"]) for r in hyb_a_rows) / len(hyb_a_rows)
+            print(f"  mean |rel atr_a_hyb| = {rel_hyb_a:.2f}%  (n={len(hyb_a_rows)})")
+        if hyb_b_rows:
+            rel_hyb_b = sum(abs(r["rel_atr_b_hyb"]) for r in hyb_b_rows) / len(hyb_b_rows)
+            print(f"  mean |rel atr_b_hyb| = {rel_hyb_b:.2f}%  (n={len(hyb_b_rows)})")
+        print("  Target: hybrid drift < 2% (Wilder baseline was 7.5%)")
+        print()
+
+    # Forecast clip rate (|forecast| at the +/-20 cap). Success < 5%.
+    n = len(rows)
+    clip_live = sum(1 for r in rows if abs(r["live_forecast"]) >= 20.0)
+    clip_bt = sum(1 for r in rows if abs(r["bt_forecast"]) >= 20.0)
+    clip_mismatch = sum(
+        1 for r in rows
+        if (abs(r["live_forecast"]) >= 20.0) != (abs(r["bt_forecast"]) >= 20.0)
+    )
+    print(f"  --- Forecast clip rate (|fcst| >= 20) ---")
+    print(f"  live: {clip_live}/{n} ({clip_live/n*100:.1f}%)   "
+          f"bt: {clip_bt}/{n} ({clip_bt/n*100:.1f}%)   "
+          f"mismatch: {clip_mismatch}/{n} ({clip_mismatch/n*100:.1f}%)")
+    print("  Target: live clip rate < 5% (baseline was 26%)")
+    print()
 
     # Heuristic verdict (informative; final call always by Ivan)
     if rel_close > 0.5 or rel_close_a > 0.5:
