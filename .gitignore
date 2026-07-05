@@ -54,6 +54,7 @@ data/*.zip
 # Logs and Reports
 logs/
 temp_reports/*.txt
+tools/eje_a_logs/
 
 # Operating System
 .DS_Store
