@@ -1,16 +1,16 @@
 """
-tiingo_h1_downloader.py  —  Download H1 OHLCV data from Tiingo IEX
+tiingo_h1_downloader.py  --  Download H1 OHLCV data from Tiingo IEX
 =====================================================================
 Retrieves hourly candles for US stocks via the Tiingo IEX endpoint and
 saves them in the same CSV format used by Dukascopy so they are directly
 compatible with the ALTAIR back-test pipeline.
 
 Strategy:  Download 30-min bars and aggregate to 1-hour internally.
-This lets us build the 19:00–20:00 UTC closing bar that Tiingo's native
+This lets us build the 19:00-20:00 UTC closing bar that Tiingo's native
 1-hour resampling misses (IEX last bar is 19:30).
 
 Pagination:  The IEX endpoint caps at ~10 000 rows per request.  At 30-min
-that is ≈ 385 trading days.  We paginate in 1-year chunks to ensure full
+that is ~ 385 trading days.  We paginate in 1-year chunks to ensure full
 coverage back to 2017.
 
 8-Year minimum:  Tickers whose first available bar is after 2018-04-12
@@ -36,7 +36,7 @@ Usage
 
 Rate Limits (free tier)
 -----------------------
-    50 requests/hour  ·  1 000 requests/day  ·  500 unique symbols/month
+    50 requests/hour  |  1 000 requests/day  |  500 unique symbols/month
 """
 
 import argparse
@@ -53,29 +53,29 @@ try:
 except ImportError:
     sys.exit("ERROR: 'requests' not installed.  Run:  pip install requests")
 
-# ── Constants ──────────────────────────────────────────────────────────
+# -- Constants ----------------------------------------------------------
 TIINGO_IEX_URL = "https://api.tiingo.com/iex/{ticker}/prices"
 DEFAULT_START  = "2017-01-02"
-FETCH_FREQ     = "30min"               # fetch sub-hourly …
-TARGET_FREQ    = "1hour"               # … then aggregate locally
+FETCH_FREQ     = "30min"               # fetch sub-hourly ...
+TARGET_FREQ    = "1hour"               # ... then aggregate locally
 DATA_DIR       = Path(__file__).resolve().parent.parent / "data"
 CSV_HEADER     = ["Date", "Time", "Open", "High", "Low", "Close", "Volume"]
 
 # Regular-hours 1-hour bars in UTC we want to produce.
-# 14:00 = aggregation of [13:30, 14:00) 30-min bars  … but IEX starts at 13:30
-# We build the *start-of-bar* → hour mapping for aggregation:
-#   13:30 + 14:00  → bar labelled 14:00   (first bar of day)
-#   14:30 + 15:00  → bar labelled 15:00
-#   …
-#   19:30 + (no 20:00) → bar labelled 20:00  (closing half-hour only)
+# 14:00 = aggregation of [13:30, 14:00) 30-min bars  ... but IEX starts at 13:30
+# We build the *start-of-bar* -> hour mapping for aggregation:
+#   13:30 + 14:00  -> bar labelled 14:00   (first bar of day)
+#   14:30 + 15:00  -> bar labelled 15:00
+#   ...
+#   19:30 + (no 20:00) -> bar labelled 20:00  (closing half-hour only)
 # The Dukascopy bars label each hour as: 14,15,16,17,18,19,20
-HOUR_BAR_LABELS = list(range(14, 21))   # 14..20 inclusive → 7 bars/day
+HOUR_BAR_LABELS = list(range(14, 21))   # 14..20 inclusive -> 7 bars/day
 FREE_TIER_DELAY = 75                    # seconds between API requests
 CHUNK_DAYS      = 365                   # 1-year chunks for pagination
 MIN_YEARS_DEFAULT = 8
 
 
-# ── Helpers ────────────────────────────────────────────────────────────
+# -- Helpers ------------------------------------------------------------
 
 def get_api_key() -> str:
     # 1. Try environment variable first
@@ -109,15 +109,15 @@ def _api_get(url: str, headers: dict, params: dict,
             data = resp.json()
             return data if isinstance(data, list) else []
         if resp.status_code == 429:
-            print(f"    ⚠  Rate-limited — waiting {wait} s … "
+            print(f"    !  Rate-limited -- waiting {wait} s ... "
                   f"(attempt {attempt}/{max_retries})")
             time.sleep(wait)
-            wait = min(wait + 120, 600)   # 120 → 240 → 360 → 480 → 600
+            wait = min(wait + 120, 600)   # 120 -> 240 -> 360 -> 480 -> 600
             continue
-        # Any other error → stop retrying
-        print(f"    ✗  HTTP {resp.status_code}: {resp.text[:200]}")
+        # Any other error -> stop retrying
+        print(f"    X  HTTP {resp.status_code}: {resp.text[:200]}")
         return []
-    print(f"    ✗  Rate-limit not cleared after {max_retries} retries")
+    print(f"    X  Rate-limit not cleared after {max_retries} retries")
     return []
 
 
@@ -145,10 +145,10 @@ def fetch_30min_paginated(ticker: str, api_key: str, start: str,
         bars = _api_get(url, headers, params)
         if bars:
             all_bars.extend(bars)
-            print(f"    chunk {chunk_n}: {start_dt} → {chunk_end}  "
+            print(f"    chunk {chunk_n}: {start_dt} -> {chunk_end}  "
                   f"({len(bars):,} bars)")
         else:
-            print(f"    chunk {chunk_n}: {start_dt} → {chunk_end}  "
+            print(f"    chunk {chunk_n}: {start_dt} -> {chunk_end}  "
                   f"(0 bars)")
 
         start_dt = chunk_end + timedelta(days=1)
@@ -160,17 +160,17 @@ def fetch_30min_paginated(ticker: str, api_key: str, start: str,
     return all_bars
 
 
-# ── 30min → 1h aggregation ────────────────────────────────────────────
+# -- 30min -> 1h aggregation --------------------------------------------
 
 def _bar_hour_label(dt: datetime) -> int | None:
     """Map a 30-min bar timestamp to its 1-hour bar label (14-20 UTC).
 
     Tiingo 30-min timestamps are at :00 and :30 of each hour.
     We group into 1h bars whose label matches Dukascopy convention:
-        13:30, 14:00  → label 14     (open = 13:30 open)
-        14:30, 15:00  → label 15
-        …
-        19:30         → label 20     (only half-bar available from IEX)
+        13:30, 14:00  -> label 14     (open = 13:30 open)
+        14:30, 15:00  -> label 15
+        ...
+        19:30         -> label 20     (only half-bar available from IEX)
     """
     h, m = dt.hour, dt.minute
     if h == 13 and m == 30:
@@ -180,7 +180,7 @@ def _bar_hour_label(dt: datetime) -> int | None:
             return h        # second sub-bar of the group
         if m == 30:
             return h + 1    # first sub-bar of the next group
-    return None             # pre/post market → discard
+    return None             # pre/post market -> discard
 
 
 def aggregate_to_h1(raw_30: list[dict]) -> list[list]:
@@ -221,7 +221,7 @@ def aggregate_to_h1(raw_30: list[dict]) -> list[list]:
     return rows
 
 
-# ── File I/O ───────────────────────────────────────────────────────────
+# -- File I/O -----------------------------------------------------------
 
 def save_csv(ticker: str, rows: list[list], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -233,15 +233,15 @@ def save_csv(ticker: str, rows: list[list], out_dir: Path) -> Path:
     return path
 
 
-# ── Per-ticker orchestration ──────────────────────────────────────────
+# -- Per-ticker orchestration ------------------------------------------
 
 def download_one(ticker: str, api_key: str, start: str, out_dir: Path,
                  min_years: float, fast: bool) -> tuple[str, str]:
     """Download, aggregate, validate and save one ticker.
 
     Returns (status, detail):
-        ("ok",       "12,345 bars | 2,001 days | 20170801 → 20260410")
-        ("short",    "Only 4.2 years (since 20220115) — not saved")
+        ("ok",       "12,345 bars | 2,001 days | 20170801 -> 20260410")
+        ("short",    "Only 4.2 years (since 20220115) -- not saved")
         ("no_data",  "No data returned")
     """
     print(f"\n{'='*55}")
@@ -262,23 +262,23 @@ def download_one(ticker: str, api_key: str, start: str, out_dir: Path,
     days       = len({r[0] for r in rows})
 
     detail = (f"{len(rows):,} bars | {days:,} days | "
-              f"{rows[0][0]} → {rows[-1][0]} | {span_years:.1f} yr")
+              f"{rows[0][0]} -> {rows[-1][0]} | {span_years:.1f} yr")
 
     if span_years < min_years:
-        print(f"  ⚠  Only {span_years:.1f} years (min {min_years}) — NOT saved")
-        return ("short", f"{span_years:.1f} yr (since {rows[0][0]}) — below {min_years}-yr minimum")
+        print(f"  !  Only {span_years:.1f} years (min {min_years}) -- NOT saved")
+        return ("short", f"{span_years:.1f} yr (since {rows[0][0]}) -- below {min_years}-yr minimum")
 
     path = save_csv(ticker, rows, out_dir)
-    print(f"  ✓  {detail}")
+    print(f"  OK  {detail}")
     print(f"     Saved: {path.name}")
     return ("ok", detail)
 
 
-# ── Main ───────────────────────────────────────────────────────────────
+# -- Main ---------------------------------------------------------------
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Download H1 OHLCV from Tiingo IEX (30min→1h aggregation)")
+        description="Download H1 OHLCV from Tiingo IEX (30min->1h aggregation)")
     ap.add_argument("tickers", nargs="*", help="Ticker symbols")
     ap.add_argument("--file", "-f", help="File with one ticker per line")
     ap.add_argument("--start", default=DEFAULT_START,
@@ -320,15 +320,15 @@ def main():
     api_key = get_api_key()
     out_dir = Path(args.outdir)
 
-    print(f"\nTiingo H1 Downloader  (30min→1h aggregation)")
-    print(f"{'─'*55}")
+    print(f"\nTiingo H1 Downloader  (30min->1h aggregation)")
+    print(f"{'-'*55}")
     print(f"  Tickers   : {len(tickers)}")
     print(f"  Start     : {args.start}")
     print(f"  Min years : {args.min_years}")
     print(f"  Output    : {out_dir}")
     print(f"  Fast mode : {args.fast}")
     print(f"  List      : {', '.join(tickers[:10])}" +
-          (f" … +{len(tickers)-10} more" if len(tickers) > 10 else ""))
+          (f" ... +{len(tickers)-10} more" if len(tickers) > 10 else ""))
 
     results: dict[str, list[tuple[str, str]]] = {
         "ok": [], "short": [], "no_data": [], "skipped": []
@@ -339,7 +339,7 @@ def main():
         # Resume support: skip if CSV already exists
         csv_path = out_dir / f"{ticker.upper()}_1h_8Yea.csv"
         if csv_path.exists() and not args.no_resume:
-            print(f"\n  ⏭  {ticker} — already exists, skipping "
+            print(f"\n  >>  {ticker} -- already exists, skipping "
                   f"(use --no-resume to re-download)")
             results["skipped"].append((ticker, str(csv_path.name)))
             continue
@@ -350,36 +350,36 @@ def main():
 
     elapsed = time.time() - t0
 
-    # ── Summary ────────────────────────────────────────────────────────
-    print(f"\n{'═'*55}")
+    # -- Summary --------------------------------------------------------
+    print(f"\n{'='*55}")
     print(f"  SUMMARY  ({elapsed:.0f}s elapsed)")
-    print(f"{'═'*55}")
+    print(f"{'='*55}")
 
     if results["ok"]:
-        print(f"\n  ✓ SAVED ({len(results['ok'])}):")
+        print(f"\n  OK SAVED ({len(results['ok'])}):")
         for tk, d in results["ok"]:
             print(f"    {tk:6s}  {d}")
 
     if results["skipped"]:
-        print(f"\n  ⏭ SKIPPED — already on disk ({len(results['skipped'])}):")
+        print(f"\n  >> SKIPPED -- already on disk ({len(results['skipped'])}):")
         for tk, d in results["skipped"]:
             print(f"    {tk:6s}  {d}")
 
     if results["short"]:
-        print(f"\n  ⚠ TOO SHORT — not saved ({len(results['short'])}):")
+        print(f"\n  ! TOO SHORT -- not saved ({len(results['short'])}):")
         for tk, d in results["short"]:
             print(f"    {tk:6s}  {d}")
 
     if results["no_data"]:
-        print(f"\n  ✗ NO DATA ({len(results['no_data'])}):")
+        print(f"\n  X NO DATA ({len(results['no_data'])}):")
         for tk, d in results["no_data"]:
             print(f"    {tk:6s}  {d}")
 
-    print(f"\n  Total: ✓ {len(results['ok'])}  "
-          f"⏭ {len(results['skipped'])}  "
-          f"⚠ {len(results['short'])}  "
-          f"✗ {len(results['no_data'])}")
-    print(f"{'═'*55}")
+    print(f"\n  Total: OK {len(results['ok'])}  "
+          f">> {len(results['skipped'])}  "
+          f"! {len(results['short'])}  "
+          f"X {len(results['no_data'])}")
+    print(f"{'='*55}")
 
 
 if __name__ == "__main__":

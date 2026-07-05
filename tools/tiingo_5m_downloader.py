@@ -19,6 +19,9 @@ Usage
     python tools/tiingo_5m_downloader.py ALB WDC --tf 30min   # 30m bars
     python tools/tiingo_5m_downloader.py ALB WDC --fast       # skip rate-limit waits
     python tools/tiingo_5m_downloader.py ALB --min-years 0
+    python tools/tiingo_5m_downloader.py ALB --tf 15min --append
+        # incremental: only bars after the last one already stored in
+        # data/ALB_15m_8Yea.csv (1 API chunk per ticker, fast backfill)
 """
 import argparse
 import csv
@@ -175,6 +178,81 @@ def save_csv(ticker, rows, out_dir, csv_tag):
     return path
 
 
+def _last_stored_bar(path):
+    """Return (date_str, time_str) of the last row in an archive CSV."""
+    last = None
+    with open(path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader, None)  # header
+        for row in reader:
+            if row:
+                last = row
+    if last is None:
+        return None
+    return last[0], last[1]
+
+
+def append_one(ticker, api_key, out_dir, fast, freq, csv_tag):
+    """Incremental mode: download only bars after the archive's last bar
+    and append them. Returns (status, detail)."""
+    path = out_dir / ("%s_%s_8Yea.csv" % (ticker.upper(), csv_tag))
+    print()
+    print("=" * 55)
+    print("  %s  (%s, append)" % (ticker.upper(), csv_tag))
+    print("=" * 55)
+    if not path.exists():
+        return ("no_data", "archive not found: %s (use full mode)" % path.name)
+
+    last = _last_stored_bar(path)
+    if last is None:
+        return ("no_data", "archive empty (use full mode)")
+    last_date_str, last_time_str = last
+    last_dt = datetime.strptime(last_date_str + " " + last_time_str,
+                                "%Y%m%d %H:%M:%S")
+    start = last_dt.date().isoformat()  # re-fetch last day, dedupe below
+    print("    last stored bar: %s %s -> fetching from %s" %
+          (last_date_str, last_time_str, start))
+
+    raw = fetch_paginated(ticker, api_key, start, fast, freq,
+                          chunk_days=3650)
+    if not raw:
+        return ("no_data", "No data returned by Tiingo")
+
+    rows = filter_and_format(raw)
+    new_rows = [r for r in rows
+                if datetime.strptime(r[0] + " " + r[1], "%Y%m%d %H:%M:%S")
+                > last_dt]
+    if not new_rows:
+        return ("ok", "already up to date (0 new bars)")
+
+    # Sanity: overlap close check on the last stored day (split guard)
+    overlap = [r for r in rows if r[0] == last_date_str and r[1] == last_time_str]
+    if overlap:
+        with open(path, "r", encoding="utf-8") as f:
+            stored_close = None
+            reader = csv.reader(f)
+            next(reader, None)
+            for row in reader:
+                if row and row[0] == last_date_str and row[1] == last_time_str:
+                    stored_close = float(row[5])
+        if stored_close:
+            new_close = float(overlap[0][5])
+            if abs(new_close / stored_close - 1.0) > 0.005:
+                return ("mismatch",
+                        "overlap close differs %.2f%% (split/adjust?) -- "
+                        "NOT appended; re-download full archive" %
+                        (abs(new_close / stored_close - 1.0) * 100))
+
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerows(new_rows)
+    detail = ("%d new bars appended | %s %s -> %s %s" %
+              (len(new_rows), new_rows[0][0], new_rows[0][1],
+               new_rows[-1][0], new_rows[-1][1]))
+    print("    %s" % detail)
+    return ("ok", detail)
+
+
 def download_one(ticker, api_key, start, out_dir, min_years, fast,
                  freq="5min", chunk_days=120, csv_tag="5m"):
     print()
@@ -230,6 +308,9 @@ def main():
                         MIN_YEARS_DEFAULT)
     parser.add_argument("--fast", action="store_true",
                         help="Skip rate-limit delays (paid tier)")
+    parser.add_argument("--append", action="store_true",
+                        help="Incremental: only bars after the archive's "
+                             "last stored bar (fast backfill)")
     args = parser.parse_args()
 
     freq, chunk_days, csv_tag, _ = TF_PRESETS[args.tf]
@@ -246,10 +327,15 @@ def main():
 
     results = {}
     for i, ticker in enumerate(tickers):
-        status, detail = download_one(
-            ticker, api_key, args.start, DATA_DIR,
-            args.min_years, args.fast,
-            freq=freq, chunk_days=chunk_days, csv_tag=csv_tag)
+        if args.append:
+            status, detail = append_one(
+                ticker, api_key, DATA_DIR, args.fast,
+                freq=freq, csv_tag=csv_tag)
+        else:
+            status, detail = download_one(
+                ticker, api_key, args.start, DATA_DIR,
+                args.min_years, args.fast,
+                freq=freq, chunk_days=chunk_days, csv_tag=csv_tag)
         results[ticker] = (status, detail)
 
         # Rate limit between tickers

@@ -79,6 +79,14 @@ AVY
 #
 # ALSO DOWNLOADED (from earlier batch): HWM
 #
+# ROTATION SCREENER 2026-07 -- MT5-verified candidates (edge at closed-
+# market spread, tick 0.001): EBAY 47x, GM 18x, BBY 7.6x, MMM 5.6x.
+# H1 data pending download (Tiingo).
+GM
+EBAY
+BBY
+MMM
+#
 # DISCARDED — <8yr data in Tiingo:
 #   DELL (7.3yr, since 2018-12-31)
 #   MRNA (6.9yr, since 2019-05-20)

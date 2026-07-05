@@ -1,6 +1,17 @@
 # ALTAIR spread table -- broker spreads in USD per share (from MT5).
 # Fill/update monthly: MT5 -> Market Watch -> symbol -> spread (points -> USD).
+# Conversion: US equity CFDs have tick size 0.001 -> spread_usd = points * 0.001
+# (verified 2026-07-05 vs MT5 specs: Digitos=3, tick=0.001).
+# NOTE: values below captured with market CLOSED -> worst case (upper bound).
 # Lines starting with # are ignored. Missing tickers = edge not computed
 # (yellow note in screener, never red).
-# Updated: (pending first MT5 capture)
+# Updated: 2026-07-05
 ticker,spread_usd
+GM,0.020
+EBAY,0.010
+BBY,0.050
+MMM,0.110
+JPM,0.090
+NVDA,0.020
+GOOGL,0.060
+GS,0.840
