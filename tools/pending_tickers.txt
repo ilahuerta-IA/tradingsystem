@@ -81,11 +81,15 @@ AVY
 #
 # ROTATION SCREENER 2026-07 -- MT5-verified candidates (edge at closed-
 # market spread, tick 0.001): EBAY 47x, GM 18x, BBY 7.6x, MMM 5.6x.
-# H1 data pending download (Tiingo).
-GM
-EBAY
-BBY
-MMM
+# AB TEST 2026-07-05 -- ALL 4 FAILED robustness (both-presets rule):
+#   GM   PF 0.98/0.85 -> discard (loses with both)
+#   BBY  PF 1.16/1.02, all PnL from 2019 -> discard
+#   EBAY PF 0.88/1.15 -> discard (fails preset A, PF < 1.5)
+#   MMM  PF 0.64/1.73 -> discard (extreme preset sensitivity = fragile)
+# GM
+# EBAY
+# BBY
+# MMM
 #
 # DISCARDED — <8yr data in Tiingo:
 #   DELL (7.3yr, since 2018-12-31)
