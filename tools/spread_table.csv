@@ -1,0 +1,6 @@
+# ALTAIR spread table -- broker spreads in USD per share (from MT5).
+# Fill/update monthly: MT5 -> Market Watch -> symbol -> spread (points -> USD).
+# Lines starting with # are ignored. Missing tickers = edge not computed
+# (yellow note in screener, never red).
+# Updated: (pending first MT5 capture)
+ticker,spread_usd

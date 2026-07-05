@@ -59,9 +59,16 @@ CONFIG = {
     "calm_median_window": 126,   # ~6 months for the vol median
     # info columns
     "atr_period": 14,            # daily ATR pct (edge/spread input, Phase 2)
+    # edge/spread (Phase 2)
+    # k calibrated 2026-07-05 with tools/altair_k_calibration.py --years 2
+    # over 58 dual-granularity tickers: median 0.1495, std 0.0071
+    "k_atr15m_over_daily": 0.1495,
+    "edge_min": 5.0,             # ATR15m_est / spread >= this (Axiom 8)
+    "edge_warn": 4.0,            # between warn and min -> YELLOW
 }
 
 UNIVERSE_CACHE = os.path.join(SCRIPT_DIR, "sp500_tickers.txt")
+SPREAD_TABLE = os.path.join(SCRIPT_DIR, "spread_table.csv")
 OUT_DIR = os.path.join(REPO_ROOT, "results", "screener")
 
 STATUS_ORDER = {"GREEN": 0, "YELLOW": 1, "RED": 2, "GRAY": 3}
@@ -71,6 +78,25 @@ STATUS_COLOR = {
     "RED": "#ffc7ce",
     "GRAY": "#d9d9d9",
 }
+
+
+def load_spread_table():
+    """Load ticker -> spread_usd from tools/spread_table.csv (may be empty)."""
+    spreads = {}
+    if not os.path.exists(SPREAD_TABLE):
+        return spreads
+    with open(SPREAD_TABLE) as f:
+        for ln in f:
+            ln = ln.strip()
+            if not ln or ln.startswith("#") or ln.lower().startswith("ticker"):
+                continue
+            parts = ln.split(",")
+            if len(parts) >= 2:
+                try:
+                    spreads[parts[0].strip().upper()] = float(parts[1])
+                except ValueError:
+                    pass
+    return spreads
 
 
 def fetch_sp500_tickers():
@@ -137,7 +163,7 @@ def download_daily(tickers):
     return out
 
 
-def evaluate_ticker(df):
+def evaluate_ticker(df, spread_usd=None):
     """Compute metrics and semaphore for one ticker. Returns dict of row values."""
     row = {}
     c = df["Close"].astype(float)
@@ -182,6 +208,14 @@ def evaluate_ticker(df):
     atr = float(tr.rolling(CONFIG["atr_period"]).mean().iloc[-1])
     row["atr14_pct"] = round(atr / close * 100.0, 2)
 
+    # edge/spread: estimated 15m ATR (k * daily ATR) vs broker spread
+    edge = None
+    if spread_usd is not None and spread_usd > 0:
+        atr15m_est = atr * CONFIG["k_atr15m_over_daily"]
+        edge = atr15m_est / spread_usd
+        row["spread_usd"] = spread_usd
+        row["edge_ratio"] = round(edge, 1)
+
     if any(np.isnan(v) for v in (mom, sma200, vol_now, vol_med, dvol, atr)):
         row["status"] = "GRAY"
         row["note"] = "NaN in metrics"
@@ -194,6 +228,8 @@ def evaluate_ticker(df):
         fails.append("sma200")
     if dvol < CONFIG["dollar_vol_min_musd"]:
         fails.append("liquidity")
+    if edge is not None and edge < CONFIG["edge_warn"]:
+        fails.append("edge/spread")
 
     in_zone = CONFIG["pullback_min_pct"] <= dist <= CONFIG["pullback_max_pct"]
 
@@ -201,8 +237,15 @@ def evaluate_ticker(df):
         row["status"] = "RED"
         row["note"] = "fails: " + ",".join(fails)
     elif in_zone and calm:
-        row["status"] = "GREEN"
-        row["note"] = "setup ready (calm + pullback)"
+        if edge is None:
+            row["status"] = "YELLOW"
+            row["note"] = "setup ready BUT no spread data (fill spread_table.csv)"
+        elif edge < CONFIG["edge_min"]:
+            row["status"] = "YELLOW"
+            row["note"] = "setup ready BUT edge marginal (%.1fx)" % edge
+        else:
+            row["status"] = "GREEN"
+            row["note"] = "setup ready (calm + pullback, edge %.1fx)" % edge
     else:
         row["status"] = "YELLOW"
         why = []
@@ -256,11 +299,17 @@ def main():
 
     data = download_daily(tickers)
     missing = [t for t in tickers if t not in data]
+    spreads = load_spread_table()
+    if spreads:
+        print("Spread table: %d tickers" % len(spreads))
+    else:
+        print("Spread table empty -> edge/spread column skipped "
+              "(fill tools/spread_table.csv from MT5)")
 
     rows = []
     for t in tickers:
         if t in data:
-            row = evaluate_ticker(data[t])
+            row = evaluate_ticker(data[t], spreads.get(t))
         else:
             row = {"status": "GRAY", "note": "download failed / no data", "bars": 0}
         row["ticker"] = t
@@ -269,7 +318,8 @@ def main():
 
     cols = ["ticker", "held", "status", "close", "mom_12_1_pct", "above_sma200",
             "dist_52w_high_pct", "vol20_ann_pct", "vol_med6m_pct", "calm",
-            "dollar_vol_musd", "atr14_pct", "bars", "note"]
+            "dollar_vol_musd", "atr14_pct", "spread_usd", "edge_ratio",
+            "bars", "note"]
     df = pd.DataFrame(rows)
     for c in cols:
         if c not in df.columns:
@@ -293,6 +343,10 @@ def main():
         if s == "GREEN" and len(sub):
             print("  -> " + " ".join(sub["ticker"].head(25)), end="")
         print()
+    ready = df[df["note"].astype(str).str.startswith("setup ready BUT")]
+    if len(ready):
+        print("YELLOW but setup-ready (pending spread data/edge): %d" % len(ready))
+        print("  -> " + " ".join(ready["ticker"].head(40)))
     if missing:
         print("Download failed: %s" % " ".join(missing[:20]))
     print("\nCSV : %s" % csv_path)
