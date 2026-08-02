@@ -1,32 +1,9 @@
-"""ORION GUI asset configuration (single source of truth).
+import MetaTrader5 as mt5
 
-Defines the assets shown in the ORION GEX GUI ticker selector. Each entry
-maps a yfinance symbol (the GEX / options-chain source) to the broker's
-MT5 symbol name (live spot + order routing). Toggle ``active`` to add or
-remove an asset from the GUI without touching any code.
-
-Lot sizing is identical across US equities at the broker, so only the
-names differ between yfinance and MT5; that is all this table encodes.
-
-Fields:
-    yf:     yfinance ticker (options chain + reference price source).
-    mt5:    MT5 broker symbol name (live spot + order routing).
-    role:   'core'    -> tradeable underlying (listed first in selector).
-            'context' -> macro overlay / index proxy (regime read only).
-    ratio:  price ratio that converts the MT5 quote into the yfinance
-            underlying coordinate system. 1.0 for cash equities (MT5
-            quotes the share directly). Use a fraction when the broker
-            quotes a different instrument (e.g. an index CFD):
-              SPY = SPX500 / 10     (exact, US convention)
-              QQQ ~ NAS100 / 41.1   (approx, drifts ~0.5%/yr)
-    active: include in the GUI selector when True.
-
-ASCII-only (project axiom 4). MT5 names verified against the broker's
-symbol list (2026-06-02).
-"""
-
-ORION_ASSETS = [
-    # --- Core tradeable equities (ratio 1.0: MT5 quotes the share) -----
+# ==============================================================================
+# 1. LISTA DE ACCIONES (S&P 500)
+# ==============================================================================
+ACCIONES_SP500 = [
     {"yf": "AAPL",  "mt5": "Apple",                         "role": "core", "ratio": 1.0, "active": True},
     {"yf": "NVDA",  "mt5": "Nvidia",                        "role": "core", "ratio": 1.0, "active": True},
     {"yf": "GOOGL", "mt5": "Alphabet Inc A",                "role": "core", "ratio": 1.0, "active": True},
@@ -85,15 +62,22 @@ ORION_ASSETS = [
     {"yf": "CRM",   "mt5": "Salesforce Inc",                "role": "core", "ratio": 1.0, "active": True},
     {"yf": "COP",   "mt5": "ConocoPhillips",                "role": "core", "ratio": 1.0, "active": True},
     {"yf": "UBER",  "mt5": "Uber Inc",                      "role": "core", "ratio": 1.0, "active": True},
-    {"yf": "PFE",   "mt5": "Pfizer",                        "role": "core", "ratio": 1.0, "active": True},
+    {"yf": "PFE",   "mt5": "Pfizer",                        "role": "core", "ratio": 1.0, "active": True}
+]
 
+# ==============================================================================
+# 2. LISTA DE ETFs (SPOT / SIN APALANCAR)
+# ==============================================================================
+ETFS_SPOT = [
     {"yf": "SPY",   "mt5": "SPDR S&P 500 ETF",                  "role": "core", "ratio": 1.0, "active": True},
     {"yf": "QQQ",   "mt5": "Invesco QQQ Trust Series 1",        "role": "core", "ratio": 1.0, "active": True},
     {"yf": "IWM",   "mt5": "iShares Russell 2000 ETF",          "role": "core", "ratio": 1.0, "active": True},
     {"yf": "IWF",   "mt5": "iShares Russell 1000 Growth",       "role": "core", "ratio": 1.0, "active": True},
     {"yf": "IVW",   "mt5": "iShares S&P 500 Growth Index",      "role": "core", "ratio": 1.0, "active": True},
+    {"yf": "QQQJ",  "mt5": "Reality Shares Nsdq NextGen Eco",   "role": "core", "ratio": 1.0, "active": True},
     {"yf": "XLK",   "mt5": "Technology Select Sector SPDR",     "role": "core", "ratio": 1.0, "active": True},
     {"yf": "XBI",   "mt5": "SPDR SP Biotech ETF",               "role": "core", "ratio": 1.0, "active": True},
+    {"yf": "IYR",   "mt5": "iShares Dow Jones US Real Estat",   "role": "core", "ratio": 1.0, "active": True},
     {"yf": "LIT",   "mt5": "Global X Lithium ETF",              "role": "core", "ratio": 1.0, "active": True},
     {"yf": "SIL",   "mt5": "Global X Silver Miners ETF",        "role": "core", "ratio": 1.0, "active": True},
     {"yf": "GDX",   "mt5": "VanEck Vectors Gold Miners",        "role": "core", "ratio": 1.0, "active": True},
@@ -103,40 +87,55 @@ ORION_ASSETS = [
     {"yf": "EEM",   "mt5": "iShares MSCI Emerg Markets",        "role": "core", "ratio": 1.0, "active": True},
     {"yf": "FXI",   "mt5": "iShares FTSE Xinhua China 25",      "role": "core", "ratio": 1.0, "active": True},
     {"yf": "MCHI",  "mt5": "iShares MSCI China ETF",            "role": "core", "ratio": 1.0, "active": True},
-    {"yf": "EWY",   "mt5": "iShares MSCI South Korea ETF",      "role": "core", "ratio": 1.0, "active": True},
-  
+    {"yf": "EWY",   "mt5": "iShares MSCI South Korea ETF",      "role": "core", "ratio": 1.0, "active": True}
 ]
 
+# ==============================================================================
+# 3. CONTROL DE SELECCIÓN (Descomenta solo 1 de las 3 opciones)
+# ==============================================================================
 
-def active_assets():
-    """Return active asset entries, preserving declaration order."""
-    return [a for a in ORION_ASSETS if a.get("active", True)]
+# OPCIÓN 1: Cargar SOLO ETFs
+assets = ETFS_SPOT
 
+# OPCIÓN 2: Cargar SOLO Acciones
+# assets = ACCIONES_SP500
 
-def core_tickers():
-    """Active yfinance tickers with role 'core' (tradeable)."""
-    return [a["yf"] for a in active_assets() if a.get("role") == "core"]
-
-
-def context_tickers():
-    """Active yfinance tickers with role 'context' (overlay)."""
-    return [a["yf"] for a in active_assets() if a.get("role") == "context"]
+# OPCIÓN 3: Cargar AMBOS (Acciones + ETFs)
+# assets = ETFS_SPOT + ACCIONES_SP500
 
 
-def all_tickers():
-    """Active core tickers followed by active context tickers."""
-    return core_tickers() + context_tickers()
+# ==============================================================================
+# 4. SCRIPT DE LIMPIEZA Y CARGA
+# ==============================================================================
+def limpiar_y_cargar():
+    if not mt5.initialize():
+        print("Error: Conecta con MT5 antes de ejecutar.")
+        return
 
+    # ---------------------------------------------------------
+    # PASO A: Limpiar el Market Watch (ocultar lo que esté visible)
+    # ---------------------------------------------------------
+    símbolos_visibles = mt5.symbols_get(selected=True)
+    if símbolos_visibles:
+        print(f"Limpiando {len(símbolos_visibles)} símbolos visibles del Market Watch...")
+        for sym in símbolos_visibles:
+            mt5.symbol_select(sym.name, False)
 
-def ticker_to_mt5():
-    """Map yfinance ticker -> MT5 symbol for active assets."""
-    return {a["yf"]: a["mt5"] for a in active_assets()}
+    # ---------------------------------------------------------
+    # PASO B: Cargar la lista seleccionada en 'assets'
+    # ---------------------------------------------------------
+    print(f"\nCargando {len(assets)} símbolos de la lista seleccionada...")
+    exitos = 0
+    for item in assets:
+        simbolo = item["mt5"]
+        if mt5.symbol_select(simbolo, True):
+            exitos += 1
+            print(f"✓ [{item['yf']}] Cargado -> '{simbolo}'")
+        else:
+            print(f"✗ Error al cargar -> '{simbolo}'")
 
+    print(f"\n¡Completado! {exitos} de {len(assets)} activos desplegados en la Observación del Mercado.")
+    mt5.shutdown()
 
-def fixed_ratios():
-    """Map yfinance ticker -> ratio for active entries where ratio != 1.0."""
-    return {
-        a["yf"]: a["ratio"]
-        for a in active_assets()
-        if a.get("ratio", 1.0) != 1.0
-    }
+if __name__ == "__main__":
+    limpiar_y_cargar()

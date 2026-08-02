@@ -1,0 +1,47 @@
+ALTAIR rotation report -- 2026-07
+Snapshots available: 2026-07
+NOTE: only 1 snapshot -> hysteresis (2 strikes) not yet computable; SALIR needs next month's run.
+
+--- Portfolio (4 held) ---
+JPM    MANTENER  status=YELLOW mom=5.0% note=watch: outside pullback zone, vol not calm
+NVDA   MANTENER  status=YELLOW mom=36.6% note=watch: outside pullback zone, vol not calm
+GOOGL  MANTENER  status=YELLOW mom=101.4% note=watch: vol not calm
+GS     MANTENER  status=YELLOW mom=47.7% note=watch: vol not calm
+
+--- ENTRAR: 0 (GREEN, setup + edge ok) ---
+
+--- CANDIDATO: 32 (setup ready, edge/spread pending) ---
+DDOG   mom= 85.4%  atr=4.37%  setup ready BUT no spread data (fill spread_table.
+CHRW   mom= 84.6%  atr=3.09%  setup ready BUT no spread data (fill spread_table.
+VTRS   mom= 73.2%  atr=3.01%  setup ready BUT no spread data (fill spread_table.
+TPR    mom= 63.1%  atr=3.91%  setup ready BUT no spread data (fill spread_table.
+DD     mom= 60.1%  atr=3.23%  setup ready BUT no spread data (fill spread_table.
+GM     mom= 56.2%  atr=3.16%  setup ready BUT no spread data (fill spread_table.
+ADM    mom= 55.2%  atr=2.65%  setup ready BUT no spread data (fill spread_table.
+HST    mom= 53.7%  atr=2.21%  setup ready BUT no spread data (fill spread_table.
+C      mom= 53.2%  atr=2.44%  setup ready BUT no spread data (fill spread_table.
+PSX    mom= 51.0%  atr=2.88%  setup ready BUT no spread data (fill spread_table.
+EBAY   mom= 45.4%  atr=2.75%  setup ready BUT no spread data (fill spread_table.
+HWM    mom= 41.6%  atr=3.56%  setup ready BUT no spread data (fill spread_table.
+FFIV   mom= 37.0%  atr=3.19%  setup ready BUT no spread data (fill spread_table.
+MAR    mom= 37.0%  atr=2.53%  setup ready BUT no spread data (fill spread_table.
+HUM    mom= 36.0%  atr=3.68%  setup ready BUT no spread data (fill spread_table.
+URI    mom= 35.2%  atr=2.72%  setup ready BUT no spread data (fill spread_table.
+RL     mom= 32.0%  atr=3.08%  setup ready BUT no spread data (fill spread_table.
+CDNS   mom= 31.2%  atr=3.71%  setup ready BUT no spread data (fill spread_table.
+MGM    mom= 28.2%  atr=3.08%  setup ready BUT no spread data (fill spread_table.
+HLT    mom= 22.9%  atr=2.32%  setup ready BUT no spread data (fill spread_table.
+SRE    mom= 22.2%  atr=1.76%  setup ready BUT no spread data (fill spread_table.
+LUV    mom= 22.0%  atr=3.88%  setup ready BUT no spread data (fill spread_table.
+NEE    mom= 18.3%  atr=1.75%  setup ready BUT no spread data (fill spread_table.
+KMI    mom= 14.6%  atr=2.24%  setup ready BUT no spread data (fill spread_table.
+DE     mom= 14.2%  atr=2.9%  setup ready BUT no spread data (fill spread_table.
+ATO    mom= 13.6%  atr=1.41%  setup ready BUT no spread data (fill spread_table.
+GRMN   mom= 12.8%  atr=2.78%  setup ready BUT no spread data (fill spread_table.
+OKE    mom= 11.4%  atr=2.69%  setup ready BUT no spread data (fill spread_table.
+WAT    mom=  7.9%  atr=2.87%  setup ready BUT no spread data (fill spread_table.
+BBY    mom=  4.4%  atr=3.24%  setup ready BUT no spread data (fill spread_table.
+PM     mom=  2.8%  atr=2.69%  setup ready BUT no spread data (fill spread_table.
+MMM    mom=  0.3%  atr=2.59%  setup ready BUT no spread data (fill spread_table.
+
+Reminder: changes go to config/settings.py AND live/bot_settings.py; exits keep the config with active=False; bump live version.

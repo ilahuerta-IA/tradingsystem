@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETFs Disponibles - Bróker MT5</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+        
+        .table { color: #e2e8f0; --bs-table-bg: transparent; }
+        .table-striped>tbody>tr:nth-of-type(odd)>* { 
+            background-color: #182232 !important; 
+            color: #cbd5e1 !important; 
+        }
+        .table-striped>tbody>tr:nth-of-type(even)>* { 
+            background-color: #243144 !important; 
+            color: #ffffff !important; 
+        }
+        .table-hover>tbody>tr:hover>* { 
+            background-color: #3b82f6 !important; 
+            color: #ffffff !important; 
+        }
+        
+        .badge { font-size: 0.85em; padding: 0.5em 0.75em; }
+        .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, 
+        .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_paginate { color: #94a3b8 !important; }
+        .form-control, .form-select { background-color: #0f172a; border-color: #334155; color: #f8fafc; }
+        .form-control:focus, .form-select:focus { background-color: #1e293b; color: #ffffff; border-color: #3b82f6; box-shadow: none; }
+    </style>
+</head>
+<body class="py-4">
+    <div class="container-fluid px-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="fw-bold text-primary mb-1">Catálogo de ETFs - Bróker MT5</h2>
+                <p class="text-muted mb-0">Total detectados: <strong>28</strong></p>
+            </div>
+            <button onclick="location.reload()" class="btn btn-outline-primary btn-sm">Actualizar Vista</button>
+        </div>
+
+        <div class="card p-4 shadow-lg">
+            <div class="table-responsive">
+                <table id="etfTable" class="table table-striped table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Ticker (YF)</th>
+                            <th>Nombre MT5</th>
+                            <th>Descripción Activo</th>
+                            <th>Vencimientos Opciones</th>
+                            <th class="text-center">Tiene Opciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">FAZ</span></td>
+            <td><strong>Direxion Dly Fin Bear 3XShs</strong></td>
+            <td>Direxion Dly Fin Bear 3XShs</td>
+            <td>5</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">JNUG</span></td>
+            <td><strong>Direxion Dly Jr Gld Bull 2x</strong></td>
+            <td>Direxion Dly Jr Gld Bull 2x</td>
+            <td>6</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">NUGT</span></td>
+            <td><strong>Direxion Dly GdM Idx Bull 2X</strong></td>
+            <td>Direxion Dly GdM Idx Bull 2X</td>
+            <td>13</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">LIT</span></td>
+            <td><strong>Global X Lithium ETF</strong></td>
+            <td>Global X Lithium ETF</td>
+            <td>4</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">SIL</span></td>
+            <td><strong>Global X Silver Miners ETF</strong></td>
+            <td>Global X Silver Miners ETF</td>
+            <td>5</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">QQQ</span></td>
+            <td><strong>Invesco QQQ Trust Series 1</strong></td>
+            <td>Invesco QQQ Trust Series 1</td>
+            <td>33</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">TWM</span></td>
+            <td><strong>ProShares Ultra Shrt Rusl 2000</strong></td>
+            <td>ProShares Ultra Shrt Rusl 2000</td>
+            <td>4</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">UVXY</span></td>
+            <td><strong>ProShares Ultra VIX ST</strong></td>
+            <td>ProShares Ultra VIX ST</td>
+            <td>12</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">UDOW</span></td>
+            <td><strong>ProShares UltraPro Dow30</strong></td>
+            <td>ProShares UltraPro Dow30</td>
+            <td>5</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">VIXY</span></td>
+            <td><strong>ProShares VIX ST</strong></td>
+            <td>ProShares VIX ST</td>
+            <td>6</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">VIXY</span></td>
+            <td><strong>ProShares VIX Short Term</strong></td>
+            <td>ProShares VIX Short Term</td>
+            <td>6</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">QQQJ</span></td>
+            <td><strong>Reality Shares Nsdq NextGen Eco</strong></td>
+            <td>Reality Shares Nsdq NextGen Eco</td>
+            <td>4</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">GLD</span></td>
+            <td><strong>SPDR Gold Trust (US)</strong></td>
+            <td>SPDR Gold Trust (US)</td>
+            <td>25</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">SPY</span></td>
+            <td><strong>SPDR S&P 500 ETF</strong></td>
+            <td>SPDR S&P 500 ETF</td>
+            <td>34</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">XBI</span></td>
+            <td><strong>SPDR SP Biotech ETF</strong></td>
+            <td>SPDR SP Biotech ETF</td>
+            <td>14</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">XLK</span></td>
+            <td><strong>Technology Select Sector SPDR</strong></td>
+            <td>Technology Select Sector SPDR</td>
+            <td>16</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">QLD</span></td>
+            <td><strong>Ultra QQQ ProShares</strong></td>
+            <td>Ultra QQQ ProShares</td>
+            <td>5</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">GDX</span></td>
+            <td><strong>VanEck Vectors Gold Miners</strong></td>
+            <td>VanEck Vectors Gold Miners</td>
+            <td>18</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">GDXJ</span></td>
+            <td><strong>VanEck Vectors Jr Gold Miners</strong></td>
+            <td>VanEck Vectors Junior Gold Miners</td>
+            <td>12</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">IYR</span></td>
+            <td><strong>iShares Dow Jones US Real Estat</strong></td>
+            <td>iShares Dow Jones US Real Estat</td>
+            <td>15</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">FXI</span></td>
+            <td><strong>iShares FTSE Xinhua China 25</strong></td>
+            <td>iShares FTSE Xinhua China 25</td>
+            <td>22</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">MCHI</span></td>
+            <td><strong>iShares MSCI China ETF</strong></td>
+            <td>iShares MSCI China ETF</td>
+            <td>5</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">EEM</span></td>
+            <td><strong>iShares MSCI Emerg Markets</strong></td>
+            <td>iShares MSCI Emerg Markets</td>
+            <td>20</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">IWM</span></td>
+            <td><strong>iShares Russell 2000 ETF</strong></td>
+            <td>iShares Russell 2000 ETF</td>
+            <td>32</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">IVW</span></td>
+            <td><strong>iShares S&P 500 Growth Index</strong></td>
+            <td>iShares S&P 500 Growth Index</td>
+            <td>4</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">SLV</span></td>
+            <td><strong>iShares Silver Trust</strong></td>
+            <td>iShares Silver Trust</td>
+            <td>26</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">IWF</span></td>
+            <td><strong>iShares Russell 1000 Growth</strong></td>
+            <td>iShares Russell 1000 Growth</td>
+            <td>5</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+        <tr>
+            <td><span class="badge bg-primary text-wrap fs-6">EWY</span></td>
+            <td><strong>iShares MSCI South Korea ETF</strong></td>
+            <td>iShares MSCI South Korea ETF </td>
+            <td>14</td>
+            <td class="text-center"><span class="badge bg-success">✓ Sí</span></td>
+        </tr>
+        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#etfTable').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json"
+                },
+                "pageLength": 25,
+                "order": [[4, "desc"], [0, "asc"]]
+            });
+        });
+    </script>
+</body>
+</html>
