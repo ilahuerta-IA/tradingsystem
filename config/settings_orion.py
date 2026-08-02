@@ -94,8 +94,8 @@ ORION_ASSETS = [
     {"yf": "IVW",   "mt5": "iShares S&P 500 Growth Index",      "role": "core", "ratio": 1.0, "active": True},
     {"yf": "XLK",   "mt5": "Technology Select Sector SPDR",     "role": "core", "ratio": 1.0, "active": True},
     {"yf": "XBI",   "mt5": "SPDR SP Biotech ETF",               "role": "core", "ratio": 1.0, "active": True},
-    {"yf": "LIT",   "mt5": "Global X Lithium ETF",              "role": "core", "ratio": 1.0, "active": True},
-    {"yf": "SIL",   "mt5": "Global X Silver Miners ETF",        "role": "core", "ratio": 1.0, "active": True},
+    {"yf": "LIT",   "mt5": "Global X Lithium ETF",              "role": "core", "ratio": 1.0, "active": False},  # edge 2.6x < 5x spread (2026-08-02)
+    {"yf": "SIL",   "mt5": "Global X Silver Miners ETF",        "role": "core", "ratio": 1.0, "active": False},  # edge 3.9x < 5x spread; re-check open-market (2026-08-02)
     {"yf": "GDX",   "mt5": "VanEck Vectors Gold Miners",        "role": "core", "ratio": 1.0, "active": True},
     {"yf": "GDXJ",  "mt5": "VanEck Vectors Jr Gold Miners",     "role": "core", "ratio": 1.0, "active": True},
     {"yf": "GLD",   "mt5": "SPDR Gold Trust (US)",              "role": "core", "ratio": 1.0, "active": True},

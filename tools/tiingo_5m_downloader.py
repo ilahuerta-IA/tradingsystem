@@ -51,6 +51,14 @@ MARKET_CLOSE_M = 55
 FREE_TIER_DELAY = 75   # seconds between API requests
 MIN_YEARS_DEFAULT = 8
 
+
+class QuotaExhausted(Exception):
+    """Raised when Tiingo 429s persist (daily request quota gone)."""
+    pass
+
+
+REQUEST_COUNT = {"n": 0}
+
 # Timeframe presets  {tf_arg: (tiingo_freq, chunk_days, csv_tag, bars_per_day)}
 # chunk_days sized so bars_per_day * chunk_days < 10 000 (Tiingo row cap)
 TF_PRESETS = {
@@ -86,6 +94,7 @@ def get_api_key():
 
 def _api_get(url, headers, params, max_retries=5):
     wait = 120
+    REQUEST_COUNT["n"] += 1
     for attempt in range(1, max_retries + 1):
         resp = _req.get(url, headers=headers, params=params, timeout=120)
         if resp.status_code == 200:
@@ -99,8 +108,9 @@ def _api_get(url, headers, params, max_retries=5):
             continue
         print("    HTTP %d: %s" % (resp.status_code, resp.text[:200]))
         return []
-    print("    Rate-limit not cleared after %d retries" % max_retries)
-    return []
+    raise QuotaExhausted(
+        "429 persisted after %d retries (daily quota likely exhausted)"
+        % max_retries)
 
 
 def fetch_paginated(ticker, api_key, start, fast, freq, chunk_days):
@@ -295,7 +305,17 @@ def download_one(ticker, api_key, start, out_dir, min_years, fast,
 def main():
     parser = argparse.ArgumentParser(
         description="Download intraday OHLCV from Tiingo IEX")
-    parser.add_argument("tickers", nargs="+", help="Ticker symbols")
+    parser.add_argument("tickers", nargs="*", help="Ticker symbols")
+    parser.add_argument("--tickers-file", default=None,
+                        help="Text file with one ticker per line "
+                             "(# comments ignored)")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="Skip tickers whose archive CSV already "
+                             "exists (resume mass downloads)")
+    parser.add_argument("--max-requests", type=int, default=0,
+                        help="Stop cleanly before starting a new ticker "
+                             "once this many API requests were made "
+                             "(0 = unlimited)")
     parser.add_argument("--tf", choices=list(TF_PRESETS.keys()),
                         default=DEFAULT_TF,
                         help="Timeframe (default: %s)" % DEFAULT_TF)
@@ -316,6 +336,21 @@ def main():
     freq, chunk_days, csv_tag, _ = TF_PRESETS[args.tf]
     api_key = get_api_key()
     tickers = [t.upper() for t in args.tickers]
+    if args.tickers_file:
+        with open(args.tickers_file, "r", encoding="utf-8") as f:
+            for line in f:
+                t = line.strip().upper()
+                if t and not t.startswith("#"):
+                    tickers.append(t)
+    if not tickers:
+        sys.exit("ERROR: no tickers given (positional or --tickers-file)")
+    if args.skip_existing:
+        before = len(tickers)
+        tickers = [t for t in tickers
+                   if not (DATA_DIR / ("%s_%s_8Yea.csv" % (t, csv_tag))
+                           ).exists()]
+        print("  Skip-existing: %d of %d already archived"
+              % (before - len(tickers), before))
 
     print()
     print("Tiingo %s Downloader" % csv_tag)
@@ -326,16 +361,28 @@ def main():
     print("  Output:  %s" % DATA_DIR)
 
     results = {}
+    stopped = None
     for i, ticker in enumerate(tickers):
-        if args.append:
-            status, detail = append_one(
-                ticker, api_key, DATA_DIR, args.fast,
-                freq=freq, csv_tag=csv_tag)
-        else:
-            status, detail = download_one(
-                ticker, api_key, args.start, DATA_DIR,
-                args.min_years, args.fast,
-                freq=freq, chunk_days=chunk_days, csv_tag=csv_tag)
+        if args.max_requests and REQUEST_COUNT["n"] >= args.max_requests:
+            stopped = ("max-requests reached (%d) before %s; "
+                       "relaunch tomorrow with --skip-existing"
+                       % (REQUEST_COUNT["n"], ticker))
+            break
+        try:
+            if args.append:
+                status, detail = append_one(
+                    ticker, api_key, DATA_DIR, args.fast,
+                    freq=freq, csv_tag=csv_tag)
+            else:
+                status, detail = download_one(
+                    ticker, api_key, args.start, DATA_DIR,
+                    args.min_years, args.fast,
+                    freq=freq, chunk_days=chunk_days, csv_tag=csv_tag)
+        except QuotaExhausted as exc:
+            stopped = ("quota exhausted at %s (%s); partial ticker NOT "
+                       "saved; relaunch tomorrow with --skip-existing"
+                       % (ticker, exc))
+            break
         results[ticker] = (status, detail)
 
         # Rate limit between tickers
@@ -346,11 +393,14 @@ def main():
     # Summary
     print()
     print("=" * 55)
-    print("SUMMARY")
+    print("SUMMARY  (%d API requests)" % REQUEST_COUNT["n"])
     print("=" * 55)
     for ticker, (status, detail) in results.items():
         print("  [%s] %-6s %s" % (
             "OK" if status == "ok" else "!!", ticker, detail))
+    if stopped:
+        print()
+        print("  STOPPED: %s" % stopped)
     print()
 
 
