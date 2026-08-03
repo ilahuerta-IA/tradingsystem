@@ -42,6 +42,13 @@ STARTING_CASH = 100_000.0
 CONFIG_A = {'max_sl_atr_mult': 2.0, 'dtosc_os': 25}  # NDX defaults
 CONFIG_B = {'max_sl_atr_mult': 4.0, 'dtosc_os': 20}  # DJ30 override
 
+# Mass 15m mode: years are aligned Aug-Jul (label = start year; 2020 =
+# Aug2020-Jul2021). IS = 4 aligned years (Aug2020-Jul2024); the ONE-SHOT
+# holdout Aug2024-Jul2026 (2 aligned years) is never touched by this mode.
+# Cutoff decided 2026-08-03 BEFORE any look at holdout data.
+IS_TO_DATE = datetime(2024, 7, 31)
+RESULTS_DIR = os.path.join(PROJECT_ROOT, 'results', 'mass15m')
+
 
 def run_bt(asset_name, asset_cfg, override_params=None):
     """Run one ALTAIR BT with optional param overrides."""
@@ -105,11 +112,12 @@ def extract(strat, cerebro):
             if d > dd:
                 dd = d
 
-    # Yearly PnL
+    # Yearly PnL (aligned Aug-Jul fiscal years, label = start year)
     yearly = defaultdict(lambda: {'trades': 0, 'wins': 0, 'pnl': 0.0,
                                    'gp': 0.0, 'gl': 0.0})
     for tp in strat._trade_pnls:
-        y = tp['year']
+        d = tp['date']
+        y = d.year if d.month >= 8 else d.year - 1
         yearly[y]['trades'] += 1
         yearly[y]['pnl'] += tp['pnl']
         if tp['is_winner']:
@@ -132,9 +140,19 @@ def extract(strat, cerebro):
 
     total_years = len(yearly_dict)
 
+    # Pseudo-daily Sharpe: equity sampled every 26 bars (15m regular session)
+    sharpe = 0.0
+    eq = strat._portfolio_values
+    if eq and len(eq) > 52:
+        daily = np.asarray(eq[::26], dtype=float)
+        rets = np.diff(daily) / daily[:-1]
+        sd = rets.std()
+        if sd > 0:
+            sharpe = rets.mean() / sd * np.sqrt(252)
+
     return {
         'trades': t, 'wr': wr, 'pf': pf, 'net_pnl': pnl,
-        'max_dd': dd, 'yearly': yearly_dict,
+        'max_dd': dd, 'yearly': yearly_dict, 'sharpe': sharpe,
         'pos_years': pos_years, 'total_years': total_years,
     }
 
@@ -376,14 +394,172 @@ def _run_ab_comparison(stock_configs, title):
             print(row)
 
 
+def _cap_pf(pf):
+    return min(pf, 999.0)
+
+
+def _universe15m_configs():
+    """One config per data/*_15m_8Yea.csv archive (bars_per_day=26,
+    to_date=IS_TO_DATE so the holdout stays untouched)."""
+    configs = {}
+    for p in sorted(Path(PROJECT_ROOT, 'data').glob('*_15m_8Yea.csv')):
+        ticker = p.name.split('_')[0]
+        cfg = _make_config(ticker, p.name, _detect_from_date(p),
+                           active=True, universe='mass15m', bars_per_day=26)
+        cfg['to_date'] = IS_TO_DATE
+        configs[ticker] = cfg
+    return configs
+
+
+def run_universe15m():
+    """Mass IS backtest over all 15m archives. Appends per ticker to CSVs
+    (resumable: already-summarized tickers are skipped). Token-lean output."""
+    import csv as _csv
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    sum_path = os.path.join(RESULTS_DIR, 'mass15m_summary.csv')
+    yr_path = os.path.join(RESULTS_DIR, 'mass15m_yearly.csv')
+
+    done = set()
+    if os.path.exists(sum_path):
+        with open(sum_path, 'r') as f:
+            for row in _csv.DictReader(f):
+                done.add(row['ticker'])
+    new_sum = not os.path.exists(sum_path)
+    new_yr = not os.path.exists(yr_path)
+
+    configs = _universe15m_configs()
+    todo = [t for t in sorted(configs) if t not in done]
+    print('Universe15m: %d archives, %d done, %d to run. IS ends %s.'
+          % (len(configs), len(done), len(todo), IS_TO_DATE.date()))
+
+    fs = open(sum_path, 'a', newline='')
+    fy = open(yr_path, 'a', newline='')
+    ws = _csv.writer(fs)
+    wy = _csv.writer(fy)
+    if new_sum:
+        ws.writerow(['ticker', 'config', 'trades', 'wr', 'pf', 'max_dd',
+                     'net_pnl', 'sharpe', 'pos_years', 'total_years'])
+    if new_yr:
+        wy.writerow(['ticker', 'config', 'year', 'trades', 'pnl', 'pf'])
+
+    for i, name in enumerate(todo, 1):
+        line = '[%3d/%d] %-6s' % (i, len(todo), name)
+        rows_s, rows_y = [], []
+        for label, override in (('A', CONFIG_A), ('B', CONFIG_B)):
+            m = run_bt(name, configs[name], override)
+            if 'error' in m:
+                line += '  %s: ERROR %s' % (label, m['error'][:40])
+                rows_s.append([name, label, 0, 0, 0, 0, 0, 0, 0, 0])
+                continue
+            rows_s.append([name, label, m['trades'], round(m['wr'], 1),
+                           round(_cap_pf(m['pf']), 3), round(m['max_dd'], 2),
+                           round(m['net_pnl'], 0), round(m['sharpe'], 2),
+                           m['pos_years'], m['total_years']])
+            for y, yd in sorted(m['yearly'].items()):
+                rows_y.append([name, label, y, yd['trades'],
+                               round(yd['pnl'], 0),
+                               round(_cap_pf(yd['pf']), 3)])
+            line += '  %s: T=%3d PF=%5.2f DD=%4.1f Y+=%d/%d' % (
+                label, m['trades'], _cap_pf(m['pf']), m['max_dd'],
+                m['pos_years'], m['total_years'])
+        ws.writerows(rows_s)
+        wy.writerows(rows_y)
+        fs.flush()
+        fy.flush()
+        print(line)
+    fs.close()
+    fy.close()
+    print('Done. Summary: %s' % sum_path)
+
+
+def print_finalists(min_pf=1.5, min_pos_years=3, min_pos_ratio=0.8,
+                    min_trades=30, max_year_share=0.6):
+    """Finalists from mass15m_summary.csv. Full finalist: profitable in BOTH
+    presets, best PF >= min_pf, >= min_pos_years positive aligned years,
+    pos ratio >= min_pos_ratio, no single year > max_year_share of PnL.
+    VIGILAR: passes PF/trades but fails a consistency check."""
+    import csv as _csv
+    sum_path = os.path.join(RESULTS_DIR, 'mass15m_summary.csv')
+    yr_path = os.path.join(RESULTS_DIR, 'mass15m_yearly.csv')
+    by_ticker = {}
+    with open(sum_path, 'r') as f:
+        for r in _csv.DictReader(f):
+            by_ticker.setdefault(r['ticker'], {})[r['config']] = r
+    yearly = defaultdict(dict)
+    with open(yr_path, 'r') as f:
+        for r in _csv.DictReader(f):
+            yearly[(r['ticker'], r['config'])][int(r['year'])] = r
+
+    finalists = []
+    vigilar = []
+    for t, cfgs in by_ticker.items():
+        if 'A' not in cfgs or 'B' not in cfgs:
+            continue
+        pa, pb = float(cfgs['A']['pf']), float(cfgs['B']['pf'])
+        if pa <= 1.0 or pb <= 1.0:
+            continue
+        best = 'A' if pa >= pb else 'B'
+        m = cfgs[best]
+        if float(m['pf']) < min_pf or int(m['trades']) < min_trades:
+            continue
+        ty = int(m['total_years']) or 1
+        ydata = yearly.get((t, best), {})
+        total_pnl = sum(float(y['pnl']) for y in ydata.values())
+        max_share = (max((float(y['pnl']) for y in ydata.values()),
+                         default=0) / total_pnl) if total_pnl > 0 else 1.0
+        consistent = (int(m['pos_years']) >= min_pos_years
+                      and int(m['pos_years']) / ty >= min_pos_ratio
+                      and max_share <= max_year_share)
+        (finalists if consistent else vigilar).append(
+            (float(m['pf']), t, best, m, max_share))
+
+    years = sorted({y for k in yearly for y in yearly[k]})
+
+    def _table(rows, label):
+        rows.sort(reverse=True)
+        hdr = ('%-6s Cfg %4s %6s %6s %6s %8s %4s %5s' %
+               ('TICKER', 'T', 'PF', 'DD%', 'Sharpe', 'PnL$', 'Y+', 'Conc'))
+        hdr += ''.join('  %s(n/PF)' % y for y in years)
+        print('\n%s: %d' % (label, len(rows)))
+        print(hdr)
+        for pf, t, best, m, share in rows:
+            row = '%-6s  %s  %4s %6.2f %6.1f %6.2f %8.0f %s/%s %4.0f%%' % (
+                t, best, m['trades'], pf, float(m['max_dd']),
+                float(m['sharpe']), float(m['net_pnl']),
+                m['pos_years'], m['total_years'], share * 100)
+            for y in years:
+                yd = yearly.get((t, best), {}).get(y)
+                row += ('  %3s/%-5.2f' % (yd['trades'], float(yd['pf']))
+                        if yd else '      --  ')
+            print(row)
+
+    print('Criteria: both presets PF>1.0, best PF>=%.2f, T>=%d; consistency:'
+          ' Y+>=%d, ratio>=%d%%, max year <=%d%% of PnL. Years = Aug-Jul.'
+          % (min_pf, min_trades, min_pos_years, min_pos_ratio * 100,
+             max_year_share * 100))
+    _table(finalists, 'FINALISTS')
+    _table(vigilar, 'VIGILAR (PF ok, consistency failed)')
+
+
 def main():
     parser = argparse.ArgumentParser(description='ALTAIR A/B Config Test')
     parser.add_argument('--pending', action='store_true',
                         help='Test pending tickers from pending_tickers.txt')
     parser.add_argument('--ticker', nargs='+',
                         help='Only test specific tickers (with --pending)')
+    parser.add_argument('--universe15m', action='store_true',
+                        help='Mass IS backtest over all data/*_15m_8Yea.csv '
+                             '(resumable, writes results/mass15m/*.csv)')
+    parser.add_argument('--finalists', action='store_true',
+                        help='Print finalists table from mass15m results')
     args = parser.parse_args()
 
+    if args.universe15m:
+        run_universe15m()
+        return
+    if args.finalists:
+        print_finalists()
+        return
     if args.pending:
         print('Loading pending tickers...')
         configs = _load_pending_tickers(args.ticker)

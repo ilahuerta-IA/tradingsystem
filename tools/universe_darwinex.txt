@@ -247,9 +247,9 @@ FTV
 GD
 GDDY
 GE
-GEHC
+# GEHC  (short history: 3.6 yr, spinoff 2023-01 - excluded 2026-08-03)
 GEN
-GEV
+# GEV  (short history: 2.3 yr, spinoff 2024-04 - excluded 2026-08-03)
 GILD
 GIS
 GL
@@ -272,8 +272,8 @@ HIG
 HII
 HLT
 HON
-HONA
-HOOD
+# HONA  (bad/renamed symbol, 0.1 yr on Tiingo - excluded 2026-08-03)
+# HOOD  (short history: 5.0 yr, IPO 2021-07 - excluded 2026-08-03)
 HPE
 HPQ
 HRL
