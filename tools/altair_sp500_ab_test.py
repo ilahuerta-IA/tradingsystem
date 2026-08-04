@@ -134,6 +134,7 @@ def extract(strat, cerebro):
             float('inf') if s['gp'] > 0 else 0)
         yearly_dict[y] = {
             'trades': s['trades'], 'pnl': s['pnl'], 'pf': y_pf,
+            'gp': s['gp'], 'gl': s['gl'],
         }
         if s['pnl'] > 0:
             pos_years += 1
@@ -472,6 +473,86 @@ def run_universe15m():
     print('Done. Summary: %s' % sum_path)
 
 
+OOS_TO_DATE = datetime(2026, 7, 31)
+OOS_YEARS = (2024, 2025)
+
+
+def _is_candidates(min_pf=1.5, min_trades=30):
+    """Tickers passing IS PF gates (finalists + vigilar), best preset."""
+    import csv as _csv
+    by_ticker = {}
+    with open(os.path.join(RESULTS_DIR, 'mass15m_summary.csv')) as f:
+        for r in _csv.DictReader(f):
+            by_ticker.setdefault(r['ticker'], {})[r['config']] = r
+    out = {}
+    for t, cfgs in by_ticker.items():
+        if 'A' not in cfgs or 'B' not in cfgs:
+            continue
+        pa, pb = float(cfgs['A']['pf']), float(cfgs['B']['pf'])
+        if pa <= 1.0 or pb <= 1.0:
+            continue
+        best = 'A' if pa >= pb else 'B'
+        m = cfgs[best]
+        if float(m['pf']) < min_pf or int(m['trades']) < min_trades:
+            continue
+        out[t] = (best, float(m['pf']))
+    return out
+
+
+def run_oos():
+    """One-shot OOS (fiscal 2024+2025 = Aug-2024..Jul-2026) on IS candidates.
+    Full history run so SMA200 etc. are warm; only OOS-year trades count.
+    Resumable; writes results/mass15m/oos_summary.csv."""
+    import csv as _csv
+    cands = _is_candidates()
+    oos_path = os.path.join(RESULTS_DIR, 'oos_summary.csv')
+    done = set()
+    if os.path.exists(oos_path):
+        with open(oos_path) as f:
+            for r in _csv.DictReader(f):
+                done.add(r['ticker'])
+    configs = _universe15m_configs()
+    todo = [t for t in sorted(cands) if t not in done and t in configs]
+    print('OOS: %d candidates, %d done, %d to run. Fiscal years %s.'
+          % (len(cands), len(done), len(todo), (OOS_YEARS,)))
+    new = not os.path.exists(oos_path)
+    fo = open(oos_path, 'a', newline='')
+    w = _csv.writer(fo)
+    if new:
+        w.writerow(['ticker', 'config', 'is_pf', 'oos_trades', 'oos_pnl',
+                    'oos_pf', 'y24_t', 'y24_pf', 'y25_t', 'y25_pf'])
+    for i, t in enumerate(todo, 1):
+        best, is_pf = cands[t]
+        cfg = dict(configs[t])
+        cfg['to_date'] = OOS_TO_DATE
+        m = run_bt(t, cfg, CONFIG_A if best == 'A' else CONFIG_B)
+        if 'error' in m:
+            print('[%2d/%d] %-6s ERROR %s' % (i, len(todo), t,
+                                              m['error'][:40]))
+            continue
+        tr, pnl, gp, gl = 0, 0.0, 0.0, 0.0
+        ycols = []
+        for y in OOS_YEARS:
+            yd = m['yearly'].get(y)
+            if yd:
+                tr += yd['trades']
+                pnl += yd['pnl']
+                gp += yd['gp']
+                gl += yd['gl']
+                ycols += [yd['trades'], round(_cap_pf(yd['pf']), 2)]
+            else:
+                ycols += [0, 0]
+        opf = _cap_pf(gp / gl if gl > 0 else (999.0 if gp > 0 else 0))
+        w.writerow([t, best, is_pf, tr, round(pnl, 0), round(opf, 3)] + ycols)
+        fo.flush()
+        print('[%2d/%d] %-6s %s IS_PF=%.2f OOS: T=%3d PF=%5.2f PnL=%7.0f'
+              ' | 24:%3d/%-5.2f 25:%3d/%-5.2f'
+              % (i, len(todo), t, best, is_pf, tr, opf, pnl,
+                 ycols[0], ycols[1], ycols[2], ycols[3]))
+    fo.close()
+    print('Done. OOS summary: %s' % oos_path)
+
+
 def print_finalists(min_pf=1.5, min_pos_years=3, min_pos_ratio=0.8,
                     min_trades=30, max_year_share=0.6):
     """Finalists from mass15m_summary.csv. Full finalist: profitable in BOTH
@@ -523,9 +604,10 @@ def print_finalists(min_pf=1.5, min_pos_years=3, min_pos_ratio=0.8,
         print('\n%s: %d' % (label, len(rows)))
         print(hdr)
         for pf, t, best, m, share in rows:
-            row = '%-6s  %s  %4s %6.2f %6.1f %6.2f %8.0f %s/%s %4.0f%%' % (
+            sh = float(m['sharpe'])
+            row = '%-6s  %s  %4s %6.2f %6.1f %5.2f%s %8.0f %s/%s %4.0f%%' % (
                 t, best, m['trades'], pf, float(m['max_dd']),
-                float(m['sharpe']), float(m['net_pnl']),
+                sh, '!' if sh < 0.7 else ' ', float(m['net_pnl']),
                 m['pos_years'], m['total_years'], share * 100)
             for y in years:
                 yd = yearly.get((t, best), {}).get(y)
@@ -535,6 +617,7 @@ def print_finalists(min_pf=1.5, min_pos_years=3, min_pos_ratio=0.8,
 
     print('Criteria: both presets PF>1.0, best PF>=%.2f, T>=%d; consistency:'
           ' Y+>=%d, ratio>=%d%%, max year <=%d%% of PnL. Years = Aug-Jul.'
+          ' Sharpe<0.7 = red flag "!" only (Ivan 2026-08-03, review with OOS).'
           % (min_pf, min_trades, min_pos_years, min_pos_ratio * 100,
              max_year_share * 100))
     _table(finalists, 'FINALISTS')
@@ -552,6 +635,8 @@ def main():
                              '(resumable, writes results/mass15m/*.csv)')
     parser.add_argument('--finalists', action='store_true',
                         help='Print finalists table from mass15m results')
+    parser.add_argument('--oos', action='store_true',
+                        help='One-shot OOS (fiscal 2024+2025) on candidates')
     args = parser.parse_args()
 
     if args.universe15m:
@@ -559,6 +644,9 @@ def main():
         return
     if args.finalists:
         print_finalists()
+        return
+    if args.oos:
+        run_oos()
         return
     if args.pending:
         print('Loading pending tickers...')

@@ -319,7 +319,7 @@ KMB
 KMI
 KO
 KR
-KVUE
+# KVUE  # short history 3.2y, spin-off 2023 (2026-08-04)
 L
 LDOS
 LEN
@@ -423,12 +423,12 @@ PPG
 PPL
 PRU
 PSA
-PSKY
+# PSKY  # short history 1.0y (2026-08-04)
 PSX
 PTC
 PWR
 PYPL
-Q
+# Q  # short history 0.7y (2026-08-04)
 QCOM
 RCL
 REG
@@ -452,10 +452,10 @@ SJM
 SLB
 SMCI
 SNA
-SNDK
+# SNDK  # short history 1.4y (2026-08-04)
 SNPS
 SO
-SOLV
+# SOLV  # short history 2.3y, spin-off 2024 (2026-08-04)
 SPG
 SPGI
 SRE
@@ -464,7 +464,7 @@ STLD
 STT
 STX
 STZ
-SW
+# SW  # short history 2.1y (2026-08-04)
 SWK
 SWKS
 SYF
@@ -475,12 +475,12 @@ TAP
 TDG
 TDY
 TECH
-TEL
+# TEL  # short history 1.8y in Tiingo, data gap? (2026-08-04)
 TER
 TFC
 TGT
 TJX
-TKO
+# TKO  # short history 2.9y (2026-08-04)
 TMO
 TMUS
 TPL
@@ -512,7 +512,7 @@ V
 VEEV
 VICI
 VLO
-VLTO
+# VLTO  # short history 2.8y, spin-off 2023 (2026-08-04)
 VMC
 VRSK
 VRSN
@@ -520,6 +520,7 @@ VRT
 VRTX
 VST
 VTR
+# VTRS 5.7y (spin-off Nov 2020), re-included by Ivan 2026-08-04: 1 month short of 5.8 not significant
 VTRS
 VZ
 WAB
