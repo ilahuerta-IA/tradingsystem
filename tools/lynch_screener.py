@@ -1,8 +1,11 @@
 import argparse
 import json
+import logging
 import pandas as pd
 import yfinance as yf
 from pathlib import Path
+
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 MIN_ROIC = 15
 MIN_EPS_GROWTH = 15
