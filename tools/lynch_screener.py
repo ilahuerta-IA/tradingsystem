@@ -1,4 +1,26 @@
+r"""
+PETER LYNCH SCREENER
+
+PowerShell examples (run from the TradingSystem directory):
+
+    One ticker, terminal only (no CSV):
+        python .\tools\lynch_screener.py --ticker AIR.PA
+
+    NYSE, one batch:
+        python .\tools\lynch_screener.py --file .\data\nyse_full_tickers.json --start 0 --end 50
+
+    One European market:
+        python .\tools\lynch_screener.py --file .\data\euronext_AEX_Amsterdam.json --start 0 --end 50
+
+    All Euronext JSON files, deduplicated:
+        python .\tools\lynch_screener.py --files ".\data\euronext_*.json" --start 0 --end 500 --output-name euronext
+
+    Several explicit files:
+        python .\tools\lynch_screener.py --files .\data\euronext_AEX_Amsterdam.json .\data\euronext_IBEX_35_Madrid.json --output-name aex_ibex
+"""
+
 import argparse
+import glob
 import json
 import logging
 import pandas as pd
@@ -12,6 +34,8 @@ MIN_EPS_GROWTH = 15
 MAX_EPS_GROWTH = 40
 RESULT_COLUMNS = [
     "Ticker",
+    "Nombre",
+    "Fuente",
     "Sector",
     "Precio ($)",
     "MarketCap ($M)",
@@ -42,19 +66,65 @@ def print_screener_legend():
     print("="*70 + "\n")
 
 # ==========================================
-# 2. CARGA DE DATOS
+# 2. CARGA Y NORMALIZACION DE DATOS
 # ==========================================
-def load_tickers_from_json(file_path: str, ticker_key: str = "symbol") -> list:
-    """Lee el archivo JSON y extrae la lista de tickers."""
-    path = Path(file_path)
-    if not path.exists():
-        print(f"[ERROR] No se encontro el archivo en {file_path}")
-        return []
-    
-    with open(path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    return [item.get(ticker_key) for item in data if item.get(ticker_key)]
+def resolve_input_files(patterns: list[str]) -> list[Path]:
+    """Expande rutas y patrones glob, conservando cada archivo una sola vez."""
+    resolved = []
+    seen = set()
+    for pattern in patterns:
+        matches = [Path(match) for match in glob.glob(pattern)]
+        if not matches and Path(pattern).is_file():
+            matches = [Path(pattern)]
+        if not matches:
+            print(f"[WARN] No se encontraron archivos para: {pattern}")
+        for path in sorted(matches):
+            normalized = str(path.resolve()).lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                resolved.append(path)
+    return resolved
+
+
+def load_universe(file_paths: list[Path], ticker_key: str = "symbol") -> list[dict]:
+    """Normaliza varios JSON y combina simbolos duplicados con sus fuentes."""
+    companies = {}
+    for path in file_paths:
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"[ERROR] No se pudo leer {path}: {error}")
+            continue
+
+        if not isinstance(data, list):
+            print(f"[ERROR] El JSON debe contener una lista: {path}")
+            continue
+
+        source = path.stem
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            symbol = str(item.get(ticker_key, "")).strip().upper()
+            if not symbol:
+                continue
+            name = item.get("name")
+            name = name.strip() if isinstance(name, str) and name.strip() not in {"N/A", "N/D"} else None
+            if symbol not in companies:
+                companies[symbol] = {"symbol": symbol, "name": name, "sources": [source]}
+            else:
+                if not companies[symbol]["name"] and name:
+                    companies[symbol]["name"] = name
+                if source not in companies[symbol]["sources"]:
+                    companies[symbol]["sources"].append(source)
+
+    return list(companies.values())
+
+
+def load_tickers_from_json(file_path: str, ticker_key: str = "symbol") -> list[str]:
+    """Mantiene compatibilidad con la carga de un unico JSON."""
+    files = resolve_input_files([file_path])
+    return [company["symbol"] for company in load_universe(files, ticker_key)]
 
 # ==========================================
 # 3. EVALUACION Y EXTRACCION DE METRICAS
@@ -143,17 +213,20 @@ def evaluate_lynch_criteria(
     except (TypeError, ValueError):
         return False
 
-def fetch_and_filter_data(tickers: list) -> tuple:
+def fetch_and_filter_data(companies: list[dict]) -> tuple:
     """Descarga metricas fundamentales ampliadas para cada ticker."""
-    if not tickers:
-        return pd.DataFrame(), []
+    if not companies:
+        return pd.DataFrame(columns=RESULT_COLUMNS), []
 
-    print(f"[INFO] Descargando datos fundamentales y metricas para {len(tickers)} tickers...")
+    print(f"[INFO] Descargando datos fundamentales y metricas para {len(companies)} tickers...")
     
     valid_data = []
     missing_tickers = []
 
-    for ticker in tickers:
+    for company in companies:
+        if isinstance(company, str):
+            company = {"symbol": company, "name": None, "sources": []}
+        ticker = company["symbol"]
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
@@ -191,6 +264,8 @@ def fetch_and_filter_data(tickers: list) -> tuple:
 
             valid_data.append({
                 "Ticker": ticker,
+                "Nombre": company["name"] or info.get("longName") or info.get("shortName"),
+                "Fuente": ",".join(company["sources"]),
                 "Sector": sector,
                 "Precio ($)": round(price, 2) if price else None,
                 "MarketCap ($M)": market_cap_m,
@@ -211,12 +286,16 @@ def fetch_and_filter_data(tickers: list) -> tuple:
 # ==========================================
 # 4. GUARDADO DE RESULTADOS
 # ==========================================
-def save_results(df: pd.DataFrame, start: int, end: int):
+def save_results(df: pd.DataFrame, start: int, end: int, output_name: str | None = None):
     """Guarda en CSV todos los resultados descargados."""
     output_dir = Path("results")
     output_dir.mkdir(exist_ok=True)
-    
-    filename = output_dir / f"lynch_report_{start}_to_{end}.csv"
+
+    if output_name:
+        safe_name = "".join(character if character.isalnum() or character in "-_" else "_" for character in output_name)
+        filename = output_dir / f"lynch_report_{safe_name}_{start}_to_{end}.csv"
+    else:
+        filename = output_dir / f"lynch_report_{start}_to_{end}.csv"
     df.to_csv(filename, index=False, sep=";")
     print(f"\n[OK] Reporte detallado guardado con exito en: {filename}")
 
@@ -227,7 +306,11 @@ def main():
     parser = argparse.ArgumentParser(description="Screener Avanzado tipo Peter Lynch")
     parser.add_argument("--start", type=int, default=0, help="Indice inicial del paquete")
     parser.add_argument("--end", type=int, default=50, help="Indice final del paquete")
-    parser.add_argument("--file", type=str, default="DATA/nyse_full_tickers.json", help="Ruta al JSON")
+    input_group = parser.add_mutually_exclusive_group()
+    input_group.add_argument("--ticker", help="Simbolo de yfinance para analizar en terminal sin crear CSV")
+    input_group.add_argument("--file", help="Ruta a un JSON (compatible con el uso anterior)")
+    input_group.add_argument("--files", nargs="+", help="Rutas o patrones glob de varios JSON")
+    parser.add_argument("--output-name", help="Nombre del universo para el archivo CSV")
     args = parser.parse_args()
 
     print("\n" + "="*70)
@@ -237,20 +320,38 @@ def main():
     # Mostrar la leyenda informativa obligatoria
     print_screener_legend()
 
-    all_tickers = load_tickers_from_json(args.file)
-    if not all_tickers:
-        return
-    
-    total = len(all_tickers)
-    end_idx = min(args.end, total) 
-    start_idx = max(0, args.start)
-    batch_tickers = all_tickers[start_idx:end_idx]
-    
-    print(f"[OK] Archivo cargado. Total de empresas en base de datos: {total}")
-    print(f"[INFO] Procesando paquete actual: del registro {start_idx} al {end_idx} ({len(batch_tickers)} empresas)\n")
+    if args.ticker:
+        ticker = args.ticker.strip().upper()
+        if not ticker:
+            parser.error("--ticker requiere un simbolo valido")
+        batch_companies = [{"symbol": ticker, "name": None, "sources": ["yfinance"]}]
+        start_idx = 0
+        end_idx = 1
+        output_name = None
+        print(f"[INFO] Analizando activo individual: {ticker}\n")
+    else:
+        input_patterns = args.files or [args.file or "data/nyse_full_tickers.json"]
+        input_files = resolve_input_files(input_patterns)
+        if not input_files:
+            return
+
+        all_companies = load_universe(input_files)
+        if not all_companies:
+            print("[ERROR] No se encontraron simbolos validos en los archivos.")
+            return
+
+        total = len(all_companies)
+        end_idx = min(args.end, total)
+        start_idx = max(0, args.start)
+        batch_companies = all_companies[start_idx:end_idx]
+        default_output_name = input_files[0].stem if len(input_files) == 1 else "combined"
+        output_name = args.output_name or default_output_name
+
+        print(f"[OK] Archivos cargados: {len(input_files)}. Empresas unicas: {total}")
+        print(f"[INFO] Procesando paquete actual: del registro {start_idx} al {end_idx} ({len(batch_companies)} empresas)\n")
 
     # Obtener y filtrar datos con metricas completas
-    df_valid, missing = fetch_and_filter_data(batch_tickers)
+    df_valid, missing = fetch_and_filter_data(batch_companies)
 
     # Reporte en Terminal
     print("\n" + "="*70)
@@ -261,7 +362,8 @@ def main():
         print(df_valid.to_markdown(index=False, tablefmt="github"))
     else:
         print("[WARN] No se encontraron datos validos para este paquete.")
-    save_results(df_valid, start_idx, end_idx)
+    if not args.ticker:
+        save_results(df_valid, start_idx, end_idx, output_name)
 
     # Reporte de errores / tickers no encontrados
     if missing:
