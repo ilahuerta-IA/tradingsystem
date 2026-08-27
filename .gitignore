@@ -48,8 +48,12 @@ config/credentials/*.credentials
 images/
 
 # Data Files (Large CSVs should not be in git)
-data/*.csv
-data/*.zip
+#data/*.csv
+#data/*.zip
+data/
+
+# Backtesting
+results/
 
 # Logs and Reports
 logs/
