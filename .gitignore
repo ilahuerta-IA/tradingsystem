@@ -58,7 +58,7 @@ results/
 # Logs and Reports
 logs/
 temp_reports/*.txt
-tools/eje_a_logs/
+tools/
 
 # Operating System
 .DS_Store
