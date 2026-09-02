@@ -86,3 +86,4 @@ analysis/gex_*.csv
 logs/orion/
 # ORION private data studies (ODT/spreadsheet working docs)
 analysis/*.odt
+live/bot_settings.py
