@@ -67,7 +67,7 @@ class BrokerTimeFormatter(logging.Formatter):
         broker_offset = get_broker_utc_offset()
         # Simple approach: add (broker_offset - local_offset) hours
         # For now, assume we want broker time = UTC + broker_offset
-        utc_time = datetime.utcfromtimestamp(record.created)
+        utc_time = datetime.fromtimestamp(record.created, timezone.utc).replace(tzinfo=None)
         broker_time = utc_time + timedelta(hours=broker_offset)
         
         if datefmt:
