@@ -41,6 +41,8 @@ from .bot_settings import (
     ALTAIR_LIVE_TF,
     VEGA_USE_DENSE_ATR,
     VEGA_DENSE_ATR_LOOKBACK_DAYS,
+    ALLOC_OVERRIDES,
+    DEMO_ONLY,
 )
 from .connector import MT5Connector
 from .data_provider import DataProvider, Timeframe
@@ -301,6 +303,10 @@ class MultiStrategyMonitor:
                 tf_info = ALTAIR_LIVE_TF.get(config_name, {})
                 if tf_info.get("bars_per_day"):
                     params = {**params, "bars_per_day": tf_info["bars_per_day"]}
+
+            # Live sizing override (Darwinex Zero, bot_settings.ALLOC_OVERRIDES)
+            if config_name in ALLOC_OVERRIDES:
+                params = {**params, "capital_alloc_pct": ALLOC_OVERRIDES[config_name]}
             
             try:
                 # Create checker
@@ -1902,12 +1908,13 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Multi-Strategy Trading Monitor")
-    parser.add_argument("--demo-only", action="store_true", default=True, help="Demo only mode")
+    parser.add_argument("--demo-only", action="store_true", default=False,
+                        help="Force demo-only mode (overrides bot_settings.DEMO_ONLY)")
     parser.add_argument("--single", action="store_true", help="Run single iteration")
     
     args = parser.parse_args()
     
-    monitor = MultiStrategyMonitor(demo_only=args.demo_only)
+    monitor = MultiStrategyMonitor(demo_only=args.demo_only or DEMO_ONLY)
     
     setup_signal_handlers(monitor)
     

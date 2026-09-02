@@ -233,6 +233,37 @@ ALTAIR_STRATEGIES_CONFIG = {
         resample_minutes=0,  # native 15m, no resample needed
     ),
 
+    # --- DARWINEX ZERO LIVE PORTFOLIO (2026-09-02) ---
+    # mass15m pipeline: IS Aug20-Jul24 (526 archives -> 11 finalists),
+    # OOS one-shot fiscal 2024+2025 (-> 5 survivors), Darwinex cost study
+    # (kept ETN/GD/MSCI; HII vetoed net PF 0.98, PRU parked 1.10).
+    # Preset A frozen as OOS'd. capital_alloc_pct=0.08 -> notional 0.40x
+    # equity at 20% margin (sizing study 2026-09-02).
+    'ETN_ALTAIR': _make_config(
+        'ETN', 'ETN_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26,
+        resample_minutes=0,
+        capital_alloc_pct=0.08,
+    ),
+    'GD_ALTAIR': _make_config(
+        'GD', 'GD_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26,
+        resample_minutes=0,
+        capital_alloc_pct=0.08,
+    ),
+    'MSCI_ALTAIR': _make_config(
+        'MSCI', 'MSCI_15m_8Yea.csv',
+        datetime.datetime(2017, 1, 1),
+        universe='sp500',
+        bars_per_day=26,
+        resample_minutes=0,
+        capital_alloc_pct=0.08,
+    ),
+
     # --- SP500 SCREENING (Section 39, 2026-04-11) ---
     # ALB: rank #4, Config B: PF 2.15, WR 54.5%, +$7,609, 4/5yr+
     'ALB_ALTAIR': _make_config(
@@ -348,13 +379,10 @@ ALTAIR_STRATEGIES_CONFIG = {
     # active=False until live-real wiring (do NOT enable on the demo bot).
     #
     # --- Tier 1: core diversifiers (industrial / defense) ---
-    'ETN_ALTAIR': _make_config(
-        'ETN', 'ETN_15m_8Yea.csv',
-        datetime.datetime(2017, 1, 1),
-        universe='sp500',
-        bars_per_day=26, resample_minutes=0,
-        active=False,  # 15m A PF 1.67 / B 1.64, 8/8 winning years, Sharpe 0.96
-    ),
+    # NOTE 2026-09-02: 'ETN_ALTAIR' moved to the Darwinex Zero live section
+    # above (mass15m OOS survivor, capital_alloc_pct=0.08). Historical Fase E
+    # entry (2017-01-01, active=False, 15m A PF 1.67 / B 1.64, 8/8 winning
+    # years, Sharpe 0.96) removed here to avoid duplicate dict key.
     'TDG_ALTAIR': _make_config(
         'TDG', 'TDG_15m_8Yea.csv',
         datetime.datetime(2017, 1, 1),
@@ -379,13 +407,10 @@ ALTAIR_STRATEGIES_CONFIG = {
     # --- Tier 2: support diversifiers (financials / energy / insurance /
     #     consumer-tech / semis). Lower or sector-overlapping edge; enable
     #     selectively for correlation balance, not all at once. ---
-    'MSCI_ALTAIR': _make_config(
-        'MSCI', 'MSCI_15m_8Yea.csv',
-        datetime.datetime(2017, 1, 1),
-        universe='sp500',
-        bars_per_day=26, resample_minutes=0,
-        active=False,  # 15m A PF 1.74 / B 1.39 (financial data)
-    ),
+    # NOTE 2026-09-02: 'MSCI_ALTAIR' moved to the Darwinex Zero live section
+    # above (mass15m OOS survivor, capital_alloc_pct=0.08). Historical Fase E
+    # entry (2017-01-01, active=False, 15m A PF 1.74 / B 1.39) removed here
+    # to avoid duplicate dict key.
     'MPC_15m_ALTAIR': _make_config(
         'MPC', 'MPC_15m_8Yea.csv',
         datetime.datetime(2018, 3, 1),
