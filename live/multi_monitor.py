@@ -1520,6 +1520,8 @@ class MultiStrategyMonitor:
                         'volume_min': symbol_info_raw.volume_min,
                         'volume_max': symbol_info_raw.volume_max,
                         'volume_step': symbol_info_raw.volume_step,
+                        # Darwinex GDAXI: 1 lot = 10x index (FOREX.com GER40 was 1x)
+                        'contract_size': getattr(symbol_info_raw, 'trade_contract_size', 1.0),
                     }
                     forecast = getattr(signal, 'forecast', 10.0)
                     volume_override = checker.calculate_vega_lots(

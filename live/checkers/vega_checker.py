@@ -320,13 +320,19 @@ class VEGAChecker(BaseChecker):
                 if dd_cap < contracts:
                     contracts = max(1, dd_cap)
 
+        # Convert BT contracts (1 contract = 1x index) to broker lots.
+        # FIX 2026-09-02: Darwinex GDAXI has trade_contract_size=10 (1 lot =
+        # 10x index); returning raw contracts oversized positions 10x.
+        contract_size = symbol_info.get("contract_size", 1.0) or 1.0
+
         # Clamp to broker limits
         min_lot = symbol_info.get("volume_min", 1.0)
         max_lot = symbol_info.get("volume_max", 1000.0)
         lot_step = symbol_info.get("volume_step", 1.0)
 
-        volume = float(contracts)
-        volume = round(volume / lot_step) * lot_step
+        volume = float(contracts) / contract_size
+        volume = int(volume / lot_step + 1e-9) * lot_step  # floor, never oversize
+        volume = round(volume, 8)
         volume = max(min_lot, min(volume, max_lot))
 
         return volume
