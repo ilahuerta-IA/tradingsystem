@@ -50,9 +50,13 @@ Examples:
     
     args = parser.parse_args()
     
-    demo_only = not args.no_demo
+    # Live/demo gate lives in bot_settings.DEMO_ONLY (local, manually edited).
+    # --no-demo remains as CLI override; only that path asks for confirmation
+    # (bot_settings=False is a deliberate config, must not block unattended restarts).
+    from live.bot_settings import DEMO_ONLY
+    demo_only = DEMO_ONLY and not args.no_demo
     
-    if not demo_only:
+    if not demo_only and args.no_demo:
         print("\n" + "=" * 60)
         print("WARNING: REAL ACCOUNT MODE ENABLED!")
         print("This will execute trades on a real account.")
