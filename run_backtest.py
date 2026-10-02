@@ -27,8 +27,17 @@ from strategies.connors_strategy import CONNORSStrategy
 from strategies.altair_strategy import ALTAIRStrategy
 from strategies.lyra_strategy import LYRAStrategy
 from lib.commission import ForexCommission, ETFCommission, CFDIndexCommission, ETFCSVData
+from lib.session_filter import filter_csv_to_broker_session
 from config.settings_altair import ALTAIR_STRATEGIES_CONFIG, ALTAIR_BROKER_CONFIG, STOCK_SYMBOLS
 from config.settings_lyra import LYRA_STRATEGIES_CONFIG, LYRA_BROKER_CONFIG
+
+# Optional local-only strategies (excluded from repo)
+try:
+    from strategies.polaris_strategy import POLARISStrategy
+    from config.settings_polaris import POLARIS_STRATEGIES_CONFIG
+except ImportError:
+    POLARISStrategy = None
+    POLARIS_STRATEGIES_CONFIG = {}
 
 
 # Non-forex symbol lists (both use ETFCSVData for datetime parsing)
@@ -51,6 +60,8 @@ STRATEGY_REGISTRY = {
     'ALTAIR': ALTAIRStrategy,
     'LYRA': LYRAStrategy,
 }
+if POLARISStrategy is not None:
+    STRATEGY_REGISTRY['POLARIS'] = POLARISStrategy
 
 # Merge ALTAIR configs into global registries
 STRATEGIES_CONFIG.update(ALTAIR_STRATEGIES_CONFIG)
@@ -59,6 +70,9 @@ BROKER_CONFIG.update(ALTAIR_BROKER_CONFIG)
 # Merge LYRA configs
 STRATEGIES_CONFIG.update(LYRA_STRATEGIES_CONFIG)
 BROKER_CONFIG.update(LYRA_BROKER_CONFIG)
+
+# Merge POLARIS configs if present (local-only)
+STRATEGIES_CONFIG.update(POLARIS_STRATEGIES_CONFIG)
 
 
 def run_backtest(config_name):
@@ -89,6 +103,11 @@ def run_backtest(config_name):
     if not data_path.exists():
         print(f'Data file not found: {data_path}')
         return None
+    
+    # Optional broker-session filter (BT/live feed parity, see lib/session_filter.py)
+    data_session = config.get('data_session_broker')
+    if data_session:
+        data_path = filter_csv_to_broker_session(data_path, data_session)
     
     # Determine asset class
     asset_name = config['asset_name']
@@ -184,6 +203,10 @@ def run_backtest(config_name):
         if not ref_path.exists():
             print(f'Reference data file not found: {ref_path}')
             return None
+        
+        ref_session = config.get('reference_session_broker')
+        if ref_session:
+            ref_path = filter_csv_to_broker_session(ref_path, ref_session)
         
         ref_name = config.get('reference_symbol', 'REFERENCE')
         # Determine if reference is a CFD index (needs ETFCSVData)

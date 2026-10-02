@@ -4273,6 +4273,15 @@ STRATEGIES_CONFIG = {
         'reference_data_path': 'data/GDAXI_5m_15Yea.csv',
         'reference_symbol': 'GDAXI',
 
+        # Darwinex Zero session filter (broker time, EU DST) for BT/live
+        # feed parity. Session study 2026-10-02: full 24h data distorts
+        # ATR (p95 16.7%) and flips ~9.8% of entry signals vs live feed.
+        # NDX: Mon-Thu 01:00-24:00, Fri 01:00-23:55 broker.
+        # GER40: Mon-Fri 03:30-22:59 broker.
+        'data_session_broker': {'open': '01:00', 'close': '24:00',
+                                'fri_close': '23:55'},
+        'reference_session_broker': {'open': '03:30', 'close': '22:59'},
+
         'from_date': datetime.datetime(2013, 10, 2), #2013-10-02
         'to_date': datetime.datetime(2025, 12, 31),
 
@@ -4294,9 +4303,11 @@ STRATEGIES_CONFIG = {
             'max_forecast': 20,
             'min_forecast_entry': 1,
 
-            # Direction filter (L+S as per GDAXI_VEGA proven)
+            # Direction filter: LONG-only (exit study 2026-10-01:
+            # shorts net-negative in IS and OOS even earning swap credit;
+            # L+S PF 1.13 / MaxDD 34% vs LONG-only PF 1.44 / MaxDD 11%)
             'allow_long': True,
-            'allow_short': True,
+            'allow_short': False,
 
             # Z-score ATR: back to Wilder (2026-07-05). Hybrid a=2.0
             # promoted 2026-06-12 was REJECTED after 3-week live
@@ -4309,6 +4320,16 @@ STRATEGIES_CONFIG = {
             'session_end_hour': 12,
             'holding_hours': 3,
             'max_trades_per_day': 1,
+
+            # Live exit: close at next GER40 session open + 60min
+            # (04:30 broker). Exit study 2026-10-01: BT exit at 00:00 UTC
+            # is untradeable on Darwinex (74% of exits); open+1h is the
+            # best executable variant (OOS 60.7k EUR vs 49.3k retry).
+            # BT keeps bars exit (H4 grid cannot fill 04:30); parity gap
+            # quantified in tools/vega_exit_study.py.
+            'exit_mode': 'open_plus',
+            'exit_after_open_minutes': 60,
+            'exit_session_open_broker': '03:30',
 
             # Time filter: London entry window
             'use_time_filter': True,
