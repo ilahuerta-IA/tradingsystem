@@ -78,6 +78,12 @@ class VEGAChecker(BaseChecker):
         self.holding_hours = params.get("holding_hours", 3)
         self.max_trades_per_day = params.get("max_trades_per_day", 0)
 
+        # Exit mode: 'bars' (legacy H4 bar count) | 'open_plus' (close at
+        # next session open + offset; exit study 2026-10-01)
+        self.exit_mode = params.get("exit_mode", "bars")
+        self.exit_after_open_minutes = params.get("exit_after_open_minutes", 60)
+        self.exit_session_open_broker = params.get("exit_session_open_broker", "03:30")
+
         # DST
         self.dst_mode = params.get("dst_mode", "none")
         self.base_allowed_hours = list(params.get("allowed_hours", [7, 8, 9, 10, 11, 12]))
@@ -111,6 +117,8 @@ class VEGAChecker(BaseChecker):
             f"ATRm={self.zscore_atr_method}"
             f"{f'(a={self.hybrid_alpha})' if self.zscore_atr_method == 'hybrid' else ''}, "
             f"DZ={self.dead_zone}, holding={self.holding_hours}H4bars | "
+            f"exit={self.exit_mode}"
+            f"{f'(open+{self.exit_after_open_minutes}m)' if self.exit_mode == 'open_plus' else ''} | "
             f"DST={self.dst_mode} | "
             f"long={'Y' if self.allow_long else 'N'} "
             f"short={'Y' if self.allow_short else 'N'}"
@@ -618,5 +626,8 @@ class VEGAChecker(BaseChecker):
         signal.forecast = forecast
         signal.position_fraction = abs(forecast) / self.max_forecast
         signal.holding_bars = self.holding_hours
+        signal.exit_mode = self.exit_mode
+        signal.exit_after_open_minutes = self.exit_after_open_minutes
+        signal.exit_session_open_broker = self.exit_session_open_broker
 
         return signal

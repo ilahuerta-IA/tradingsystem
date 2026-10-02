@@ -454,10 +454,13 @@ class MultiStrategyMonitor:
             for ticket, pos_info in self.open_positions.items():
                 if pos_info.get("vega_time_exit"):
                     entry_bar = pos_info.get("vega_entry_bar_time")
+                    tgt = pos_info.get("vega_exit_target_broker")
                     vega_state[str(ticket)] = {
                         "config": pos_info.get("config"),
                         "vega_entry_bar_time": entry_bar.isoformat() if entry_bar else None,
                         "vega_holding_bars": pos_info.get("vega_holding_bars", 3),
+                        "vega_exit_mode": pos_info.get("vega_exit_mode", "bars"),
+                        "vega_exit_target_broker": tgt.isoformat() if tgt else None,
                     }
             
             with open(self._vega_state_file, "w") as f:
@@ -488,6 +491,14 @@ class MultiStrategyMonitor:
                     self.open_positions[ticket]["vega_holding_bars"] = meta.get(
                         "vega_holding_bars", 3
                     )
+                    self.open_positions[ticket]["vega_exit_mode"] = meta.get(
+                        "vega_exit_mode", "bars"
+                    )
+                    tgt_str = meta.get("vega_exit_target_broker")
+                    if tgt_str:
+                        self.open_positions[ticket]["vega_exit_target_broker"] = (
+                            datetime.fromisoformat(tgt_str)
+                        )
                     merged += 1
                     self.logger.info(
                         f"[{meta.get('config')}] Restored VEGA time-exit state for #{ticket}"
@@ -614,11 +625,30 @@ class MultiStrategyMonitor:
         self._log_event("ERROR", {"error": "reconnection_failed"})
         return False
     
+    def _vega_exit_target_broker(self, session_open: str, offset_minutes: int) -> datetime:
+        """Next session open strictly after now (broker time) + offset.
+
+        Weekend days are skipped (entries are Mon-Thu, so normally the
+        target is simply next day 03:30 + offset).
+        """
+        now_broker = datetime.utcnow() + timedelta(hours=get_broker_utc_offset())
+        h, m = (int(x) for x in session_open.split(":"))
+        target = now_broker.replace(hour=h, minute=m, second=0, microsecond=0)
+        if target <= now_broker:
+            target += timedelta(days=1)
+        while target.weekday() >= 5:
+            target += timedelta(days=1)
+        return target + timedelta(minutes=offset_minutes)
+
     def _check_vega_time_exits(self):
         """
         Close VEGA positions that have exceeded their holding period.
-        Uses H4 bar counting (not wall-clock) to match BT behavior.
-        FIX 2026-04-05: wall-clock caused premature weekend closes.
+
+        Two modes (per-position, from vega_exit_mode):
+        - 'open_plus': wall-clock target = next session open + offset
+          (exit study 2026-10-01; always falls in tradeable hours).
+        - 'bars' (legacy): H4 bar counting to match BT behavior.
+          FIX 2026-04-05: wall-clock caused premature weekend closes.
         """
         if not self.open_positions:
             return
@@ -629,6 +659,15 @@ class MultiStrategyMonitor:
             if not pos_info.get("vega_time_exit"):
                 continue
             
+            # open_plus mode: compare broker wall-clock vs stored target
+            target = pos_info.get("vega_exit_target_broker")
+            if pos_info.get("vega_exit_mode") == "open_plus" and target:
+                now_broker = datetime.utcnow() + timedelta(
+                    hours=get_broker_utc_offset())
+                if now_broker >= target:
+                    tickets_to_close.append(ticket)
+                continue
+
             entry_bar_time = pos_info.get("vega_entry_bar_time")
             holding_bars = pos_info.get("vega_holding_bars", 3)
             config_name = pos_info.get("config", "UNKNOWN")
@@ -652,9 +691,12 @@ class MultiStrategyMonitor:
             pos_info = self.open_positions[ticket]
             config_name = pos_info.get("config", "UNKNOWN")
             
+            if pos_info.get("vega_exit_mode") == "open_plus":
+                detail = f"at broker target {pos_info.get('vega_exit_target_broker')}"
+            else:
+                detail = f"after {pos_info.get('vega_holding_bars', 0)} H4 bars hold"
             self.logger.info(
-                f"[{config_name}] VEGA TIME-EXIT: closing ticket {ticket} "
-                f"after {pos_info.get('vega_holding_bars', 0)} H4 bars hold"
+                f"[{config_name}] VEGA TIME-EXIT: closing ticket {ticket} {detail}"
             )
             
             # Find the executor for this config
@@ -1671,6 +1713,19 @@ class MultiStrategyMonitor:
                     pos_data["vega_time_exit"] = True
                     pos_data["vega_entry_bar_time"] = self._last_h4_bar_times.get(config_name)
                     pos_data["vega_holding_bars"] = holding_bars
+                    exit_mode = getattr(signal, 'exit_mode', 'bars')
+                    pos_data["vega_exit_mode"] = exit_mode
+                    if exit_mode == 'open_plus':
+                        pos_data["vega_exit_target_broker"] = (
+                            self._vega_exit_target_broker(
+                                getattr(signal, 'exit_session_open_broker', '03:30'),
+                                getattr(signal, 'exit_after_open_minutes', 60),
+                            )
+                        )
+                        self.logger.info(
+                            f"[{config_name}] VEGA exit target (broker): "
+                            f"{pos_data['vega_exit_target_broker']}"
+                        )
 
                 # ALTAIR time-exit tracking (bar-counting at ticker's TF)
                 if config_name in ALTAIR_CONFIGS:

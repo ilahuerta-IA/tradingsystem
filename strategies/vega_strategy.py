@@ -233,6 +233,15 @@ class VEGAStrategy(bt.Strategy):
         holding_hours=6,            # Hours to hold position
         max_trades_per_day=0,       # Max entries per day (0=unlimited)
 
+        # === LIVE-ONLY EXIT CONFIG (declared for config passthrough) ===
+        # H4 BT cannot fill intra-bar: BT always uses the bars exit above.
+        # Live 'open_plus' closes at next session open + offset (exit study
+        # 2026-10-01, tools/vega_exit_study.py: BT exit lands 00:00 UTC =
+        # Darwinex closed window in 74% of trades).
+        exit_mode='bars',           # 'bars' (BT) | 'open_plus' (live only)
+        exit_after_open_minutes=60,
+        exit_session_open_broker='03:30',
+
         # === FILTERS ===
         use_time_filter=True,
         allowed_hours=[7, 8, 9, 10, 11, 12],
